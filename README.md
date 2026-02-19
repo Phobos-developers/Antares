@@ -29,8 +29,8 @@ The documentation should be identical to Ares one that can be found at [here @ a
 
 Credits
 -------
-**Ares developer team** - creation of Ares
-**AlexB** - development of closed-source Ares past 0.A
+- **Ares developer team** - creation of Ares
+- **AlexB** - development of closed-source Ares past 0.A
 
 Legal
 -----
