@@ -22,6 +22,11 @@ Unreleased
   victim was moving, which used to make the cell permanently impassable.
   (Trsdy, [Phobos #1417](https://github.com/Phobos-developers/Phobos/pull/1417))
 
++ **Amphibious** technos with `MovementZone=AmphibiousCrusher` or
+  `AmphibiousDestroyer` can enter water structures again. Only
+  `MovementZone=Amphibious` was exempted from the naval mismatch check.
+  (CrimRecya, [Phobos #1595](https://github.com/Phobos-developers/Phobos/pull/1595))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 

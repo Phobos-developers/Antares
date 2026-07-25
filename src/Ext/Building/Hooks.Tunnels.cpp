@@ -257,9 +257,15 @@ DEFINE_HOOK(0x43C326, BuildingClass_ReceivedRadioCommand_QueryCanEnter_Tunnel, 0
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pType);
 	auto const pSenderType = pSender->GetTechnoType();
 
-	if(pSenderType->MovementZone != MovementZone::Amphibious
-		&& pType->Naval != pSenderType->Naval)
-	{
+	// AmphibiousCrusher and AmphibiousDestroyer are amphibious too. Testing only
+	// MovementZone::Amphibious sends them through the Naval mismatch below, which
+	// is what keeps them out of water structures.
+	auto const zone = pSenderType->MovementZone;
+	bool const amphibious = zone == MovementZone::Amphibious
+		|| zone == MovementZone::AmphibiousCrusher
+		|| zone == MovementZone::AmphibiousDestroyer;
+
+	if(!amphibious && pType->Naval != pSenderType->Naval) {
 		return Deny;
 	}
 
