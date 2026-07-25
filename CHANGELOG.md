@@ -42,6 +42,11 @@ Unreleased
   restore the Idle and Active anims onto a corpse.
   (Trsdy, [Phobos #1588](https://github.com/Phobos-developers/Phobos/pull/1588))
 
++ **Cloning facilities** that are also a war factory no longer kick out clones
+  past the free-link check, which used to pile them onto the exit cell and jam
+  them.
+  (NetsuNegi, [Phobos #1967](https://github.com/Phobos-developers/Phobos/pull/1967))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 

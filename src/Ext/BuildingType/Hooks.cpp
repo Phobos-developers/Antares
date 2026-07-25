@@ -45,6 +45,27 @@ DEFINE_HOOK(0x4444B3, BuildingClass_KickOutUnit_NoAlternateKickout, 0x6)
 	;
 }
 
+// the game lets a war factory skip the free-link check, on the grounds that it
+// only ever kicks out the one unit it just built. a cloning facility kicks out
+// a clone per cloner, so one that is also a war factory has to be held to the
+// check or the clones pile up on the exit cell and jam.
+DEFINE_HOOK(0x4440B0, BuildingClass_KickOutUnit_CloningFacilityLinks, 0x6)
+{
+	enum {
+		CheckFreeLinks = 0x4440BAu,
+		SkipCheck = 0x4440D7u
+	};
+
+	GET(BuildingTypeClass* const, pType, EAX);
+
+	auto const pExt = BuildingTypeExt::ExtMap.Find(pType);
+
+	return (!pType->WeaponsFactory || pExt->CloningFacility)
+		? CheckFreeLinks
+		: SkipCheck
+	;
+}
+
 DEFINE_HOOK(0x455DA0, BuildingClass_IsFactory_CloningFacility, 0x6)
 {
 	GET(BuildingClass* const, pThis, ECX);
