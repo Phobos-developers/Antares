@@ -687,6 +687,14 @@ bool TechnoTypeExt::ExtData::CameoIsElite(HouseClass const* const pHouse) const
 		return pCountry->VeteranAircraft.FindItemIndex(static_cast<AircraftTypeClass*>(pType)) != -1;
 	case AbstractType::BuildingType:
 		if(auto const pItem = pType->UndeploysInto) {
+			// this building wears the cameo of what it undeploys into, so it has to
+			// answer to the same factory infiltration the UnitType branch does
+			if(pType->Trainable) {
+				auto const pHouseExt = HouseExt::ExtMap.Find(pHouse);
+				if(pType->Naval ? pHouseExt->NavalYardInfiltrated : pHouse->WarFactoryInfiltrated) {
+					return true;
+				}
+			}
 			return pCountry->VeteranUnits.FindItemIndex(static_cast<UnitTypeClass*>(pItem)) != -1;
 		} else {
 			if(pType->Trainable && HouseExt::ExtMap.Find(pHouse)->BuildingInfiltrated) {

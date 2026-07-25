@@ -31,6 +31,11 @@ Unreleased
   derived from the target cell index. That facing is still used for units.
   (NetsuNegi, [Phobos #2155](https://github.com/Phobos-developers/Phobos/pull/2155))
 
++ **AltCameo** is shown for buildings with `UndeploysInto` once the matching
+  vehicle factory has been infiltrated, the way it already was for the vehicles
+  themselves.
+  (NetsuNegi, [Phobos #1995](https://github.com/Phobos-developers/Phobos/pull/1995))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
