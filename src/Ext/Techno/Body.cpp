@@ -153,11 +153,17 @@ bool TechnoExt::EjectSurvivor(FootClass *Survivor, CoordStruct loc, bool Select)
 
 	int floorZ = pCell->GetCoordsWithBridge().Z;
 	bool chuted = (loc.Z - floorZ > 2 * Unsorted::LevelHeight);
+	// both placements run inside the mutex: without it the survivor gets treated
+	// as an ordinary arrival and can be relocated away from the wreck
 	if(chuted) {
 		// HouseClass::CreateParadrop does this when building passengers for a paradrop... it might be a wise thing to mimic!
 		Survivor->Limbo();
 
-		if(!Survivor->SpawnParachuted(loc)) {
+		++Unsorted::ScenarioInit;
+		auto const spawned = Survivor->SpawnParachuted(loc);
+		--Unsorted::ScenarioInit;
+
+		if(!spawned) {
 			return false;
 		}
 	} else {
@@ -165,7 +171,14 @@ bool TechnoExt::EjectSurvivor(FootClass *Survivor, CoordStruct loc, bool Select)
 		// Unlimbo takes a 256-direction facing, so the random eight-way pick has to
 		// be scaled into that space. Shipped (0x100452A6) does it as `shl eax, 0Dh;
 		// movzx eax, ax; shr eax, 8`, which is this shift.
-		if(!Survivor->Unlimbo(loc, static_cast<DirType>(ScenarioClass::Instance->Random.RandomRanged(0, 7) << 5))) {
+		auto const facing = static_cast<DirType>(
+			ScenarioClass::Instance->Random.RandomRanged(0, 7) << 5);
+
+		++Unsorted::ScenarioInit;
+		auto const placed = Survivor->Unlimbo(loc, facing);
+		--Unsorted::ScenarioInit;
+
+		if(!placed) {
 			return false;
 		}
 	}

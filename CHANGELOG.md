@@ -57,6 +57,10 @@ Unreleased
   warp it back in.
   (Starkku, [Phobos #1560](https://github.com/Phobos-developers/Phobos/pull/1560))
 
++ **Survivors** are placed inside the scenario-init mutex, so a crew bailing out
+  of a destroyed transport lands at the wreck rather than being relocated.
+  (NetsuNegi, [Phobos #2020](https://github.com/Phobos-developers/Phobos/pull/2020))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
