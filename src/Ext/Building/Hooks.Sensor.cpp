@@ -6,7 +6,7 @@
 #include <RadarEventClass.h>
 #include <VoxClass.h>
 
-DEFINE_HOOK(70DA95, TechnoClass_RadarTrackingUpdate_AnnounceDetected, 6)
+DEFINE_HOOK(0x70DA95, TechnoClass_RadarTrackingUpdate_AnnounceDetected, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	GET_STACK(int, detect, 0x10);
@@ -31,7 +31,7 @@ DEFINE_HOOK(70DA95, TechnoClass_RadarTrackingUpdate_AnnounceDetected, 6)
 	return 0x70DADC;
 }
 
-DEFINE_HOOK(455828, BuildingClass_SensorArrayActivate, 8)
+DEFINE_HOOK(0x455828, BuildingClass_SensorArrayActivate, 0x8)
 {
 	GET(BuildingClass*, pBld, ECX);
 	auto pExt = BuildingExt::ExtMap.Find(pBld);
@@ -44,7 +44,7 @@ DEFINE_HOOK(455828, BuildingClass_SensorArrayActivate, 8)
 	return 0x45596F;
 }
 
-DEFINE_HOOK(4556E1, BuildingClass_SensorArrayDeactivate, 7)
+DEFINE_HOOK(0x4556E1, BuildingClass_SensorArrayDeactivate, 0x7)
 {
 	GET(BuildingClass*, pBld, ECX);
 	auto pExt = BuildingExt::ExtMap.Find(pBld);
@@ -63,14 +63,14 @@ DEFINE_HOOK(4556E1, BuildingClass_SensorArrayDeactivate, 7)
 	return 0x45580D;
 }
 
-DEFINE_HOOK_AGAIN(4557BC, BuildingClass_SensorArray_BuildingRedraw, 6)
-DEFINE_HOOK(455923, BuildingClass_SensorArray_BuildingRedraw, 6)
+DEFINE_HOOK_AGAIN(0x4557BC, BuildingClass_SensorArray_BuildingRedraw, 0x6)
+DEFINE_HOOK(0x455923, BuildingClass_SensorArray_BuildingRedraw, 0x6)
 {
 	GET(CellClass*, pCell, ESI);
 
 	// mark detected buildings for redraw
 	if(auto pBld = pCell->GetBuilding()) {
-		if(pBld->Owner != HouseClass::Player && pBld->VisualCharacter(VARIANT_FALSE, nullptr) != VisualType::Normal) {
+		if(pBld->Owner != HouseClass::CurrentPlayer && pBld->VisualCharacter(VARIANT_FALSE, nullptr) != VisualType::Normal) {
 			pBld->NeedsRedraw = true;
 		}
 	}
@@ -79,8 +79,8 @@ DEFINE_HOOK(455923, BuildingClass_SensorArray_BuildingRedraw, 6)
 }
 
 // powered state changed
-DEFINE_HOOK_AGAIN(454B5F, BuildingClass_UpdatePowered_SensorArray, 6)
-DEFINE_HOOK(4549F8, BuildingClass_UpdatePowered_SensorArray, 6)
+DEFINE_HOOK_AGAIN(0x454B5F, BuildingClass_UpdatePowered_SensorArray, 0x6)
+DEFINE_HOOK(0x4549F8, BuildingClass_UpdatePowered_SensorArray, 0x6)
 {
 	GET(BuildingClass*, pBld, ESI);
 	auto pExt = BuildingExt::ExtMap.Find(pBld);
@@ -89,7 +89,7 @@ DEFINE_HOOK(4549F8, BuildingClass_UpdatePowered_SensorArray, 6)
 }
 
 // something changed to the worse, like toggle power
-DEFINE_HOOK(4524A3, BuildingClass_DisableThings, 6)
+DEFINE_HOOK(0x4524A3, BuildingClass_DisableThings, 0x6)
 {
 	GET(BuildingClass*, pBld, EDI);
 	auto pExt = BuildingExt::ExtMap.Find(pBld);
@@ -98,7 +98,7 @@ DEFINE_HOOK(4524A3, BuildingClass_DisableThings, 6)
 }
 
 // check every frame
-DEFINE_HOOK(43FE69, BuildingClass_Update_SensorArray, A)
+DEFINE_HOOK(0x43FE69, BuildingClass_Update_SensorArray, 0xA)
 {
 	GET(BuildingClass*, pBld, ESI);
 	auto pExt = BuildingExt::ExtMap.Find(pBld);
@@ -108,7 +108,7 @@ DEFINE_HOOK(43FE69, BuildingClass_Update_SensorArray, A)
 
 // capture and mind-control support: deactivate the array for the original
 // owner, then activate it a few instructions later for the new owner.
-DEFINE_HOOK(448B70, BuildingClass_ChangeOwnership_SensorArrayA, 6)
+DEFINE_HOOK(0x448B70, BuildingClass_ChangeOwnership_SensorArrayA, 0x6)
 {
 	GET(BuildingClass*, pBld, ESI);
 	if(pBld->Type->SensorArray) {
@@ -117,7 +117,7 @@ DEFINE_HOOK(448B70, BuildingClass_ChangeOwnership_SensorArrayA, 6)
 	return 0;
 }
 
-DEFINE_HOOK(448C3E, BuildingClass_ChangeOwnership_SensorArrayB, 6)
+DEFINE_HOOK(0x448C3E, BuildingClass_ChangeOwnership_SensorArrayB, 0x6)
 {
 	GET(BuildingClass*, pBld, ESI);
 	if(pBld->Type->SensorArray) {
@@ -127,7 +127,7 @@ DEFINE_HOOK(448C3E, BuildingClass_ChangeOwnership_SensorArrayB, 6)
 }
 
 // remove sensor on destruction
-DEFINE_HOOK(4416A2, BuildingClass_Destroy_SensorArray, 6)
+DEFINE_HOOK(0x4416A2, BuildingClass_Destroy_SensorArray, 0x6)
 {
 	GET(BuildingClass*, pBld, ESI);
 	if(pBld->Type->SensorArray) {
@@ -137,7 +137,7 @@ DEFINE_HOOK(4416A2, BuildingClass_Destroy_SensorArray, 6)
 }
 
 // sensor arrays show SensorsSight instead of CloakRadiusInCells
-DEFINE_HOOK(4566F9, BuildingClass_GetRangeOfRadial_SensorArray, 6)
+DEFINE_HOOK(0x4566F9, BuildingClass_GetRangeOfRadial_SensorArray, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
 	auto pType =  pThis->Type;

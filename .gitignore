@@ -171,10 +171,13 @@
 *.opensdf
 *.suo
 
-/.vs/Antares/v16
+/.vs/
 /Debug
 /Release
 
 Antares.vcxproj.user
 /.vscode/c_cpp_properties.json
 /.vscode/solution-explorer
+# Python bytecode from the recon tooling
+__pycache__/
+*.pyc

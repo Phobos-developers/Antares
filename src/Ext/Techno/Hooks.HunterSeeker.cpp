@@ -1,4 +1,5 @@
 #include "Body.h"
+#include "../../Utilities/DirMath.h"
 #include "../Rules/Body.h"
 #include "../TechnoType/Body.h"
 
@@ -7,7 +8,7 @@
 #include <UnitClass.h>
 #include <YRMath.h>
 
-DEFINE_HOOK(4CCB84, FlyLocomotionClass_ILocomotion_Process_HunterSeeker, 6)
+DEFINE_HOOK(0x4CCB84, FlyLocomotionClass_ILocomotion_Process_HunterSeeker, 0x6)
 {
 	GET(ILocomotion* const, pThis, ESI);
 	auto const pLoco = static_cast<FlyLocomotionClass*>(pThis);
@@ -32,7 +33,7 @@ DEFINE_HOOK(4CCB84, FlyLocomotionClass_ILocomotion_Process_HunterSeeker, 6)
 	return 0;
 }
 
-DEFINE_HOOK(4CE85A, FlyLocomotionClass_UpdateLanding, 8)
+DEFINE_HOOK(0x4CE85A, FlyLocomotionClass_UpdateLanding, 0x8)
 {
 	GET(FlyLocomotionClass* const, pThis, ESI);
 	auto const pObject = pThis->LinkedTo;
@@ -60,7 +61,7 @@ DEFINE_HOOK(4CE85A, FlyLocomotionClass_UpdateLanding, 8)
 	return 0;
 }
 
-DEFINE_HOOK(4CF3D0, FlyLocomotionClass_sub_4CEFB0_HunterSeeker, 7)
+DEFINE_HOOK(0x4CF3D0, FlyLocomotionClass_sub_4CEFB0_HunterSeeker, 0x7)
 {
 	GET_STACK(FlyLocomotionClass* const, pThis, 0x20);
 	auto const pObject = pThis->LinkedTo;
@@ -88,7 +89,7 @@ DEFINE_HOOK(4CF3D0, FlyLocomotionClass_sub_4CEFB0_HunterSeeker, 7)
 
 					// the hunter seeker's default flight level
 					crd = pObject->GetCoords();
-					auto floor = MapClass::Instance->GetCellFloorHeight(crd);
+					auto floor = MapClass::Instance.GetCellFloorHeight(crd);
 					auto const height = floor + pType->GetFlightLevel();
 
 					// linear interpolation between target's Z and normal flight level
@@ -111,7 +112,7 @@ DEFINE_HOOK(4CF3D0, FlyLocomotionClass_sub_4CEFB0_HunterSeeker, 7)
 				// the highest value as the new flight level.
 				auto const speed = pThis->Apparent_Speed();
 				if(speed > 0) {
-					double const value = pObject->Facing.current().radians();
+					double const value = AresDir::ToRadians(pObject->PrimaryFacing.Current());
 					double const cos = Math::cos(value);
 					double const sin = Math::sin(value);
 
@@ -119,7 +120,7 @@ DEFINE_HOOK(4CF3D0, FlyLocomotionClass_sub_4CEFB0_HunterSeeker, 7)
 					int currentHeight = 0;
 					auto crd2 = pObject->GetCoords();
 					for(int i = 0; i < 11; ++i) {
-						auto const pCell = MapClass::Instance->GetCellAt(crd2);
+						auto const pCell = MapClass::Instance.GetCellAt(crd2);
 						auto const z = pCell->GetCoordsWithBridge().Z;
 
 						if(z > maxHeight) {
@@ -134,10 +135,15 @@ DEFINE_HOOK(4CF3D0, FlyLocomotionClass_sub_4CEFB0_HunterSeeker, 7)
 						crd2.X += Game::F2I(cos * speed);
 						crd2.Y -= Game::F2I(sin * speed);
 
-						// result is never used in TS, but a break sounds
-						// like a good idea.
-						auto const cell = CellClass::Coord2Cell(crd2);
-						if(!MapClass::Instance->CoordinatesLegal(cell)) {
+						// shipped stops projecting once the next step leaves the
+						// map: sub_1004E3C0 in FlyLocomotionClass_sub_4CEFB0_
+						// HunterSeeker is a thunk to MapClass::In_Map_Coord
+						// (0x568350), and the loop breaks when it says no.
+						// That takes the coordinate, not a cell -- converting
+						// first is not equivalent at the edges, because
+						// In_Map_Coord rounds toward zero and a step off the
+						// map is exactly when a coordinate goes negative.
+						if(!MapClass::Instance.CoordinatesLegal(crd2)) {
 							break;
 						}
 					}
@@ -178,7 +184,7 @@ DEFINE_HOOK(4CF3D0, FlyLocomotionClass_sub_4CEFB0_HunterSeeker, 7)
 	return 0;
 }
 
-DEFINE_HOOK(4CD9C8, FlyLocomotionClass_sub_4CD600_HunterSeeker_UpdateTarget, 6)
+DEFINE_HOOK(0x4CD9C8, FlyLocomotionClass_sub_4CD600_HunterSeeker_UpdateTarget, 0x6)
 {
 	GET(FlyLocomotionClass* const, pThis, ESI);
 	auto const pObject = pThis->LinkedTo;
@@ -194,12 +200,12 @@ DEFINE_HOOK(4CD9C8, FlyLocomotionClass_sub_4CD600_HunterSeeker_UpdateTarget, 6)
 				auto const abs = pTarget->WhatAmI();
 				if(abs == UnitClass::AbsID || abs == InfantryClass::AbsID) {
 					if(pFoot->TubeIndex >= 0) {
-						crd = pFoot->unknown_coords_568;
+						crd = pFoot->CurrentTunnelCoords;
 					}
 				}
 			}
 
-			auto const height = MapClass::Instance->GetCellFloorHeight(crd);
+			auto const height = MapClass::Instance.GetCellFloorHeight(crd);
 			if(crd.Z < height) {
 				crd.Z = height;
 			}
@@ -208,18 +214,18 @@ DEFINE_HOOK(4CD9C8, FlyLocomotionClass_sub_4CD600_HunterSeeker_UpdateTarget, 6)
 
 			// update the facing
 			auto const crdSource = pObject->GetCoords();
-			auto const value = Math::arctanfoo(crdSource.Y - crd.Y, crd.X - crdSource.X);
+			auto const value = Math::atan2(crdSource.Y - crd.Y, crd.X - crdSource.X);
 
-			DirStruct const tmp(value);
-			pObject->Facing.set(tmp);
-			pObject->TurretFacing.set(tmp);
+			auto const tmp = AresDir::FromRadians(value);
+			pObject->PrimaryFacing.SetCurrent(tmp);
+			pObject->SecondaryFacing.SetCurrent(tmp);
 		}
 	}
 
 	return 0;
 }
 
-DEFINE_HOOK(4CDE64, FlyLocomotionClass_sub_4CD600_HunterSeeker_Ascent, 6)
+DEFINE_HOOK(0x4CDE64, FlyLocomotionClass_sub_4CD600_HunterSeeker_Ascent, 0x6)
 {
 	GET(FlyLocomotionClass* const, pThis, ESI);
 	GET(int const, unk, EDI);
@@ -253,7 +259,7 @@ DEFINE_HOOK(4CDE64, FlyLocomotionClass_sub_4CD600_HunterSeeker_Ascent, 6)
 	return 0x4CDE8F;
 }
 
-DEFINE_HOOK(4CDF54, FlyLocomotionClass_sub_4CD600_HunterSeeker_Descent, 5)
+DEFINE_HOOK(0x4CDF54, FlyLocomotionClass_sub_4CD600_HunterSeeker_Descent, 0x5)
 {
 	GET(FlyLocomotionClass* const, pThis, ESI);
 	GET(int const, max, EDI);
@@ -274,7 +280,7 @@ DEFINE_HOOK(4CDF54, FlyLocomotionClass_sub_4CD600_HunterSeeker_Descent, 5)
 	return 0;
 }
 
-DEFINE_HOOK(4CFE80, FlyLocomotionClass_ILocomotion_AcquireHunterSeekerTarget, 5)
+DEFINE_HOOK(0x4CFE80, FlyLocomotionClass_ILocomotion_AcquireHunterSeekerTarget, 0x5)
 {
 	GET_STACK(ILocomotion* const, pThis, 0x4);
 	auto const pLoco = static_cast<FlyLocomotionClass*>(pThis);
@@ -287,7 +293,7 @@ DEFINE_HOOK(4CFE80, FlyLocomotionClass_ILocomotion_AcquireHunterSeekerTarget, 5)
 	return 0x4D016F;
 }
 
-DEFINE_HOOK(4D8D95, FootClass_UpdatePosition_HunterSeeker, A)
+DEFINE_HOOK(0x4D8D95, FootClass_UpdatePosition_HunterSeeker, 0xA)
 {
 	GET(FootClass* const, pThis, ESI);
 

@@ -18,6 +18,26 @@
 #include "Debug.h"
 
 namespace Savegame {
+	// The pinned YRpp had VectorClass::Purge()/DynamicVectorClass::Purge(), which
+	// abandon the buffer -- Items = nullptr, IsAllocated = false, Capacity = 0 (and
+	// Count = 0) -- *without* freeing it. Upstream dropped it, and Clear() is not a
+	// substitute: upstream's Clear() moves the vector into a temporary whose
+	// destructor deletes the buffer. On load that would be fatal, because the
+	// vector being filled sits in freshly allocated ExtData whose Items field is
+	// whatever bytes happened to be there. Reproduce the pinned semantics exactly.
+	template <typename T>
+	inline void PurgeVector(VectorClass<T>& value) {
+		value.Items = nullptr;
+		value.IsAllocated = false;
+		value.Capacity = 0;
+	}
+
+	template <typename T>
+	inline void PurgeVector(DynamicVectorClass<T>& value) {
+		value.Count = 0;
+		PurgeVector(static_cast<VectorClass<T>&>(value));
+	}
+
 	namespace detail {
 
 		struct Selector {
@@ -83,14 +103,12 @@ namespace Savegame {
 
 	template <typename T>
 	bool ReadAresStream(AresStreamReader &Stm, T &Value, bool RegisterForChange) {
-		// not implemented
-		return true;
+		return detail::Selector::ReadFromStream(Stm, Value, RegisterForChange);
 	}
 
 	template <typename T>
 	bool WriteAresStream(AresStreamWriter &Stm, const T &Value) {
-		// not implemented
-		return true;
+		return detail::Selector::WriteToStream(Stm, Value);
 	}
 
 	template <typename T>
@@ -148,7 +166,7 @@ namespace Savegame {
 	template <typename T>
 	struct Savegame::AresStreamObject<VectorClass<T>> {
 		bool ReadFromStream(AresStreamReader &Stm, VectorClass<T> &Value, bool RegisterForChange) const {
-			Value.Purge();
+			Savegame::PurgeVector(Value);
 
 			int Capacity = 0;
 			if(!Stm.Load(Capacity)) {
@@ -182,7 +200,7 @@ namespace Savegame {
 	template <typename T>
 	struct Savegame::AresStreamObject<DynamicVectorClass<T>> {
 		bool ReadFromStream(AresStreamReader &Stm, DynamicVectorClass<T> &Value, bool RegisterForChange) const {
-			Value.Purge();
+			Savegame::PurgeVector(Value);
 
 			int Capacity = 0;
 			if(!Stm.Load(Capacity)) {
@@ -325,17 +343,12 @@ namespace Savegame {
 
 	template <typename T>
 	struct Savegame::AresStreamObject<std::vector<T>> {
+		// only the element count is streamed. capacity is an allocator detail that
+		// varies between builds, so writing it would make saves irreproducible.
 		bool ReadFromStream(AresStreamReader &Stm, std::vector<T> &Value, bool RegisterForChange) const {
 			Value.clear();
 
-			size_t Capacity = 0;
-			if(!Stm.Load(Capacity)) {
-				return false;
-			}
-
-			Value.reserve(Capacity);
-
-			size_t Count = 0;
+			unsigned int Count = 0;
 			if(!Stm.Load(Count)) {
 				return false;
 			}
@@ -352,8 +365,7 @@ namespace Savegame {
 		}
 
 		bool WriteToStream(AresStreamWriter &Stm, const std::vector<T> &Value) const {
-			Stm.Save(Value.capacity());
-			Stm.Save(Value.size());
+			Stm.Save(static_cast<unsigned int>(Value.size()));
 
 			for(auto ix = 0u; ix < Value.size(); ++ix) {
 				if(!Savegame::WriteAresStream(Stm, Value[ix])) {
@@ -430,8 +442,8 @@ namespace Savegame {
 	};
 
 	template <>
-	struct Savegame::AresStreamObject<CameoDataStruct> {
-		bool ReadFromStream(AresStreamReader &Stm, CameoDataStruct &Value, bool RegisterForChange) const {
+	struct Savegame::AresStreamObject<BuildType> {
+		bool ReadFromStream(AresStreamReader &Stm, BuildType &Value, bool RegisterForChange) const {
 			if(!Stm.Load(Value)) {
 				return false;
 			}
@@ -443,7 +455,7 @@ namespace Savegame {
 			return true;
 		}
 
-		bool WriteToStream(AresStreamWriter &Stm, const CameoDataStruct &Value) const {
+		bool WriteToStream(AresStreamWriter &Stm, const BuildType &Value) const {
 			Stm.Save(Value);
 			return true;
 		}

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Networking.h>
+#include "Networking.h"
 
 class AresNetEvent {
 public:
@@ -12,12 +12,15 @@ public:
 		Last = FirewallToggle
 	};
 
+	// the number of bytes that follow the event kind on the wire
+	static int GetPayloadSize(byte kind);
+
 	class Handlers {
 	public:
 		static void RaiseTrenchRedirectClick(BuildingClass *Source, CellStruct *Target);
-		static void RespondToTrenchRedirectClick(NetworkEvent *Event);
+		static void RespondToTrenchRedirectClick(EventClass *Event);
 
 		static void RaiseFirewallToggle(HouseClass *Source);
-		static void RespondToFirewallToggle(NetworkEvent *Event);
+		static void RespondToFirewallToggle(EventClass *Event);
 	};
 };

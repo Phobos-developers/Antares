@@ -93,7 +93,7 @@ void Dialogs::Illuminati::Apply(HWND hwndDlg, bool Close) {
 	}
 
 	ScenarioClass::RecalcLighting(10 * ScenarioClass::Instance->Red, 10 * ScenarioClass::Instance->Green, 10 * ScenarioClass::Instance->Blue, 0);
-	MouseClass::Instance->DrawOnTop();
+	MouseClass::Instance.DrawOnTop();
 	if(Close) {
 		LONG status = Imports::GetWindowLongA(hwndDlg, 8);
 		LONG *statusPtr = (LONG *)status;

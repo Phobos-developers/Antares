@@ -34,7 +34,7 @@ public:
 		return L"Dumps the current debug data to the log";
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		// empty for now
 	}

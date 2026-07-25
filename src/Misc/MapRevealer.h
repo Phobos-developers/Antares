@@ -50,11 +50,11 @@ public:
 
 	bool CheckLevel(const CellStruct& offset, int level) const {
 		auto const cellLevel = this->Base() + offset + GetRelation(offset) - this->CellOffset;
-		return MapClass::Instance->GetCellAt(cellLevel)->Level < level + CellClass::BridgeLevels;
+		return MapClass::Instance.GetCellAt(cellLevel)->Level < level + CellClass::BridgeLevels;
 	}
 
 	static bool AffectsHouse(HouseClass* const pHouse) {
-		auto const Player = HouseClass::Player;
+		auto const Player = HouseClass::CurrentPlayer;
 
 		if(pHouse == Player) {
 			return true;
@@ -69,11 +69,11 @@ public:
 	}
 
 	static bool RequiresExtraChecks() {
-		auto const Session = SessionClass::Instance;
+		auto const& Session = SessionClass::Instance;
 		using namespace Helpers::Alex;
-		return is_any_of(Session->GameMode, GameMode::LAN, GameMode::Internet)
-			&& Session->MPGameMode
-			&& !Session->MPGameMode->vt_entry_04();
+		return is_any_of(Session.GameMode, GameMode::LAN, GameMode::Internet)
+			&& Session.MPGameMode
+			&& !Session.MPGameMode->vt_entry_04();
 	}
 
 	static CellStruct GetRelation(const CellStruct &offset) {

@@ -100,11 +100,11 @@ void AudioBag::Open(const char* fileBase) {
 }
 
 AudioIDXData* AudioLuggage::Create(const char* pPath) {
-	std::map<AudioIDXEntry, CCFileClass*> map;
+	std::map<AudioIDXEntry, std::pair<const AudioIDXEntry*, CCFileClass*>> map;
 
 	for(auto const& bag : this->Bags) {
 		for(auto const& entry : bag.entries()) {
-			map[entry] = bag.file();
+			map[entry] = { &entry, bag.file() };
 		}
 	}
 
@@ -119,8 +119,8 @@ AudioIDXData* AudioLuggage::Create(const char* pPath) {
 	auto pEntry = ret->Samples;
 
 	for(auto const& item : map) {
-		*pEntry++ = item.first;
-		this->Files.push_back(item.second);
+		*pEntry++ = *item.second.first;
+		this->Files.push_back(item.second.second);
 	}
 
 #ifdef SUPPORT_PATH
@@ -158,7 +158,7 @@ AudioIDXData* AudioLuggage::Create(const char* pPath) {
 
 // load more than one audio bag and index.
 // this replaces the entire old parser.
-DEFINE_HOOK(4011C0, Audio_Load, 6)
+DEFINE_HOOK(0x4011C0, Audio_Load, 0x6)
 {
 	auto& luggage = AudioLuggage::Instance;
 
@@ -178,7 +178,7 @@ DEFINE_HOOK(4011C0, Audio_Load, 6)
 	return 0x401578;
 }
 
-DEFINE_HOOK(4064A0, VocClass_AddSample, 0) // Complete rewrite of VocClass::AddSample
+DEFINE_HOOK(0x4064A0, VocClassData_AddSample, 0x0) // Complete rewrite of VocClass::AddSample
 {
 	GET(VocClass*, pVoc, ECX);
 	GET(const char*, pSampleName, EDX);
@@ -195,7 +195,7 @@ DEFINE_HOOK(4064A0, VocClass_AddSample, 0) // Complete rewrite of VocClass::AddS
 			auto idxSample = !AudioIDXData::Instance ? -1
 				: AudioIDXData::Instance->FindSampleIndex(pSampleName);
 
-			if(idxSample == -1) {
+			if(idxSample < 0) {
 				idxSample = LooseAudioCache::Instance.GetIndex(pSampleName);
 			}
 
@@ -211,7 +211,7 @@ DEFINE_HOOK(4064A0, VocClass_AddSample, 0) // Complete rewrite of VocClass::AddS
 	return 0x40651E;
 }
 
-DEFINE_HOOK(4016F0, IDXContainer_LoadSample, 6)
+DEFINE_HOOK(0x4016F0, IDXContainer_LoadSample, 0x6)
 {
 	GET(AudioIDXData* const, pThis, ECX);
 	GET(int const, index, EDX);
@@ -271,7 +271,7 @@ DEFINE_HOOK(4016F0, IDXContainer_LoadSample, 6)
 	return 0x4018B8;
 }
 
-DEFINE_HOOK(401640, AudioIndex_GetSampleInformation, 5)
+DEFINE_HOOK(0x401640, AudioIndex_GetSampleInformation, 0x5)
 {
 	GET(const int, idxSample, EDX);
 	GET_STACK(AudioSampleData*, pAudioSample, 0x4);

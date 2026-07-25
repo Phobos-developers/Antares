@@ -22,7 +22,7 @@
 // hooks for 100 unit bug
 
 // fix the 100 unit bug for vehicles
-DEFINE_HOOK(4FEA60, HouseClass_AI_UnitProduction, 0)
+DEFINE_HOOK(0x4FEA60, HouseClass_AI_UnitProduction, 0x0)
 {
 	GET(HouseClass* const, pThis, ECX);
 
@@ -50,8 +50,8 @@ DEFINE_HOOK(4FEA60, HouseClass_AI_UnitProduction, 0)
 			? pRules->HarvestersPerRefinery[AIDiff] * pThis->CountResourceDestinations
 			: pRules->AISlaveMinerNumber[AIDiff];
 
-		if(pThis->IQLevel2 >= pRules->Harvester && !pThis->unknown_bool_242
-			&& !pThis->ControlledByHuman() && harvesters < maxHarvesters
+		if(pThis->IQLevel2 >= pRules->Harvester && !pThis->IsTiberiumShort
+			&& !pThis->IsControlledByHuman() && harvesters < maxHarvesters
 			&& pThis->TechLevel >= pHarvester->TechLevel)
 		{
 			pThis->ProducingUnitTypeIndex = pHarvester->ArrayIndex;
@@ -80,7 +80,7 @@ DEFINE_HOOK(4FEA60, HouseClass_AI_UnitProduction, 0)
 	return ret();
 }
 
-DEFINE_HOOK(4FEEE0, HouseClass_AI_InfantryProduction, 6)
+DEFINE_HOOK(0x4FEEE0, HouseClass_AI_InfantryProduction, 0x6)
 {
 	GET(HouseClass*, pThis, ECX);
 
@@ -92,7 +92,7 @@ DEFINE_HOOK(4FEEE0, HouseClass_AI_InfantryProduction, 6)
 	return 0x4FF204;
 }
 
-DEFINE_HOOK(4FF210, HouseClass_AI_AircraftProduction, 6)
+DEFINE_HOOK(0x4FF210, HouseClass_AI_AircraftProduction, 0x6)
 {
 	GET(HouseClass*, pThis, ECX);
 

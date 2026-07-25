@@ -48,7 +48,7 @@ SWRange SW_GeneticMutator::GetRange(const SWTypeExt::ExtData* pData) const
 	}
 }
 
-void SW_GeneticMutator::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_GeneticMutator::Initialize(SWTypeExt::ExtData *pData)
 {
 	// Defaults to Genetic Mutator values
 	pData->SW_AnimHeight = 5;
@@ -63,11 +63,13 @@ void SW_GeneticMutator::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeCla
 	pData->EVA_Activated = VoxClass::FindIndex("EVA_GeneticMutatorActivated");
 	
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::GeneticMutator;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::GeneticMutator);
+	pData->SW_Cursor = MouseCursorType::GeneticMutator;
 }
 
-void SW_GeneticMutator::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_GeneticMutator::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -84,15 +86,15 @@ void SW_GeneticMutator::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeCl
 	pData->SW_AffectsTarget = pData->SW_AffectsTarget | SuperWeaponTarget::AllTechnos;
 }
 
-bool SW_GeneticMutator::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_GeneticMutator::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	SuperWeaponTypeClass *pSW = pThis->Type;
 	SWTypeExt::ExtData *pData = SWTypeExt::ExtMap.Find(pSW);
 
-	CellClass *Cell = MapClass::Instance->GetCellAt(Coords);
+	CellClass *Cell = MapClass::Instance.GetCellAt(Coords);
 	CoordStruct coords = Cell->GetCoordsWithBridge();
 	
-	if(pThis->IsCharged) {
+	if(pThis->IsReady) {
 		if(pData->Mutate_Explosion.Get(RulesClass::Instance->MutateExplosion)) {
 			// single shot using cellspread warhead
 			MapClass::DamageArea(coords, GetDamage(pData), nullptr, GetWarhead(pData), false, pThis->Owner);

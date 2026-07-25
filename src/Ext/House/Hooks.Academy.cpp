@@ -1,13 +1,14 @@
 #include "Body.h"
 
 #include "../BuildingType/Body.h"
+#include "../HouseType/Body.h"
 
 #include <InfantryClass.h>
 #include <AircraftClass.h>
 
 // maintain the houses' academy lists
 
-DEFINE_HOOK(446366, BuildingClass_Place_Academy, 6)
+DEFINE_HOOK(0x446366, BuildingClass_Place_Academy, 0x6)
 {
 	GET(BuildingClass*, pThis, EBP);
 	auto pExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
@@ -21,7 +22,7 @@ DEFINE_HOOK(446366, BuildingClass_Place_Academy, 6)
 	return 0;
 }
 
-DEFINE_HOOK(445905, BuildingClass_Remove_Academy, 6)
+DEFINE_HOOK(0x445905, BuildingClass_Remove_Academy, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
 	auto pExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
@@ -35,7 +36,7 @@ DEFINE_HOOK(445905, BuildingClass_Remove_Academy, 6)
 	return 0;
 }
 
-DEFINE_HOOK(448AB2, BuildingClass_ChangeOwnership_Remove_Academy, 6)
+DEFINE_HOOK(0x448AB2, BuildingClass_ChangeOwnership_Remove_Academy, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
 	auto pExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
@@ -49,7 +50,7 @@ DEFINE_HOOK(448AB2, BuildingClass_ChangeOwnership_Remove_Academy, 6)
 	return 0;
 }
 
-DEFINE_HOOK(4491D5, BuildingClass_ChangeOwnership_Add_Academy, 6)
+DEFINE_HOOK(0x4491D5, BuildingClass_ChangeOwnership_Add_Academy, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
 	auto pExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
@@ -66,7 +67,7 @@ DEFINE_HOOK(4491D5, BuildingClass_ChangeOwnership_Add_Academy, 6)
 
 // apply the academy effect
 
-DEFINE_HOOK(517D51, InfantryClass_Init_Academy, 6)
+DEFINE_HOOK(0x517D51, InfantryClass_Init_Academy, 0x6)
 {
 	GET(InfantryClass*, pThis, ESI);
 
@@ -77,12 +78,18 @@ DEFINE_HOOK(517D51, InfantryClass_Init_Academy, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(735678, UnitClass_Init_Academy, 6) // inlined in CTOR
-DEFINE_HOOK(74689B, UnitClass_Init_Academy, 6)
+DEFINE_HOOK_AGAIN(0x735678, UnitClass_Init_Academy, 0x6) // inlined in CTOR
+DEFINE_HOOK(0x74689B, UnitClass_Init_Academy, 0x6)
 {
 	GET(UnitClass*, pThis, ESI);
 
 	if(auto pExt = HouseExt::ExtMap.Find(pThis->Owner)) {
+		// SpyEffect.NavalVeterancy covers exactly the vehicles the vanilla
+		// WarFactoryInfiltrated flag does not: the Naval=yes ones.
+		if(pThis->Type->Trainable && pThis->Type->Naval && pExt->NavalYardInfiltrated) {
+			pThis->Veterancy.SetVeteran();
+		}
+
 		if(pThis->Type->ConsideredAircraft) {
 			pExt->ApplyAcademy(pThis, AbstractType::Aircraft);
 		} else if(pThis->Type->Organic) {
@@ -95,23 +102,39 @@ DEFINE_HOOK(74689B, UnitClass_Init_Academy, 6)
 	return 0;
 }
 
-DEFINE_HOOK(413FD2, AircraftClass_Init_Academy, 6)
+DEFINE_HOOK(0x413FD2, AircraftClass_Init_Academy, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
 
 	if(auto pExt = HouseExt::ExtMap.Find(pThis->Owner)) {
+		if(pThis->Type->Trainable && pExt->AircraftFactoryInfiltrated) {
+			pThis->Veterancy.SetVeteran();
+		}
+
 		pExt->ApplyAcademy(pThis, AbstractType::Aircraft);
 	}
 
 	return 0;
 }
 
-DEFINE_HOOK(442D1B, BuildingClass_Init_Academy, 6)
+DEFINE_HOOK(0x442D1B, BuildingClass_Init_Academy, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
 
-	if(auto pExt = HouseExt::ExtMap.Find(pThis->Owner)) {
-		pExt->ApplyAcademy(pThis, AbstractType::Building);
+	if(auto pOwner = pThis->Owner) {
+		auto pCountryExt = HouseTypeExt::ExtMap.Find(pOwner->Type);
+
+		if(pCountryExt->VeteranBuildings.Contains(pThis->Type)) {
+			pThis->Veterancy.SetVeteran();
+		}
+
+		if(auto pExt = HouseExt::ExtMap.Find(pOwner)) {
+			if(pExt->BuildingInfiltrated && pThis->Type->Trainable) {
+				pThis->Veterancy.SetVeteran();
+			}
+
+			pExt->ApplyAcademy(pThis, AbstractType::Building);
+		}
 	}
 
 	return 0;

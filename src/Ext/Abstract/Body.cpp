@@ -2,28 +2,7 @@
 
 #include "../../Misc/SavegameDef.h"
 
-template<> const DWORD Extension<AbstractClass>::Canary = 0xAB5005BA;
 AbstractExt::ExtContainer AbstractExt::ExtMap;
-
-// =============================
-// load / save
-
-template <typename T>
-void AbstractExt::ExtData::Serialize(T& Stm) {
-	Stm
-		.Process(this->LastChecksumTime)
-		.Process(this->LastChecksum);
-}
-
-void AbstractExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<AbstractClass>::LoadFromStream(Stm);
-	this->Serialize(Stm);
-}
-
-void AbstractExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<AbstractClass>::SaveToStream(Stm);
-	this->Serialize(Stm);
-}
 
 // =============================
 // container
@@ -37,7 +16,7 @@ AbstractExt::ExtContainer::~ExtContainer() = default;
 // container hooks
 
 #ifdef MAKE_GAME_SLOWER_FOR_NO_REASON
-DEFINE_HOOK(4101B6, AbstractClass_CTOR, 1)
+DEFINE_HOOK(0x4101B6, AbstractClass_CTOR, 0x1)
 {
 	GET(AbstractClass*, pItem, EAX);
 
@@ -45,7 +24,7 @@ DEFINE_HOOK(4101B6, AbstractClass_CTOR, 1)
 	return 0;
 }
 
-DEFINE_HOOK(4101F0, AbstractClass_DTOR, 6)
+DEFINE_HOOK(0x4101F0, AbstractClass_DTOR, 0x6)
 {
 	GET(AbstractClass*, pItem, ECX);
 
@@ -53,8 +32,8 @@ DEFINE_HOOK(4101F0, AbstractClass_DTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(410320, AbstractClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(410380, AbstractClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x410320, AbstractClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x410380, AbstractClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(AbstractClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -64,13 +43,13 @@ DEFINE_HOOK(410380, AbstractClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(4103D6, AbstractClass_Load_Suffix, 4)
+DEFINE_HOOK(0x4103D6, AbstractClass_Load_Suffix, 0x4)
 {
 	AbstractExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(410372, AbstractClass_Save_Suffix, 5)
+DEFINE_HOOK(0x410372, AbstractClass_Save_Suffix, 0x5)
 {
 	AbstractExt::ExtMap.SaveStatic();
 	return 0;

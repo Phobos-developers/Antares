@@ -14,25 +14,22 @@
 CSFText AresSurfaces::ModNote;
 std::vector<unsigned char> AresSurfaces::ShpCompression1Buffer;
 
-DEFINE_HOOK(7C89D4, DirectDrawCreate, 6)
+DEFINE_HOOK(0x7C89D4, DirectDrawCreate, 0x6)
 {
 	R->Stack<DWORD>(0x4, Ares::GlobalControls::GFX_DX_Force);
 	return 0;
 }
 
-DEFINE_HOOK(7B9510, WWMouseClass_DrawCursor_V1, 6)
-//A_FINE_HOOK_AGAIN(7B94B2, WWMouseClass_DrawCursor_V1, 6)
+DEFINE_HOOK(0x6BED08, Game_Terminate_Mouse, 0x7)
 {
-	auto const Blitter = FileSystem::MOUSE_PAL->SelectProperBlitter(
-		WWMouseClass::Instance->Image, WWMouseClass::Instance->ImageFrameIndex,
-		BlitterFlags::None);
+	GET(void* const, pShapes, ECX);
 
-	R->Stack<void*>(0x18, Blitter);
+	GameDelete(pShapes);
 
-	return 0;
+	return 0x6BED34;
 }
 
-DEFINE_HOOK(537BC0, Game_MakeScreenshot, 0)
+DEFINE_HOOK(0x537BC0, Game_MakeScreenshot, 0x0)
 {
 	RECT Viewport = {};
 	if(Imports::GetWindowRect(Game::hWnd, &Viewport)) {
@@ -123,7 +120,7 @@ DEFINE_HOOK(537BC0, Game_MakeScreenshot, 0)
 				ScreenShot->WriteBytes(&h, sizeof(h));
 				std::unique_ptr<WORD[]> pixelData(new WORD[arrayLen]);
 				WORD *pixels = pixelData.get();
-				int pitch = Surface->SurfDesc->lPitch;
+				int pitch = Surface->VideoSurfaceDescription->lPitch;
 				for(int r = 0; r < height; ++r) {
 					memcpy(pixels, reinterpret_cast<void *>(buffer), width * 2);
 					pixels += width;
@@ -146,14 +143,14 @@ DEFINE_HOOK(537BC0, Game_MakeScreenshot, 0)
 	return 0x537DC9;
 }
 
-DEFINE_HOOK(4F4583, GScreenClass_DrawOnTop_TheDarkSideOfTheMoon, 6)
+DEFINE_HOOK(0x6D4B25, TacticalClass_Draw_TheDarkSideOfTheMoon, 0x5)
 {
 	const int AdvCommBarHeight = 32;
 
 	int offset = AdvCommBarHeight;
 
 	auto DrawText = [](const wchar_t* string, int& offset, int color) {
-		auto wanted = Drawing::GetTextDimensions(string);
+		auto wanted = Drawing::GetTextDimensions(string, Point2D{0, 0}, 0);
 
 		auto h = DSurface::Composite->GetHeight();
 		RectangleStruct rect = {0, h - wanted.Height - offset, wanted.Width, wanted.Height};
@@ -187,17 +184,17 @@ DEFINE_HOOK(4F4583, GScreenClass_DrawOnTop_TheDarkSideOfTheMoon, 6)
 	return 0;
 }
 
-DEFINE_HOOK(78997B, sub_789960_RemoveWOLResolutionCheck, 0)
+DEFINE_HOOK(0x78997B, sub_789960_RemoveWOLResolutionCheck, 0x0)
 {
 	return 0x789A58;
 }
 
-DEFINE_HOOK(4BA61B, DSurface_CTOR_SkipVRAM, 6)
+DEFINE_HOOK(0x4BA61B, DSurface_CTOR_SkipVRAM, 0x6)
 {
 	return 0x4BA623;
 }
 
-DEFINE_HOOK(437CCC, BSurface_DrawSHPFrame1_Buffer, 8)
+DEFINE_HOOK(0x437CCC, BSurface_DrawSHPFrame1_Buffer, 0x8)
 {
 	REF_STACK(RectangleStruct const, bounds, STACK_OFFS(0x7C, 0x10));
 	REF_STACK(unsigned char const*, pBuffer, STACK_OFFS(0x7C, 0x6C));

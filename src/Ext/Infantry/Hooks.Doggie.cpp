@@ -1,10 +1,11 @@
 #include "Body.h"
+#include "../../Utilities/DirMath.h"
 
 #include <CellClass.h>
 
 const int DoggiePanicMax = 300;
 
-DEFINE_HOOK(51F628, InfantryClass_Guard_Doggie, 5)
+DEFINE_HOOK(0x51F628, InfantryClass_Guard_Doggie, 0x5)
 {
 	GET(InfantryClass*, pThis, ESI);
 	GET(int, res, EAX);
@@ -15,13 +16,13 @@ DEFINE_HOOK(51F628, InfantryClass_Guard_Doggie, 5)
 
 	// doggie sit down on tiberium handling
 	if(pThis->Type->Doggie && !pThis->Crawling && !pThis->Target && !pThis->Destination) {
-		if(!pThis->Facing.in_motion() && pThis->GetCell()->LandType == LandType::Tiberium) {
-			if(pThis->Facing.current().value8() == Direction::East) {
+		if(!pThis->PrimaryFacing.IsRotating() && pThis->GetCell()->LandType == LandType::Tiberium) {
+			if(pThis->PrimaryFacing.Current().GetFacing<8>() == static_cast<size_t>(FacingType::East)) {
 				// correct facing, sit down
 				pThis->PlayAnim(Sequence::Down);
 			} else {
 				// turn to correct facing
-				DirStruct dir(3, Direction::East);
+				auto dir = AresDir::FromFacing<3>(static_cast<short>(FacingType::East));
 				pThis->Locomotor->Do_Turn(dir);
 			}
 		}
@@ -30,7 +31,7 @@ DEFINE_HOOK(51F628, InfantryClass_Guard_Doggie, 5)
 	return 0x51F62D;
 }
 
-DEFINE_HOOK(518CB3, InfantryClass_ReceiveDamage_Doggie, 6)
+DEFINE_HOOK(0x518CB3, InfantryClass_ReceiveDamage_Doggie, 0x6)
 {
 	GET(InfantryClass*, pThis, ESI);
 
@@ -42,7 +43,7 @@ DEFINE_HOOK(518CB3, InfantryClass_ReceiveDamage_Doggie, 6)
 	return 0;
 }
 
-DEFINE_HOOK(51ABD7, InfantryClass_SetDestination_Doggie, 6)
+DEFINE_HOOK(0x51ABD7, InfantryClass_SetDestination_Doggie, 0x6)
 {
 	GET(InfantryClass*, pThis, EBP);
 	GET(AbstractClass*, pTarget, EBX);
@@ -53,7 +54,7 @@ DEFINE_HOOK(51ABD7, InfantryClass_SetDestination_Doggie, 6)
 	return doggieStandUp ? 0x51AC16 : 0;
 }
 
-DEFINE_HOOK(5200C1, InfantryClass_UpdatePanic_Doggie, 6)
+DEFINE_HOOK(0x5200C1, InfantryClass_UpdatePanic_Doggie, 0x6)
 {
 	GET(InfantryClass*, pThis, ESI);
 	auto pType = pThis->Type;

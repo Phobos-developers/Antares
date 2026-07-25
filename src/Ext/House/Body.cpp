@@ -7,9 +7,11 @@
 #include "../SWType/Body.h"
 #include "../TechnoType/Body.h"
 #include "../../Enum/Prerequisites.h"
+#include "../../Enum/TunnelTypes.h"
 #include "../Techno/Body.h"
 #include "../../Misc/SWTypes.h"
 #include "../../Utilities/INIParser.h"
+#include "../../Utilities/TemplateDef.h"
 
 #include <FactoryClass.h>
 #include <DiscreteSelectionClass.h>
@@ -22,10 +24,12 @@
 
 #include <functional>
 
-template<> const DWORD Extension<HouseClass>::Canary = 0x12345678;
 HouseExt::ExtContainer HouseExt::ExtMap;
 
 bool HouseExt::IsAnyFirestormActive = false;
+
+CDTimerClass HouseExt::Timer_CloakedUnitDetected;
+CDTimerClass HouseExt::Timer_SubterraneanUnitDetected;
 
 std::vector<int> HouseExt::AIProduction_CreationFrames;
 std::vector<int> HouseExt::AIProduction_Values;
@@ -41,6 +45,29 @@ void HouseExt::ExtData::LoadFromINIFile(CCINIClass* const pINI) {
 	INI_EX exINI(pINI);
 
 	this->Degrades.Read(exINI, pSection, "Degrades");
+}
+
+HouseExt::TunnelData::TunnelData(TunnelTypeClass const* const pType)
+	: MaxCap(Math::max(pType->Passengers, -1))
+{ }
+
+void HouseExt::TunnelData::RemovePassenger(void* const ptr) {
+	auto const it = std::find(
+		this->Passengers.begin(), this->Passengers.end(), ptr);
+
+	if(it != this->Passengers.end()) {
+		this->Passengers.erase(it);
+	}
+}
+
+HouseExt::TunnelData* HouseExt::ExtData::FindTunnel(size_t const index) {
+	auto const count = TunnelTypeClass::Array.size();
+
+	for(auto i = this->Tunnels.size(); i < count; ++i) {
+		this->Tunnels.emplace_back(TunnelTypeClass::Array[i].get());
+	}
+
+	return &this->Tunnels[index];
 }
 
 HouseExt::RequirementStatus HouseExt::RequirementsMet(
@@ -59,7 +86,8 @@ HouseExt::RequirementStatus HouseExt::RequirementsMet(
 
 	// this has to happen before the first possible "can build" response or NCO happens
 	if(pItem->WhatAmI() != AbstractType::BuildingType
-		&& HasFactory(pHouse, pItem, false) == FactoryState::NoFactory)
+		&& HasFactory(pHouse, pItem, true, false, false, true).State
+			<= FactoryState::NoFactory)
 	{
 		return RequirementStatus::Incomplete;
 	}
@@ -67,7 +95,7 @@ HouseExt::RequirementStatus HouseExt::RequirementsMet(
 	if(!(pData->PrerequisiteTheaters & (1 << static_cast<int>(ScenarioClass::Instance->Theater)))) { return RequirementStatus::Forbidden; }
 	if(Prereqs::HouseOwnsAny(pHouse, pData->PrerequisiteNegatives)) { return RequirementStatus::Forbidden; }
 
-	if(pData->ReversedByHouses.contains(pHouse)) {
+	if(pHouseExt->ReverseEngineered.contains(pItem)) {
 		return RequirementStatus::Overridden;
 	}
 
@@ -81,7 +109,7 @@ HouseExt::RequirementStatus HouseExt::RequirementsMet(
 
 	if(pHouse->HasFromSecretLab(pItem)) { return RequirementStatus::Overridden; }
 
-	if(pHouse->ControlledByHuman() && pItem->TechLevel == -1) { return RequirementStatus::Incomplete; }
+	if(pHouse->IsControlledByHuman() && pItem->TechLevel == -1) { return RequirementStatus::Incomplete; }
 
 	if(!pHouse->HasAllStolenTech(pItem)) { return RequirementStatus::Incomplete; }
 
@@ -134,6 +162,11 @@ bool HouseExt::PrerequisitesListed(
 	return false;
 }
 
+// HouseClass::Get_Factory walks FactoryClass::Array for a factory this house
+// owns whose *currently produced object* is of this type. That is narrower than
+// FactoryClass::FindByOwnerAndProduct, which asks CountTotal and so also counts
+// items merely queued behind the one in production.
+
 HouseExt::BuildLimitStatus HouseExt::CheckBuildLimit(
 	HouseClass const* const pHouse, TechnoTypeClass const* const pItem,
 	bool const includeQueued)
@@ -142,7 +175,7 @@ HouseExt::BuildLimitStatus HouseExt::CheckBuildLimit(
 	int Remaining = HouseExt::BuildLimitRemaining(pHouse, pItem);
 	if(BuildLimit > 0) {
 		if(Remaining <= 0) {
-			return (includeQueued && FactoryClass::FindByOwnerAndProduct(pHouse, pItem))
+			return (includeQueued && pHouse->GetFactoryProducing(pItem))
 				? BuildLimitStatus::NotReached
 				: BuildLimitStatus::ReachedPermanently
 			;
@@ -212,7 +245,7 @@ int HouseExt::CountOwnedNowTotal(
 		sum = pHouse->CountOwnedNow(pIType);
 		if(pIType->VehicleThief) {
 			index = pIType->ArrayIndex;
-			for(auto const& pUnit : *UnitClass::Array) {
+			for(auto const& pUnit : UnitClass::Array) {
 				if(pUnit->HijackerInfantryType == index
 					&& pUnit->Owner == pHouse)
 				{
@@ -238,35 +271,42 @@ signed int HouseExt::PrereqValidate(
 	HouseClass const* const pHouse, TechnoTypeClass const* const pItem,
 	bool const buildLimitOnly, bool const includeQueued)
 {
+	// `CurrentPlayer`, plus `PlayerControl` in campaign, cached once up front
+	// at 0x10022592: the AI bypass at the tail re-reads the same flag.
+	auto const human = pHouse->IsControlledByHuman();
+
 	if(!buildLimitOnly) {
 		RequirementStatus ReqsMet = HouseExt::RequirementsMet(pHouse, pItem);
 		if(ReqsMet == RequirementStatus::Forbidden || ReqsMet == RequirementStatus::Incomplete) {
 			return 0;
 		}
 
-		if(!pHouse->ControlledByHuman()) {
-			if(Ares::GlobalControls::AllowBypassBuildLimit[pHouse->GetAIDifficultyIndex()]) {
-				return 1;
-			} else {
-				return static_cast<signed int>(HouseExt::CheckBuildLimit(pHouse, pItem, includeQueued));
-			}
-		}
-
-		if(ReqsMet == RequirementStatus::Complete) {
+		// the Prerequisite.* lists are only consulted for a house a human
+		// plays: 0x100225CF falls through to the factory check when the house
+		// is AI, and 0x100225D4 does the same when the status is Overridden.
+		if(human && ReqsMet == RequirementStatus::Complete) {
 			if(!HouseExt::PrerequisitesMet(pHouse, pItem)) {
 				return 0;
 			}
 		}
+
+		// the factory check is on the AI's path too -- shipped reaches it by
+		// `goto`, not by returning early -- but it is skipped entirely when
+		// only the build limit was asked for (`jz` at 0x100225B1).
+		auto const state = HouseExt::HasFactory(
+			pHouse, pItem, true, true, false, true).State;
+
+		if(state <= FactoryState::NoFactory) {
+			return 0;
+		}
+
+		if(state <= FactoryState::Unpowered) {
+			return -1;
+		}
 	}
 
-	auto const state = HouseExt::HasFactory(pHouse, pItem, true);
-	if(state == FactoryState::NoFactory) {
-		Debug::Log(Debug::Severity::Error, "[NCO Bug detected] "
-			"House %ls meets all requirements to build %s, but doesn't have a suitable factory!\n",
-			pHouse->UIName, pItem->ID);
-	}
-	if(state != FactoryState::Available) {
-		return 0;
+	if(!human && RulesExt::Global()->AllowBypassBuildLimit[pHouse->GetAIDifficultyIndex()]) {
+		return 1;
 	}
 
 	return static_cast<signed int>(HouseExt::CheckBuildLimit(pHouse, pItem, includeQueued));
@@ -276,8 +316,8 @@ bool HouseExt::IsDisabledFromShell(
 	HouseClass const* const pHouse, BuildingTypeClass const* const pItem)
 {
 	// SWAllowed does not apply to campaigns any more
-	if(SessionClass::Instance->GameMode == GameMode::Campaign
-		|| GameModeOptionsClass::Instance->SWAllowed)
+	if(SessionClass::Instance.GameMode == GameMode::Campaign
+		|| GameModeOptionsClass::Instance.SWAllowed)
 	{
 		return false;
 	}
@@ -334,16 +374,22 @@ size_t HouseExt::FindBuildableIndex(
 	return items.size();
 }
 
-HouseExt::FactoryState HouseExt::HasFactory(
+HouseExt::FactoryCheckReturn HouseExt::HasFactory(
 	HouseClass const* const pHouse, TechnoTypeClass const* const pItem,
-	bool const requirePower)
+	bool const allowOccupied, bool const requirePower,
+	bool const requireCanBuild, bool const anyFactory)
 {
+	if(requireCanBuild && static_cast<int>(pHouse->CanBuild(pItem, true, true)) <= 0) {
+		return { FactoryState::Unbuildable, nullptr };
+	}
+
 	auto const pExt = TechnoTypeExt::ExtMap.Find(pItem);
 	auto const bitsOwners = pItem->GetOwners();
 	auto const isNaval = pItem->Naval;
 	auto const abs = pItem->WhatAmI();
 
-	auto ret = FactoryState::NoFactory;
+	BuildingClass* pAvailable = nullptr;
+	BuildingClass* pUnpowered = nullptr;
 
 	for(auto const& pBld : pHouse->Buildings) {
 		if(pBld->InLimbo
@@ -355,102 +401,103 @@ HouseExt::FactoryState HouseExt::HasFactory(
 
 		auto const pType = pBld->Type;
 
-		if(pType->Factory != abs
-			|| (abs == AbstractType::UnitType && pType->Naval != isNaval)
-			|| !pExt->CanBeBuiltAt(pType)
-			|| !pType->InOwners(bitsOwners))
-		{
+		if(pType->Factory != abs || !pType->InOwners(bitsOwners)) {
 			continue;
 		}
 
-		if(!requirePower || pBld->HasPower) {
-			return FactoryState::Available;
+		// an occupied airbase is only good for another plane if it has a free
+		// slot. anything else has to match the item's naval-ness.
+		if(!allowOccupied && abs == AbstractType::AircraftType
+			&& pBld->HasAnyLink())
+		{
+			if(!pBld->HasFreeLink()) {
+				continue;
+			}
+		} else if(pType->Naval != (abs == AbstractType::UnitType && isNaval)) {
+			continue;
 		}
 
-		ret = FactoryState::Unpowered;
+		if(!pExt->CanBeBuiltAt(pType)) {
+			continue;
+		}
+
+		if(requirePower && (!pBld->HasPower || pBld->Deactivated)) {
+			pUnpowered = pBld;
+			continue;
+		}
+
+		pAvailable = pBld;
+
+		if(pBld->IsPrimaryFactory) {
+			return { FactoryState::Primary, pBld };
+		}
+
+		if(anyFactory) {
+			break;
+		}
 	}
 
-	return ret;
+	if(pAvailable) {
+		return { FactoryState::Available, pAvailable };
+	}
+
+	if(pUnpowered) {
+		return { FactoryState::Unpowered, pUnpowered };
+	}
+
+	return { FactoryState::NoFactory, nullptr };
 }
 
+// FactoryOwners and FactoryOwners.Forbidden are one test, not two: a single
+// candidate - a gathered plan, or an owned building - has to pass both filters
+// at once. Splitting them lets building A satisfy the allowed list while
+// building B satisfies the forbidden list, which the shipped code does not allow.
 bool HouseExt::CheckFactoryOwners(
 	HouseClass const* const pHouse, TechnoTypeClass const* const pItem)
 {
-	return HouseExt::CheckFactoryOwner(pHouse, pItem)
-		&& HouseExt::CheckForbiddenFactoryOwner(pHouse, pItem);
-}
-
-bool HouseExt::CheckFactoryOwner(
-	HouseClass const* const pHouse, TechnoTypeClass const* const pItem)
-{
 	auto const pExt = TechnoTypeExt::ExtMap.Find(pItem);
-	auto const pHouseExt = HouseExt::ExtMap.Find(pHouse);
 
-	if(!pExt->FactoryOwners.empty()) {
-		for(auto const& pOwner : pExt->FactoryOwners) {
-			if(pHouseExt->FactoryOwners_GatheredPlansOf.Contains(pOwner)) {
-				return true;
-			}
-		}
-
-		auto const abs = pItem->WhatAmI();
-
-		for(auto const& pBld : pHouse->Buildings) {
-			if(pBld->Type->Factory == abs) {
-				auto const FactoryExt = TechnoExt::ExtMap.Find(pBld);
-
-				if(pExt->FactoryOwners.Contains(FactoryExt->OriginalHouseType)) {
-					return true;
-				}
-			}
-		}
-
-		return false;
-	}
-
-	return true;
-}
-
-bool HouseExt::CheckForbiddenFactoryOwner(
-	HouseClass const* const pHouse, TechnoTypeClass const* pItem)
-{
-	auto const pExt = TechnoTypeExt::ExtMap.Find(pItem);
-	auto const pHouseExt = HouseExt::ExtMap.Find(pHouse);
-
+	auto const& Owners = pExt->FactoryOwners;
 	auto const& Forbidden = pExt->ForbiddenFactoryOwners;
 
-	if(!Forbidden.empty()) {
-		// return true if not a single forbidden house is in the gathered plans
-		// (only if there are any)
-		auto const& Gathered = pHouseExt->FactoryOwners_GatheredPlansOf;
-		if(!Gathered.empty()) {
-			auto const hasGathered = std::any_of(Forbidden.begin(), Forbidden.end(),
-				[&Gathered](HouseTypeClass* const pForbidden)
-			{
-				return Gathered.Contains(pForbidden);
-			});
-
-			if(!hasGathered) {
-				return true;
-			}
-		}
-
-		auto const abs = pItem->WhatAmI();
-
-		for(auto const& pBld : pHouse->Buildings) {
-			if(pBld->Type->Factory == abs) {
-				auto const pFactoryExt = TechnoExt::ExtMap.Find(pBld);
-
-				if(!Forbidden.Contains(pFactoryExt->OriginalHouseType)) {
-					return true;
-				}
-			}
-		}
-
-		return false;
+	if(Owners.empty() && Forbidden.empty()) {
+		return true;
 	}
 
-	return true;
+	auto Passes = [&Owners, &Forbidden](HouseTypeClass* const pCountry) -> bool {
+		return (Owners.empty() || Owners.Contains(pCountry))
+			&& (Forbidden.empty() || !Forbidden.Contains(pCountry));
+	};
+
+	auto const pHouseExt = HouseExt::ExtMap.Find(pHouse);
+
+	for(auto const& pCountry : pHouseExt->FactoryOwners_GatheredPlansOf) {
+		if(Passes(pCountry)) {
+			return true;
+		}
+	}
+
+	auto const abs = pItem->WhatAmI();
+
+	for(auto const& pBld : pHouse->Buildings) {
+		auto const pBldExt = TechnoExt::ExtMap.Find(pBld);
+
+		if(!Passes(pBldExt->OriginalHouseType)) {
+			continue;
+		}
+
+		// FactoryOwners.HasAllPlans makes a building stand in for every factory
+		// kind of its original owner, so it satisfies any item's requirement.
+		// Unlike FactoryOwners.Permanent this is evaluated live: lose the
+		// building and the plans go with it.
+		auto const pBldTypeExt = TechnoTypeExt::ExtMap.Find(pBld->Type);
+
+		if(pBld->Type->Factory == abs || pBldTypeExt->FactoryOwners_HasAllPlans) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 bool HouseExt::UpdateAnyFirestormActive(bool const lastChange) {
@@ -458,9 +505,8 @@ bool HouseExt::UpdateAnyFirestormActive(bool const lastChange) {
 
 	// if last change activated one, there is at least one. else...
 	if(!lastChange) {
-		for(auto const& pHouse : *HouseClass::Array) {
-			auto const pData = HouseExt::ExtMap.Find(pHouse);
-			if(pData && pData->FirewallActive) {
+		for(auto const& pHouse : HouseClass::Array) {
+			if(pHouse->FirestormActive) {
 				IsAnyFirestormActive = true;
 				break;
 			}
@@ -491,8 +537,8 @@ HouseClass* HouseExt::GetHouseKind(
 	case OwnerHouseKind::Random:
 		if(allowRandom) {
 			auto& Random = ScenarioClass::Instance->Random;
-			return HouseClass::Array->GetItem(
-				Random.RandomRanged(0, HouseClass::Array->Count - 1));
+			return HouseClass::Array.GetItem(
+				Random.RandomRanged(0, HouseClass::Array.Count - 1));
 		} else {
 			return pDefault;
 		}
@@ -502,28 +548,16 @@ HouseClass* HouseExt::GetHouseKind(
 	}
 }
 
-HouseExt::ExtData::~ExtData()
-{
-	if(Ares::bShuttingDown) {
-		return;
-	}
-
-	for(auto const pType : *TechnoTypeClass::Array) {
-		if(auto const pTypeData = TechnoTypeExt::ExtMap.Find(pType)) {
-			pTypeData->ReversedByHouses.erase(this->OwnerObject());
-		}
-	}
-}
+HouseExt::ExtData::~ExtData() = default;
 
 void HouseExt::ExtData::SetFirestormState(bool const active) {
 	auto const pHouse = this->OwnerObject();
-	auto const pData = HouseExt::ExtMap.Find(pHouse);
 
-	if(pData->FirewallActive == active) {
+	if(pHouse->FirestormActive == active) {
 		return;
 	}
 
-	pData->FirewallActive = active;
+	pHouse->FirestormActive = active;
 	UpdateAnyFirestormActive(active);
 
 	DynamicVectorClass<CellStruct> AffectedCoords;
@@ -538,8 +572,8 @@ void HouseExt::ExtData::SetFirestormState(bool const active) {
 		}
 	}
 
-	MapClass::Instance->Update_Pathfinding_1();
-	MapClass::Instance->Update_Pathfinding_2(AffectedCoords);
+	MapClass::Instance.Update_Pathfinding_1();
+	MapClass::Instance.Update_Pathfinding_2(AffectedCoords);
 };
 
 /**
@@ -551,7 +585,7 @@ void HouseExt::ExtData::SetFirestormState(bool const active) {
 bool HouseExt::ExtData::CheckBasePlanSanity() {
 	auto const pThis = this->OwnerObject();
 	// this shouldn't happen, but you never know
-	if(pThis->ControlledByHuman() || pThis->IsNeutral()) {
+	if(pThis->IsControlledByHuman() || pThis->IsNeutral()) {
 		return true;
 	}
 
@@ -606,12 +640,47 @@ bool HouseExt::ExtData::CheckBasePlanSanity() {
 	auto const Powerplants = pCountryData->GetPowerplants();
 	CheckList(Powerplants, "Powerplants");
 
-	//auto const pSide = SideClass::Array->GetItemOrDefault(pType->SideIndex);
+	//auto const pSide = SideClass::Array.GetItemOrDefault(pType->SideIndex);
 	//if(auto const pSideExt = SideExt::ExtMap.Find(pSide)) {
 	//	CheckList(make_iterator(pSideExt->BaseDefenses), "Base Defenses");
 	//}
 
 	return AllIsWell;
+}
+
+// how often a super weapon of this type has been fired, and when the
+// house last had a look at it. index beyond the list means never.
+HouseExt::ShotStuff HouseExt::ExtData::ShotsAmount(int idxSWType) const {
+	if(static_cast<size_t>(idxSWType) < this->SWShotCounts.size()) {
+		return this->SWShotCounts[idxSWType];
+	}
+
+	return ShotStuff{ 0, Unsorted::CurrentFrame };
+}
+
+void HouseExt::ExtData::UpdateShotsLastCheckedFrame(int idxSWType) {
+	auto const count = static_cast<size_t>(SuperWeaponTypeClass::Array.Count);
+
+	if(this->SWShotCounts.size() < count) {
+		this->SWShotCounts.resize(count);
+	}
+
+	auto& item = this->SWShotCounts[idxSWType];
+	if(item.LastCheckedFrame < 0) {
+		item.LastCheckedFrame = Unsorted::CurrentFrame;
+	}
+}
+
+void HouseExt::ExtData::UpdateShootCount(int idxSWType) {
+	auto const count = static_cast<size_t>(SuperWeaponTypeClass::Array.Count);
+
+	if(this->SWShotCounts.size() < count) {
+		this->SWShotCounts.resize(count);
+	}
+
+	auto& item = this->SWShotCounts[idxSWType];
+	++item.ShootAmount;
+	item.LastCheckedFrame = Unsorted::CurrentFrame;
 }
 
 void HouseExt::ExtData::UpdateTogglePower() {
@@ -625,7 +694,7 @@ void HouseExt::ExtData::UpdateTogglePower() {
 		|| pRulesExt->TogglePowerIQ > pThis->IQLevel2
 		|| pThis->Buildings.Count == 0
 		|| pThis->IsBeingDrained 
-		|| pThis->ControlledByHuman()
+		|| pThis->IsControlledByHuman()
 		|| pThis->PowerBlackoutTimer.InProgress())
 	{
 		return;
@@ -726,7 +795,7 @@ void HouseExt::ExtData::UpdateTogglePower() {
 }
 
 SideClass* HouseExt::GetSide(HouseClass* pHouse) {
-	return SideClass::Array->GetItemOrDefault(pHouse->SideIndex);
+	return SideClass::Array.GetItemOrDefault(pHouse->SideIndex);
 }
 
 int HouseExt::ExtData::GetSurvivorDivisor() const {
@@ -789,7 +858,7 @@ void HouseExt::ExtData::ApplyAcademy(
 {
 	// mutex in effect, ignore academies to fix preplaced order issues.
 	// also triggered in game for certain "conversions" like deploy
-	if(Unsorted::IKnowWhatImDoing) {
+	if(Unsorted::ScenarioInit) {
 		return;
 	}
 
@@ -832,6 +901,37 @@ void HouseExt::ExtData::ApplyAcademy(
 	}
 }
 
+// tracks how many owned objects keep this house from losing a Short Game and
+// answers whether the object counts towards the score statistics at all.
+bool HouseExt::ExtData::KeepThisAlive(
+	TechnoClass const* const pTechno, AbstractType const abs, bool const added)
+{
+	auto const pType = pTechno->GetTechnoType();
+	auto const isBuilding = (abs == AbstractType::Building);
+
+	auto counted = true;
+	auto keepAlive = isBuilding;
+
+	if(pType->Insignificant || pType->DontScore) {
+		counted = false;
+		keepAlive = false;
+	}
+
+	auto const pExt = TechnoTypeExt::ExtMap.Find(pType);
+
+	if(pExt->KeepAlive.Get(keepAlive)) {
+		auto const delta = added ? 1 : -1;
+
+		this->KeepAliveCount += delta;
+
+		if(isBuilding) {
+			this->KeepAliveBuildingsCount += delta;
+		}
+	}
+
+	return counted;
+}
+
 // =============================
 // load / save
 
@@ -840,38 +940,67 @@ void HouseExt::ExtData::Serialize(T& Stm) {
 	Stm
 		.Process(this->Degrades)
 		.Process(this->IonSensitive)
-		.Process(this->FirewallActive)
+		.Process(this->AuxPower)
+		.Process(this->BatteriesActive)
 		.Process(this->SWLastIndex)
+		.Process(this->KeepAliveCount)
+		.Process(this->KeepAliveBuildingsCount)
 		.Process(this->Factory_BuildingType)
 		.Process(this->Factory_InfantryType)
 		.Process(this->Factory_VehicleType)
 		.Process(this->Factory_NavyType)
 		.Process(this->Factory_AircraftType)
+		.Process(this->ReverseEngineered)
 		.Process(this->StolenTech)
 		.Process(this->RadarPersist)
+		.Process(this->NavalYardInfiltrated)
+		.Process(this->AircraftFactoryInfiltrated)
+		.Process(this->BuildingInfiltrated)
 		.Process(this->FactoryOwners_GatheredPlansOf)
-		.Process(this->Academies);
+		.Process(this->Academies)
+		.Process(this->Tunnels)
+		.Process(this->Battery_KeepOnline)
+		.Process(this->Battery_Overpower)
+		.Process(this->SWShotCounts);
+}
+
+bool HouseExt::TunnelData::Load(AresStreamReader &Stm, bool RegisterForChange) {
+	return Stm
+		.Process(this->Passengers, RegisterForChange)
+		.Process(this->MaxCap)
+		.Success();
+}
+
+bool HouseExt::TunnelData::Save(AresStreamWriter &Stm) const {
+	return Stm
+		.Process(this->Passengers)
+		.Process(this->MaxCap)
+		.Success();
 }
 
 void HouseExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<HouseClass>::LoadFromStream(Stm);
+	Extension<HouseClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void HouseExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<HouseClass>::SaveToStream(Stm);
+	Extension<HouseClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
 bool HouseExt::LoadGlobals(AresStreamReader& Stm) {
 	return Stm
 		.Process(IsAnyFirestormActive)
+		.Process(Timer_CloakedUnitDetected)
+		.Process(Timer_SubterraneanUnitDetected)
 		.Success();
 }
 
 bool HouseExt::SaveGlobals(AresStreamWriter& Stm) {
 	return Stm
 		.Process(IsAnyFirestormActive)
+		.Process(Timer_CloakedUnitDetected)
+		.Process(Timer_SubterraneanUnitDetected)
 		.Success();
 }
 
@@ -886,7 +1015,7 @@ HouseExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(4F6532, HouseClass_CTOR, 5)
+DEFINE_HOOK(0x4F6532, HouseClass_CTOR, 0x5)
 {
 	GET(HouseClass*, pItem, EAX);
 
@@ -894,7 +1023,7 @@ DEFINE_HOOK(4F6532, HouseClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(4F7371, HouseClass_DTOR, 6)
+DEFINE_HOOK(0x4F7371, HouseClass_DTOR, 0x6)
 {
 	GET(HouseClass*, pItem, ESI);
 
@@ -902,8 +1031,8 @@ DEFINE_HOOK(4F7371, HouseClass_DTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(504080, HouseClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(503040, HouseClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x504080, HouseClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x503040, HouseClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(HouseClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -913,19 +1042,19 @@ DEFINE_HOOK(503040, HouseClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(504069, HouseClass_Load_Suffix, 7)
+DEFINE_HOOK(0x504069, HouseClass_Load_Suffix, 0x7)
 {
 	HouseExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(5046DE, HouseClass_Save_Suffix, 7)
+DEFINE_HOOK(0x5046DE, HouseClass_Save_Suffix, 0x7)
 {
 	HouseExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK(50114D, HouseClass_InitFromINI, 5)
+DEFINE_HOOK(0x50114D, HouseClass_InitFromINI, 0x5)
 {
 	GET(HouseClass* const, pThis, EBX);
 	GET(CCINIClass* const, pINI, ESI);
@@ -934,3 +1063,18 @@ DEFINE_HOOK(50114D, HouseClass_InitFromINI, 5)
 
 	return 0;
 }
+
+static_assert(sizeof(HouseExt::TunnelData) == 0x10, "HouseExt::TunnelData must match the 3.0p1 layout");
+static_assert(sizeof(HouseExt::ShotStuff) == 0x08, "HouseExt::ShotStuff must match the 3.0p1 layout");
+static_assert(sizeof(HouseExt::ExtData) == 0xC0, "HouseExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the head, the two new counters, the relocated reverse
+// engineering map, the spy veterancy bools and the last member.
+static_assert(offsetof(HouseExt::ExtData, Degrades) == 0x08, "HouseExt::ExtData layout slipped");
+static_assert(offsetof(HouseExt::ExtData, AuxPower) == 0x0C, "HouseExt::ExtData layout slipped");
+static_assert(offsetof(HouseExt::ExtData, KeepAliveCount) == 0x18, "HouseExt::ExtData layout slipped");
+static_assert(offsetof(HouseExt::ExtData, ReverseEngineered) == 0x34, "HouseExt::ExtData layout slipped");
+static_assert(offsetof(HouseExt::ExtData, NavalYardInfiltrated) == 0x48, "HouseExt::ExtData layout slipped");
+static_assert(offsetof(HouseExt::ExtData, Tunnels) == 0x64, "HouseExt::ExtData layout slipped");
+static_assert(offsetof(HouseExt::ExtData, SWShotCounts) == 0x88, "HouseExt::ExtData layout slipped");

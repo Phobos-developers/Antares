@@ -22,14 +22,14 @@ SuperWeaponFlags SW_ChronoWarp::Flags() const
 	return SuperWeaponFlags::NoAnim | SuperWeaponFlags::NoEvent | SuperWeaponFlags::PostClick;
 }
 
-void SW_ChronoWarp::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_ChronoWarp::Initialize(SWTypeExt::ExtData *pData)
 {
 	// Every other thing will be read in the ChronoSphere.
 	
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::Chronosphere);
+	pData->SW_Cursor = MouseCursorType::Chronosphere;
 }
 
-bool SW_ChronoWarp::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_ChronoWarp::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	// get the previous super weapon
 	SuperClass* pSource = nullptr;
@@ -57,14 +57,14 @@ bool SW_ChronoWarp::Activate(SuperClass* pThis, const CellStruct &Coords, bool I
 	SWTypeExt::ClearChronoAnim(pThis);
 
 	if(auto const pAnimType = pData->Chronosphere_BlastSrc.Get(RulesClass::Instance->ChronoBlast)) {
-		auto const pCellSource = MapClass::Instance->GetCellAt(pSource->ChronoMapCoords);
+		auto const pCellSource = MapClass::Instance.GetCellAt(pSource->ChronoMapCoords);
 		auto coordsSource = pCellSource->GetCoordsWithBridge();
 		coordsSource.Z += pData->SW_AnimHeight;
 		GameCreate<AnimClass>(pAnimType, coordsSource);
 	}
 
 	if(auto const pAnimType = pData->Chronosphere_BlastDest.Get(RulesClass::Instance->ChronoBlastDest)) {
-		auto const pCellTarget = MapClass::Instance->GetCellAt(Coords);
+		auto const pCellTarget = MapClass::Instance.GetCellAt(Coords);
 		auto coordsTarget = pCellTarget->GetCoordsWithBridge();
 		coordsTarget.Z += pData->SW_AnimHeight;
 		GameCreate<AnimClass>(pAnimType, coordsTarget);
@@ -144,7 +144,7 @@ bool SW_ChronoWarp::Activate(SuperClass* pThis, const CellStruct &Coords, bool I
 		if(pTechno->WhatAmI() == AbstractType::Unit) {
 			if(auto const pLinkBld = abstract_cast<BuildingClass*>(pTechno->GetNthLink(0))) {
 				if(pLinkBld->Type->WeaponsFactory) {
-					if(MapClass::Instance->GetCellAt(pTechno->Location)->GetBuilding() == pLinkBld) {
+					if(MapClass::Instance.GetCellAt(pTechno->Location)->GetBuilding() == pLinkBld) {
 						return true;
 					}
 				}
@@ -215,13 +215,13 @@ bool SW_ChronoWarp::Activate(SuperClass* pThis, const CellStruct &Coords, bool I
 
 		if(auto const pFoot = abstract_cast<FootClass*>(pTechno)) {
 			// move the unit to the new position
-			auto const pCellUnitTarget = MapClass::Instance->GetCellAt(cellUnitTarget);
+			auto const pCellUnitTarget = MapClass::Instance.GetCellAt(cellUnitTarget);
 			auto const offset = Coords - pSource->ChronoMapCoords;
 			auto const coordsUnitTarget = pCellUnitTarget->FixHeight(
 				coordsUnitSource + CoordStruct{offset.X * 256, offset.Y * 256, 0});
 
 			// clean up the unit's current cell
-			pFoot->Locomotor->Mark_All_Occupation_Bits(0);
+			pFoot->Locomotor->Mark_All_Occupation_Bits(MarkType::Up);
 			pFoot->Locomotor->Force_Track(-1, coordsUnitSource);
 			pFoot->MarkAllOccupationBits(coordsUnitSource);
 			pFoot->FrozenStill = true;
@@ -239,7 +239,7 @@ bool SW_ChronoWarp::Activate(SuperClass* pThis, const CellStruct &Coords, bool I
 		} else if(auto const pBld = abstract_cast<BuildingClass*>(pTechno)) {
 			// begin the building chronoshift
 			pBld->BecomeUntargetable();
-			for(auto const& pBullet : *BulletClass::Array) {
+			for(auto const& pBullet : BulletClass::Array) {
 				if(pBullet->Target == pBld) {
 					pBullet->LoseTarget();
 				}
@@ -250,7 +250,7 @@ bool SW_ChronoWarp::Activate(SuperClass* pThis, const CellStruct &Coords, bool I
 			pBld->Owner->RecheckTechTree = true;
 			pBld->Owner->RecheckPower = true;
 			pBld->DisableTemporal();
-			pBld->UpdatePlacement(PlacementType::Redraw);
+			pBld->Mark(MarkType::Change);
 
 			auto const pBldExt = BuildingExt::ExtMap.Find(pBld);
 			pBldExt->AboutToChronoshift = true;
@@ -284,7 +284,7 @@ void ChronoWarpStateMachine::Update()
 		// redraw all buildings
 		for(auto const& item : this->Buildings) {
 			if(item.building) {
-				item.building->UpdatePlacement(PlacementType::Redraw);
+				item.building->Mark(MarkType::Change);
 			}
 		}
 	} else if(passed == this->Duration - 1) {
@@ -293,7 +293,7 @@ void ChronoWarpStateMachine::Update()
 
 		// remove all buildings from the map at once
 		for(auto const& item : buildings) {
-			item.building->Remove();
+			item.building->Limbo();
 			item.building->ActuallyPlacedOnMap = false;
 		}
 
@@ -313,10 +313,10 @@ void ChronoWarpStateMachine::Update()
 				auto const cellNew = item.target + *it;
 
 				if(pBld->Type->CanCreateHere(cellNew, nullptr)) {
-					auto const pNewCell = MapClass::Instance->GetCellAt(cellNew);
+					auto const pNewCell = MapClass::Instance.GetCellAt(cellNew);
 					auto const coordsNew = pNewCell->GetCoordsWithBridge();
 
-					if(pBld->Put(coordsNew, Direction::North)) {
+					if(pBld->Unlimbo(coordsNew, DirType::North)) {
 						success = true;
 						break;
 					}
@@ -325,10 +325,10 @@ void ChronoWarpStateMachine::Update()
 
 			if(!success) {
 				// put it back where it was
-				++Unsorted::IKnowWhatImDoing;
-				pBld->Put(item.origin, Direction::North);
+				++Unsorted::ScenarioInit;
+				pBld->Unlimbo(item.origin, DirType::North);
 				pBld->Place(false);
-				--Unsorted::IKnowWhatImDoing;
+				--Unsorted::ScenarioInit;
 			}
 
 			// chronoshift ends
@@ -336,7 +336,7 @@ void ChronoWarpStateMachine::Update()
 			pBld->Owner->RecheckPower = true;
 			pBld->Owner->RecheckTechTree = true;
 			pBld->EnableTemporal();
-			pBld->UpdatePlacement(PlacementType::Redraw);
+			pBld->Mark(MarkType::Change);
 
 			auto const pBldExt = BuildingExt::ExtMap.Find(pBld);
 			pBldExt->AboutToChronoshift = false;
@@ -372,11 +372,11 @@ void ChronoWarpStateMachine::InvalidatePointer(void *ptr, bool remove)
 	}
 }
 
-bool ChronoWarpStateMachine::Load(AresStreamReader &Stm, bool RegisterForChange) {
-	return SWStateMachine::Load(Stm, RegisterForChange)
+bool ChronoWarpStateMachine::Load(AresStreamReader &Stm) {
+	return SWStateMachine::Load(Stm)
 		&& Stm
-		.Process(this->Buildings, RegisterForChange)
-		.Process(this->Duration, RegisterForChange)
+		.Process(this->Buildings)
+		.Process(this->Duration)
 		.Success();
 }
 

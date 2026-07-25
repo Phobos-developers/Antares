@@ -18,7 +18,7 @@ SWRange SW_SonarPulse::GetRange(const SWTypeExt::ExtData* pData) const
 	return pData->SW_Range;
 }
 
-void SW_SonarPulse::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_SonarPulse::Initialize(SWTypeExt::ExtData *pData)
 {
 	// some defaults
 	pData->SW_RadarEvent = false;
@@ -32,8 +32,10 @@ void SW_SonarPulse::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *
 	pData->SW_AIRequiresTarget = SuperWeaponTarget::Water;
 }
 
-void SW_SonarPulse::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_SonarPulse::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->get_ID();
 
 	if(!pINI->GetSection(section)) {
@@ -46,7 +48,7 @@ void SW_SonarPulse::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass 
 	pSW->Action = (GetRange(pData).WidthOrRange < 0) ? Action::None : Actions::SuperWeaponAllowed;
 }
 
-bool SW_SonarPulse::Activate(SuperClass* const pThis, const CellStruct &Coords, bool const IsPlayer)
+bool SW_SonarPulse::Activate(SuperClass* const pThis, CellStruct const Coords, bool const IsPlayer)
 {
 	auto const pType = pThis->Type;
 	auto const pData = SWTypeExt::ExtMap.Find(pType);
@@ -83,7 +85,7 @@ bool SW_SonarPulse::Activate(SuperClass* const pThis, const CellStruct &Coords, 
 
 	if(range.WidthOrRange < 0) {
 		// decloak everything regardless of ranges
-		for(auto const& pTechno : *TechnoClass::Array) {
+		for(auto const& pTechno : TechnoClass::Array) {
 			Detect(pTechno);
 		}
 

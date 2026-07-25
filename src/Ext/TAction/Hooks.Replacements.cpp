@@ -8,7 +8,7 @@
 #include <type_traits>
 
 // #1004906: support more than 100 waypoints
-DEFINE_HOOK(6E1780, TActionClass_PlayAudioAtRandomWP, 6)
+DEFINE_HOOK(0x6E1780, TActionClass_PlayAudioAtRandomWP, 0x6)
 {
 	GET(TActionClass*, pThis, ECX);
 	//GET_STACK(HouseClass*, pHouse, 0x4);

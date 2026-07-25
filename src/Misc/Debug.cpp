@@ -200,9 +200,9 @@ std::wstring Debug::FullDump(std::wstring destinationFolder) {
 void Debug::FreeMouse() {
 //	static bool freed = false;
 //	if(!freed) {
-		Game::sub_53E6B0();
+		Game::StreamerThreadFlush();
 
-		MouseClass::Instance->UpdateCursor(MouseCursorType::Default, false);
+		MouseClass::Instance.UpdateCursor(MouseCursorType::Default, false);
 		WWMouseClass::Instance->ReleaseMouse();
 
 		ShowCursor(TRUE);
@@ -216,7 +216,7 @@ void Debug::FreeMouse() {
 		BlackSurface(DSurface::Alternate);
 		BlackSurface(DSurface::Composite);
 		BlackSurface(DSurface::Hidden);
-		BlackSurface(DSurface::Hidden_2);
+		BlackSurface(DSurface::Temp);
 		BlackSurface(DSurface::Primary);
 		BlackSurface(DSurface::Sidebar);
 		BlackSurface(DSurface::Tile);
@@ -285,14 +285,14 @@ void Debug::INIParseFailed(const char *section, const char *flag, const char *va
 	}
 }
 
-DEFINE_HOOK(4C850B, Exception_Dialog, 5)
+DEFINE_HOOK(0x4C850B, Exception_Dialog, 0x5)
 {
 	Debug::FreeMouse();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(4A4AC0, Debug_Log, 1)
-DEFINE_HOOK(4068E0, Debug_Log, 1)
+DEFINE_HOOK_AGAIN(0x4A4AC0, Debug_Log, 0x1)
+DEFINE_HOOK(0x4068E0, Debug_Log, 0x1)
 {
 	LEA_STACK(va_list const, args, 0x8);
 	GET_STACK(const char* const, pFormat, 0x4);
@@ -302,7 +302,7 @@ DEFINE_HOOK(4068E0, Debug_Log, 1)
 	return 0x4A4AF9; // changed to co-op with YDE
 }
 
-DEFINE_HOOK(534A4D, Theater_Init_ResetLogStatus, 6)
+DEFINE_HOOK(0x534A4D, Theater_Init_ResetLogStatus, 0x6)
 {
 	// any errors triggered before this line are irrelevant
 	// caused by reading the section while only certain flags from it are needed
@@ -313,7 +313,7 @@ DEFINE_HOOK(534A4D, Theater_Init_ResetLogStatus, 6)
 }
 
 
-DEFINE_HOOK(687C56, INIClass_ReadScenario_ResetLogStatus, 5)
+DEFINE_HOOK(0x687C56, INIClass_ReadScenario_ResetLogStatus, 0x5)
 {
 	// reset this so next scenario startup log is cleaner
 	Debug::bTrackParserErrors = false;

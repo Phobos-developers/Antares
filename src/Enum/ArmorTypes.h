@@ -19,6 +19,7 @@ public:
 
 	virtual void SaveToStream(AresStreamWriter &Stm) override;
 
+	static void GrowForWarhead(WarheadTypeClass* pWH);
 	static void LoadForWarhead(CCINIClass *pINI, WarheadTypeClass* pWH);
 	static void AddDefaults();
 

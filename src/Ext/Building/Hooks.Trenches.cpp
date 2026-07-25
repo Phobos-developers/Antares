@@ -14,7 +14,7 @@
 
 /* 	#218 - specific occupiers
 	#665 - raidable buildings */
-DEFINE_HOOK(457D58, BuildingClass_CanBeOccupied_SpecificOccupiers, 6)
+DEFINE_HOOK(0x457D58, BuildingClass_CanBeOccupied_SpecificOccupiers, 0x6)
 {
 	GET(BuildingClass *, pThis, ESI);
 	GET(InfantryClass *, pInf, EDI);
@@ -55,7 +55,7 @@ DEFINE_HOOK(457D58, BuildingClass_CanBeOccupied_SpecificOccupiers, 6)
 }
 
 // semi-specific assaulters by customizable level
-DEFINE_HOOK(457DB7, BuildingClass_CanBeOccupied_SpecificAssaulters, 6)
+DEFINE_HOOK(0x457DB7, BuildingClass_CanBeOccupied_SpecificAssaulters, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	GET(InfantryClass* const, pInfantry, EDI);
@@ -83,24 +83,25 @@ DEFINE_HOOK(457DB7, BuildingClass_CanBeOccupied_SpecificAssaulters, 6)
 // #664: Advanced Rubble - turning into rubble part
 // moved to before the survivors get unlimboed, per sanity's requirements
 // TODO review
-DEFINE_HOOK(441F12, BuildingClass_Destroy_RubbleYell, 6)
+DEFINE_HOOK(0x441F12, BuildingClass_Destroy_RubbleYell, 0x6)
 {
 	GET(BuildingClass *, pThis, ESI);
-	BuildingExt::ExtData* BuildingAresData = BuildingExt::ExtMap.Find(pThis);
 	BuildingTypeExt::ExtData* destrBuildTE = BuildingTypeExt::ExtMap.Find(pThis->Type);
 
 	// If this object has a rubble building set, turn
 	if(destrBuildTE->RubbleDestroyed || destrBuildTE->RubbleDestroyedRemove) {
-		++Unsorted::IKnowWhatImDoing;
-		BuildingAresData->RubbleYell();
-		--Unsorted::IKnowWhatImDoing;
+		// the IKnowWhatImDoing bracket lives inside PlaceRubble now, around the
+		// Put alone, instead of covering the Remove and the anim as well
+		BuildingExt::ExtData::PlaceRubble(pThis, destrBuildTE->RubbleDestroyedRemove,
+			destrBuildTE->RubbleDestroyed, destrBuildTE->RubbleDestroyedOwner,
+			destrBuildTE->RubbleDestroyedStrength, destrBuildTE->RubbleDestroyedAnim);
 	}
 
 	return 0;
 }
 
 // remove all units from the rubble
-DEFINE_HOOK(441F2C, BuildingClass_Destroy_KickOutOfRubble, 5) {
+DEFINE_HOOK(0x441F2C, BuildingClass_Destroy_KickOutOfRubble, 0x5) {
 	GET(BuildingClass*, pBld, ESI);
 
 	// find out whether this destroyed building would turn into rubble
@@ -118,7 +119,7 @@ DEFINE_HOOK(441F2C, BuildingClass_Destroy_KickOutOfRubble, 5) {
 }
 
 // #666: Trench Traversal - check if traversal is possible & cursor display
-DEFINE_HOOK(44725F, BuildingClass_GetCursorOverObject_TargetABuilding, 5)
+DEFINE_HOOK(0x44725F, BuildingClass_GetActionOnObject_TargetABuilding, 0x5)
 {
 	GET(BuildingClass *, pThis, ESI);
 	GET(TechnoClass *, T, EBP);
@@ -137,7 +138,7 @@ DEFINE_HOOK(44725F, BuildingClass_GetCursorOverObject_TargetABuilding, 5)
 	return 0;
 }
 
-DEFINE_HOOK(443414, BuildingClass_ClickedAction, 6)
+DEFINE_HOOK(0x443414, BuildingClass_ActionOnObject, 0x6)
 {
 	GET(enum class Action, Action, EAX);
 	GET(BuildingClass *, pThis, ECX);
@@ -167,7 +168,7 @@ DEFINE_HOOK(443414, BuildingClass_ClickedAction, 6)
 }
 
 // #665: Raidable Buildings - prevent raided buildings from being sold while raided
-DEFINE_HOOK(4494D2, BuildingClass_IsSellable, 6)
+DEFINE_HOOK(0x4494D2, BuildingClass_IsSellable, 0x6)
 {
 	GET(BuildingClass *, pThis, ESI);
 	auto curBuildExt = BuildingExt::ExtMap.Find(pThis);
@@ -175,7 +176,7 @@ DEFINE_HOOK(4494D2, BuildingClass_IsSellable, 6)
 	enum { Sellable = 0x449532, Unsellable = 0x449536, Undecided = 0 };
 
 	// enemy shouldn't be able to sell "borrowed" buildings
-	return curBuildExt->isCurrentlyRaided ? Unsellable : Undecided;
+	return curBuildExt->OwnerBeforeRaid ? Unsellable : Undecided;
 }
 
 /* Requested in issue #695
@@ -187,7 +188,7 @@ DEFINE_HOOK(4494D2, BuildingClass_IsSellable, 6)
 	ThreatToCell is updated,
 	"EVA_StructureGarrisoned" is played if applicable.
 */
-DEFINE_HOOK(52297F, InfantryClass_GarrisonBuilding_OccupierEntered, 5)
+DEFINE_HOOK(0x52297F, InfantryClass_GarrisonBuilding_OccupierEntered, 0x5)
 {
 	GET(InfantryClass *, pInf, ESI);
 	GET(BuildingClass *, pBld, EBP);
@@ -202,9 +203,19 @@ DEFINE_HOOK(52297F, InfantryClass_GarrisonBuilding_OccupierEntered, 5)
 	// 27.11.2010 changed to include fix for #1305
 	bool differentOwners = (pBld->Owner != pInf->Owner);
 	bool ucBuilding = (pBld->Owner->IsNeutral() && (pBld->GetTechnoType()->TechLevel == -1));
-	if(differentOwners && !ucBuilding && !buildingExtData->isCurrentlyRaided) {
+
+	// in a campaign, two houses the player is driving do not raid each other:
+	// co-op sides share the map and would otherwise steal each other's
+	// garrisonable buildings on the first occupant.
+	auto const isPlayerDriven = [](HouseClass const* const pHouse) {
+		return pHouse->IsHumanPlayer || pHouse->IsInPlayerControl;
+	};
+	bool const bothPlayerDriven =
+		SessionClass::Instance.GameMode == GameMode::Campaign
+		&& isPlayerDriven(pBld->Owner) && isPlayerDriven(pInf->Owner);
+
+	if(differentOwners && !bothPlayerDriven && !ucBuilding && !buildingExtData->OwnerBeforeRaid) {
 		buildingExtData->OwnerBeforeRaid = pBld->Owner;
-		buildingExtData->isCurrentlyRaided = true;
 		pBld->SetOwningHouse(pInf->Owner);
 	}
 	return 0;
@@ -214,7 +225,7 @@ DEFINE_HOOK(52297F, InfantryClass_GarrisonBuilding_OccupierEntered, 5)
 	D: The first hook fires each time one of the occupants is ejected through the Deploy function -
 	the game doesn't have a builtin way to remove a single occupant, only all of them, so this is rigged inside that.*/
 // This is CURRENTLY UNUSED - look at Misc/Network.cpp -> AresNetEvent::Handlers::RespondToTrenchRedirectClick
-/*A_FINE_HOOK(4580A9, BuildingClass_UnloadOccupants_EachOccupantLeaves, 6)
+/*A_FINE_HOOK(0x4580A9, BuildingClass_UnloadOccupants_EachOccupantLeaves, 0x6)
 {
 	GET(BuildingClass *, pBld, ESI);
 	GET(int, idxOccupant, EBP);
@@ -243,7 +254,7 @@ DEFINE_HOOK(52297F, InfantryClass_GarrisonBuilding_OccupierEntered, 5)
 /* Requested in issue #694
 	D: The second hook fires each time one of the occupants is killed (Assaulter). Note that it doesn't catch the damage forwarding fatal hit.
 */
-DEFINE_HOOK(4586CA, BuildingClass_KillOccupiers_EachOccupierKilled, 6)
+DEFINE_HOOK(0x4586CA, BuildingClass_KillOccupiers_EachOccupierKilled, 0x6)
 {
     GET(BuildingClass *, pBld, ESI);
     //GET(int, idxOccupant, EDI);
@@ -257,7 +268,7 @@ DEFINE_HOOK(4586CA, BuildingClass_KillOccupiers_EachOccupierKilled, 6)
 /* Requested in issue #694
 	D: The third hook fires after all the occupants have been ejected (by the first hook).
 */
-DEFINE_HOOK(4581CD, BuildingClass_UnloadOccupants_AllOccupantsHaveLeft, 6)
+DEFINE_HOOK(0x4581CD, BuildingClass_UnloadOccupants_AllOccupantsHaveLeft, 0x6)
 {
     GET(BuildingClass *, pBld, ESI);
     BuildingExt::ExtData* buildingExtData = BuildingExt::ExtMap.Find(pBld);
@@ -270,7 +281,7 @@ DEFINE_HOOK(4581CD, BuildingClass_UnloadOccupants_AllOccupantsHaveLeft, 6)
 /* Requested in issue #694
 	D: The fourth hook fires after all the occupants have been killed by the second hook.
 */
-DEFINE_HOOK(458729, BuildingClass_KillOccupiers_AllOccupantsKilled, 6)
+DEFINE_HOOK(0x458729, BuildingClass_KillOccupiers_AllOccupantsKilled, 0x6)
 {
 	GET(BuildingClass *, pBld, ESI);
 	BuildingExt::ExtData* buildingExtData = BuildingExt::ExtMap.Find(pBld);
@@ -283,7 +294,7 @@ DEFINE_HOOK(458729, BuildingClass_KillOccupiers_AllOccupantsKilled, 6)
 /*
 // #666: Trench Traversal - check if traversal is possible & traverse, eject or do nothing, depending on the result
 // This is CURRENTLY UNUSED - look at Misc/Network.cpp -> AresNetEvent::Handlers::RespondToTrenchRedirectClick
-A_FINE_HOOK(457DF5, BuildingClass_UnloadOccupants_AboutToStartUnloading, 6)
+A_FINE_HOOK(0x457DF5, BuildingClass_UnloadOccupants_AboutToStartUnloading, 0x6)
 {
 	GET(BuildingClass *, currentBuilding, ESI);
 	/*CellClass* rallyPoint =; // wherever the rally point points to
@@ -300,27 +311,3 @@ A_FINE_HOOK(457DF5, BuildingClass_UnloadOccupants_AboutToStartUnloading, 6)
 	return 0;
 }
 */
-
-/*	#698 - "Building captured" EVA announcement "bug"
-
-
-	<DCoder> if you want the original handling (TechBuildingLost, BuildingCaptured, etc) to take place, return No,
-	otherwise perform your own code and return Yes
-	<Renegade> at what place in the chain is that executed?
-	<DCoder> in the middle of where the building changes ownership from old player to new
-*/
-DEFINE_HOOK(448401, BuildingClass_ChangeOwnership_TrenchEVA, 6)
-{
-	GET(BuildingClass *, pBld, ESI);
-	//GET(HouseClass *, pNewOwner, EBX);
-	enum wasHandled { Yes = 0x44848F, No = 0} Handled = No;
-
-	BuildingExt::ExtData* bldExt = BuildingExt::ExtMap.Find(pBld);
-
-	if(bldExt->ignoreNextEVA) {
-		Handled = Yes;
-		bldExt->ignoreNextEVA = false;
-	}
-
-	return Handled;
-}

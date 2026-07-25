@@ -1,4 +1,5 @@
 #include "../Ares.h"
+#include <OwnerDraw.h>   // WWControlMessage
 
 #include <ColorScheme.h>
 #include <ScenarioClass.h>
@@ -6,7 +7,7 @@
 #include <StringTable.h>
 
 // reset the colors
-DEFINE_HOOK(4E43C0, Game_InitDropdownColors, 5)
+DEFINE_HOOK(0x4E43C0, Game_InitDropdownColors, 0x5)
 {
 	// mark all colors as unused (+1 for the  observer)
 	for(auto i = 0; i < Ares::UISettings::ColorCount + 1; ++i) {
@@ -17,7 +18,7 @@ DEFINE_HOOK(4E43C0, Game_InitDropdownColors, 5)
 }
 
 // convert player color slot index to color scheme index
-DEFINE_HOOK(69A310, SessionClass_GetPlayerColorScheme, 7) {
+DEFINE_HOOK(0x69A310, SessionClass_GetPlayerColorScheme, 0x7) {
 	GET_STACK(int const, idx, 0x4);
 
 	// get the slot
@@ -49,7 +50,7 @@ DEFINE_HOOK(69A310, SessionClass_GetPlayerColorScheme, 7) {
 }
 
 // return the tool tip describing this color
-DEFINE_HOOK(4E42A0, GameSetup_GetColorTooltip, 5) {
+DEFINE_HOOK(0x4E42A0, GameSetup_GetColorTooltip, 0x5) {
 	GET(int const, idxColor, ECX);
 
 	const wchar_t* ret = nullptr;
@@ -67,7 +68,7 @@ DEFINE_HOOK(4E42A0, GameSetup_GetColorTooltip, 5) {
 }
 
 // handle adding colors to combo box
-DEFINE_HOOK(4E46BB, hWnd_PopulateWithColors, 7) {
+DEFINE_HOOK(0x4E46BB, hWnd_PopulateWithColors, 0x7) {
 	GET(HWND const, hWnd, ESI);
 	GET_STACK(int const, idxPlayer, 0x14);
 
@@ -78,7 +79,7 @@ DEFINE_HOOK(4E46BB, hWnd_PopulateWithColors, 7) {
 		auto const isCurrent = Color.selectedIndex == idxPlayer;
 
 		if(isCurrent || Color.selectedIndex == -1) {
-			int idx = SendMessageA(hWnd, WW_CB_ADDITEM, 0, 0x822B78);
+			int idx = SendMessageA(hWnd, WW_CB_ADDSTRINGW, 0, 0x822B78);
 			SendMessageA(hWnd, WW_SETCOLOR, idx, Color.colorRGB);
 			SendMessageA(hWnd, CB_SETITEMDATA, idx, i);
 
@@ -95,7 +96,7 @@ DEFINE_HOOK(4E46BB, hWnd_PopulateWithColors, 7) {
 }
 
 // update the color in the combo drop-down lists
-DEFINE_HOOK(4E4A41, hWnd_SetPlayerColor_A, 7) {
+DEFINE_HOOK(0x4E4A41, hWnd_SetPlayerColor_A, 0x7) {
 	GET(int const, idxPlayer, EAX);
 
 	auto const count = Ares::UISettings::ColorCount;
@@ -110,7 +111,7 @@ DEFINE_HOOK(4E4A41, hWnd_SetPlayerColor_A, 7) {
 	return 0x4E4A6D;
 }
 
-DEFINE_HOOK(4E4B47, hWnd_SetPlayerColor_B, 7) {
+DEFINE_HOOK(0x4E4B47, hWnd_SetPlayerColor_B, 0x7) {
 	GET(int const, idxColor, EBP);
 	GET(int const, idxPlayer, ESI);
 
@@ -119,7 +120,7 @@ DEFINE_HOOK(4E4B47, hWnd_SetPlayerColor_B, 7) {
 	return 0x4E4B4E;
 }
 
-DEFINE_HOOK(4E4556, hWnd_GetSlotColorIndex, 7) {
+DEFINE_HOOK(0x4E4556, hWnd_GetSlotColorIndex, 0x7) {
 	GET(int const, idxPlayer, ECX);
 
 	auto ret = -1;
@@ -136,14 +137,14 @@ DEFINE_HOOK(4E4556, hWnd_GetSlotColorIndex, 7) {
 	return 0x4E4570;
 }
 
-DEFINE_HOOK(4E4580, hWnd_IsAvailableColor, 5) {
+DEFINE_HOOK(0x4E4580, hWnd_IsAvailableColor, 0x5) {
 	GET(int const, idxColor, ECX);
 
 	R->AL(Ares::UISettings::Colors[idxColor + 1].selectedIndex == -1);
 	return 0x4E4592;
 }
 
-DEFINE_HOOK(4E4C9D, hWnd_UpdatePlayerColors_A, 7) {
+DEFINE_HOOK(0x4E4C9D, hWnd_UpdatePlayerColors_A, 0x7) {
 	GET(int const, idxPlayer, EAX);
 
 	// check players and reset used color for this player
@@ -158,7 +159,7 @@ DEFINE_HOOK(4E4C9D, hWnd_UpdatePlayerColors_A, 7) {
 	return 0x4E4CC9;
 }
 
-DEFINE_HOOK(4E4D67, hWnd_UpdatePlayerColors_B, 7) {
+DEFINE_HOOK(0x4E4D67, hWnd_UpdatePlayerColors_B, 0x7) {
 	GET(int const, idxColor, EAX);
 	GET(int const, idxPlayer, ESI);
 
@@ -168,7 +169,7 @@ DEFINE_HOOK(4E4D67, hWnd_UpdatePlayerColors_B, 7) {
 	return 0x4E4D6E;
 }
 
-DEFINE_HOOK(69B97D, Game_ProcessRandomPlayers_ObserverColor, 7)
+DEFINE_HOOK(0x69B97D, Game_ProcessRandomPlayers_ObserverColor, 0x7)
 {
 	GET(NodeNameType* const, pStartingSpot, ESI);
 
@@ -178,22 +179,22 @@ DEFINE_HOOK(69B97D, Game_ProcessRandomPlayers_ObserverColor, 7)
 	return 0x69B984;
 }
 
-DEFINE_HOOK(69B949, Game_ProcessRandomPlayers_ColorsA, 6) {
+DEFINE_HOOK(0x69B949, Game_ProcessRandomPlayers_ColorsA, 0x6) {
 	R->EAX(ScenarioClass::Instance->Random.RandomRanged(0, Ares::UISettings::ColorCount - 1));
 	return 0x69B95E;
 }
 
-DEFINE_HOOK(69BA13, Game_ProcessRandomPlayers_ColorsB, 6) {
+DEFINE_HOOK(0x69BA13, Game_ProcessRandomPlayers_ColorsB, 0x6) {
 	R->EAX(ScenarioClass::Instance->Random.RandomRanged(0, Ares::UISettings::ColorCount - 1));
 	return 0x69BA28;
 }
 
-DEFINE_HOOK(69B69B, GameModeClass_PickRandomColor_Unlimited, 6) {
+DEFINE_HOOK(0x69B69B, GameModeClass_PickRandomColor_Unlimited, 0x6) {
 	R->EAX(ScenarioClass::Instance->Random.RandomRanged(0, Ares::UISettings::ColorCount - 1));
 	return 0x69B6AF;
 }
 
-DEFINE_HOOK(69B7FF, Session_SetColor_Unlimited, 6) {
+DEFINE_HOOK(0x69B7FF, Session_SetColor_Unlimited, 0x6) {
 	R->EAX(ScenarioClass::Instance->Random.RandomRanged(0, Ares::UISettings::ColorCount - 1));
 	return 0x69B813;
 }

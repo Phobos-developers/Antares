@@ -10,7 +10,7 @@
 #include <SpawnManagerClass.h>
 #include <VocClass.h>
 
-DEFINE_HOOK(44B2FE, BuildingClass_Mi_Attack_IsPrism, 6)
+DEFINE_HOOK(0x44B2FE, BuildingClass_Mi_Attack_IsPrism, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	//GET(int, idxWeapon, EBP); //which weapon was chosen to attack the target with
@@ -72,7 +72,7 @@ DEFINE_HOOK(44B2FE, BuildingClass_Mi_Attack_IsPrism, 6)
 	return IsNotPrism;
 }
 
-DEFINE_HOOK(447FAE, BuildingClass_GetFireError_PrismForward, 6)
+DEFINE_HOOK(0x447FAE, BuildingClass_CanFire_PrismForward, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	enum { BusyCharging = 0x447FB8, NotBusyCharging = 0x447FC3 };
@@ -93,7 +93,7 @@ DEFINE_HOOK(447FAE, BuildingClass_GetFireError_PrismForward, 6)
 }
 
 //NB: PrismTargetCoords is not just a coord struct, it's a union whose first dword is the used weapon index and two others are undefined...
-DEFINE_HOOK(4503F0, BuildingClass_Update_Prism, 9)
+DEFINE_HOOK(0x4503F0, BuildingClass_Update_Prism, 0x9)
 {
 	GET(BuildingClass* const, pThis, ECX);
 	auto const pType = pThis->Type;
@@ -153,7 +153,7 @@ DEFINE_HOOK(4503F0, BuildingClass_Update_Prism, 9)
 	return 0x4504E2;
 }
 
-DEFINE_HOOK(44ABD0, BuildingClass_FireLaser, 5)
+DEFINE_HOOK(0x44ABD0, BuildingClass_FireLaser, 0x5)
 {
 	GET(BuildingClass* const, pThis, ECX);
 	REF_STACK(CoordStruct const, targetXYZ, 0x4);
@@ -190,10 +190,10 @@ DEFINE_HOOK(44ABD0, BuildingClass_FireLaser, 5)
 			if(LaserBeam) {
 				LaserBeam->IsHouseColor = supportWeapon->IsHouseColor;
 				//basic thickness (intensity additions are added later)
-				if(supportWeaponData->Laser_Thickness == -1) {
+				if(supportWeaponData->LaserThickness < 0) {
 					LaserBeam->Thickness = 3; //original default
 				} else {
-					LaserBeam->Thickness = supportWeaponData->Laser_Thickness;
+					LaserBeam->Thickness = supportWeaponData->LaserThickness;
 				}
 			}
 		}
@@ -263,7 +263,7 @@ DEFINE_HOOK(44ABD0, BuildingClass_FireLaser, 5)
 
 //these are all for cleaning up when a prism tower becomes unavailable
 
-DEFINE_HOOK(4424EF, BuildingClass_ReceiveDamage_PrismForward, 6)
+DEFINE_HOOK(0x4424EF, BuildingClass_ReceiveDamage_PrismForward, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	auto const pData = BuildingExt::ExtMap.Find(pThis);
@@ -271,7 +271,7 @@ DEFINE_HOOK(4424EF, BuildingClass_ReceiveDamage_PrismForward, 6)
 	return 0;
 }
 
-DEFINE_HOOK(447113, BuildingClass_Sell_PrismForward, 6)
+DEFINE_HOOK(0x447113, BuildingClass_Sell_PrismForward, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 
@@ -283,7 +283,7 @@ DEFINE_HOOK(447113, BuildingClass_Sell_PrismForward, 6)
 	return 0;
 }
 
-DEFINE_HOOK(448277, BuildingClass_ChangeOwner_PrismForwardAndLeaveBomb, 5)
+DEFINE_HOOK(0x448277, BuildingClass_ChangeOwner_PrismForwardAndLeaveBomb, 0x5)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	GET_STACK(HouseClass* const, newOwner, 0x5C);
@@ -331,7 +331,7 @@ DEFINE_HOOK(448277, BuildingClass_ChangeOwner_PrismForwardAndLeaveBomb, 5)
 	return LeaveBomb;
 }
 
-DEFINE_HOOK(71AF76, TemporalClass_Fire_PrismForwardAndWarpable, 9) {
+DEFINE_HOOK(0x71AF76, TemporalClass_Fire_PrismForwardAndWarpable, 0x9) {
 	GET(TechnoClass* const, pThis, EDI);
 
 	// bugfix #874 B: Temporal warheads affect Warpable=no units
@@ -352,7 +352,7 @@ DEFINE_HOOK(71AF76, TemporalClass_Fire_PrismForwardAndWarpable, 9) {
 	return 0;
 }
 
-DEFINE_HOOK(70FD9A, TechnoClass_Drain_PrismForward, 6)
+DEFINE_HOOK(0x70FD9A, TechnoClass_Drain_PrismForward, 0x6)
 {
 	GET(TechnoClass* const, pThis, ESI);
 	GET(TechnoClass* const, pDrainee, EDI);
@@ -365,7 +365,7 @@ DEFINE_HOOK(70FD9A, TechnoClass_Drain_PrismForward, 6)
 	return 0;
 }
 
-DEFINE_HOOK(454B3D, BuildingClass_UpdatePowered_PrismForward, 6)
+DEFINE_HOOK(0x454B3D, BuildingClass_UpdatePowered_PrismForward, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	// this building just realised it needs to go offline
@@ -375,7 +375,7 @@ DEFINE_HOOK(454B3D, BuildingClass_UpdatePowered_PrismForward, 6)
 	return 0;
 }
 
-DEFINE_HOOK(44EBF0, BuildingClass_Disappear_PrismForward, 5)
+DEFINE_HOOK(0x44EBF0, BuildingClass_Disappear_PrismForward, 0x5)
 {
 	GET(BuildingClass* const, pThis, ECX);
 	auto const pData = BuildingExt::ExtMap.Find(pThis);

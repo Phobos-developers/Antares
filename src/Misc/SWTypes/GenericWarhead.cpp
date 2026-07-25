@@ -3,12 +3,12 @@
 #include "../../Ext/Techno/Body.h"
 #include "../../Ext/WarheadType/Body.h"
 
-void SW_GenericWarhead::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_GenericWarhead::Initialize(SWTypeExt::ExtData *pData)
 {
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::Offensive;
 }
 
-bool SW_GenericWarhead::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_GenericWarhead::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	auto const pType = pThis->Type;
 	auto const pData = SWTypeExt::ExtMap.Find(pType);
@@ -21,7 +21,7 @@ bool SW_GenericWarhead::Activate(SuperClass* pThis, const CellStruct &Coords, bo
 		return false;
 	}
 
-	auto const pCell = MapClass::Instance->GetCellAt(Coords);
+	auto const pCell = MapClass::Instance.GetCellAt(Coords);
 	auto const coords = pCell->GetCoordsWithBridge();
 
 	BuildingClass* pFirer = nullptr;
@@ -34,10 +34,10 @@ bool SW_GenericWarhead::Activate(SuperClass* pThis, const CellStruct &Coords, bo
 
 	// crush, kill, destroy
 	auto const pWHExt = WarheadTypeExt::ExtMap.Find(pWarhead);
-	pWHExt->applyRipples(coords);
+	pWHExt->applyIonCannon(coords);
 	pWHExt->applyIronCurtain(coords, pThis->Owner, damage);
 	pWHExt->applyEMP(coords, pFirer);
-	pWHExt->applyAttachedEffect(coords, pFirer);
+	pWHExt->applyAttachedEffect(coords, pFirer ? pFirer->Owner : nullptr);
 
 	if(!pWHExt->applyPermaMC(pThis->Owner, pCell->GetContent())) {
 		MapClass::DamageArea(coords, damage, pFirer, pWarhead, true, pThis->Owner);

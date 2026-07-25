@@ -14,31 +14,37 @@ class TActionExt
 public:
 	using base_type = TActionClass;
 
-	class ExtData final : public Extension<TActionClass>
+	class ExtData final : public Extension<TActionClass, ExtData>
 	{
 	public:
-		ExtData(TActionClass* const OwnerObject) : Extension<TActionClass>(OwnerObject)
+		static constexpr DWORD Canary = 0x91919191;
+
+		ExtData(TActionClass* const OwnerObject) : Extension<TActionClass, ExtData>(OwnerObject)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		// executing actions
 		static bool ActivateFirestorm(TActionClass* pAction, HouseClass* pHouse, ObjectClass* pObject, TriggerClass* pTrigger, CellStruct const& location);
 		static bool DeactivateFirestorm(TActionClass* pAction, HouseClass* pHouse, ObjectClass* pObject, TriggerClass* pTrigger, CellStruct const& location);
+		static bool AuxiliaryPower(TActionClass* pAction, HouseClass* pHouse, ObjectClass* pObject, TriggerClass* pTrigger, CellStruct const& location);
+		static bool KillDriversOf(TActionClass* pAction, HouseClass* pHouse, ObjectClass* pObject, TriggerClass* pTrigger, CellStruct const& location);
+		static bool SetEVAVoice(TActionClass* pAction, HouseClass* pHouse, ObjectClass* pObject, TriggerClass* pTrigger, CellStruct const& location);
+		static bool SetGroup(TActionClass* pAction, HouseClass* pHouse, ObjectClass* pObject, TriggerClass* pTrigger, CellStruct const& location);
 
 	private:
 		template <typename T>
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<TActionExt> {
+	class ExtContainer final : public Container<TActionExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
@@ -49,4 +55,7 @@ public:
 	static bool Execute(
 		TActionClass* pAction, HouseClass* pHouse, ObjectClass* pObject,
 		TriggerClass* pTrigger, CellStruct const& location, bool* ret);
+
+	static bool GetMode(TriggerAction actionKind, int* ret);
+	static bool GetFlags(TriggerAction actionKind, int* ret);
 };

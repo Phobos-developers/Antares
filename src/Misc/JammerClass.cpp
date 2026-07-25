@@ -19,7 +19,7 @@ void JammerClass::Update() {
 	this->LastScan = Unsorted::CurrentFrame;
 
 	// walk through all buildings
-	for(auto const& curBuilding : *BuildingClass::Array) {
+	for(auto const& curBuilding : BuildingClass::Array) {
 		// for each jammable building ...
 		if(this->IsEligible(curBuilding)) {
 			// ...check if it's in range, and jam or unjam based on that
@@ -79,7 +79,7 @@ void JammerClass::Unjam(BuildingClass* TargetBuilding) {
 void JammerClass::UnjamAll() {
 	if(this->Registered) {
 		this->Registered = false;
-		for(auto const& item : *BuildingClass::Array) {
+		for(auto const& item : BuildingClass::Array) {
 			this->Unjam(item);
 		}
 	}

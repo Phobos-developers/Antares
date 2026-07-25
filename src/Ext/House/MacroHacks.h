@@ -13,19 +13,19 @@ void GetTypeToProduce(HouseClass* pThis, int& ProducingTypeIndex) {
 	auto& Values = HouseExt::AIProduction_Values;
 	auto& BestChoices = HouseExt::AIProduction_BestChoices;
 
-	auto const count = static_cast<unsigned int>(TType::Array->Count);
+	auto const count = static_cast<unsigned int>(TType::Array.Count);
 	CreationFrames.assign(count, 0x7FFFFFFF);
 	Values.assign(count, 0);
 
-	for(auto CurrentTeam : *TeamClass::Array) {
+	for(auto CurrentTeam : TeamClass::Array) {
 		if(!CurrentTeam || CurrentTeam->Owner != pThis) {
 			continue;
 		}
 
 		int TeamCreationFrame = CurrentTeam->CreationFrame;
 
-		if((!CurrentTeam->Type->Reinforce || CurrentTeam->unknown_79)
-		  && (CurrentTeam->unknown_77 || CurrentTeam->unknown_78))
+		if((!CurrentTeam->Type->Reinforce || CurrentTeam->IsFullStrength)
+		  && (CurrentTeam->IsForcedActive || CurrentTeam->IsHasBeen))
 		{
 			continue;
 		}
@@ -44,7 +44,7 @@ void GetTypeToProduce(HouseClass* pThis, int& ProducingTypeIndex) {
 		}
 	}
 
-	for(auto T : *TClass::Array) {
+	for(auto T : TClass::Array) {
 		auto const Idx = static_cast<unsigned int>(T->GetType()->GetArrayIndex());
 		if(Values[Idx] > 0 && T->CanBeRecruited(pThis)) {
 			--Values[Idx];
@@ -58,9 +58,9 @@ void GetTypeToProduce(HouseClass* pThis, int& ProducingTypeIndex) {
 	int EarliestFrame = 0x7FFFFFFF;
 
 	for(auto i = 0u; i < count; ++i) {
-		auto const TT = TType::Array->Items[static_cast<int>(i)];
+		auto const TT = TType::Array.Items[static_cast<int>(i)];
 		int CurrentValue = Values[i];
-		if(CurrentValue <= 0 || !pThis->CanBuild(TT, false, false)
+		if(CurrentValue <= 0 || pThis->CanBuild(TT, false, false) == CanBuildResult::Unbuildable
 			|| TT->GetActualCost(pThis) > pThis->Available_Money())
 		{
 			continue;

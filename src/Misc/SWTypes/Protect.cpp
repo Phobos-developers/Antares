@@ -33,8 +33,10 @@ SWRange SW_Protect::GetRange(const SWTypeExt::ExtData* pData) const
 	}
 }
 
-void SW_Protect::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_Protect::Initialize(SWTypeExt::ExtData *pData)
 {
+	auto pSW = pData->OwnerObject();
+
 	auto type = pSW->Type;
 
 	// iron curtain and force shield, as well as protect
@@ -53,20 +55,22 @@ void SW_Protect::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW
 		pData->SW_RequiresHouse = SuperWeaponAffectedHouse::Team;
 		pData->SW_RequiresTarget = SuperWeaponTarget::Building;
 
-		pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::ForceShield);
-		pData->SW_NoCursor = MouseCursor::GetCursor(MouseCursorType::NoForceShield);
+		pData->SW_Cursor = MouseCursorType::ForceShield;
+		pData->SW_NoCursor = MouseCursorType::NoForceShield;
 	} else {
 		// iron curtain and protect
 		pData->EVA_Ready = VoxClass::FindIndex("EVA_IronCurtainReady");
 		pData->EVA_Detected = VoxClass::FindIndex("EVA_IronCurtainDetected");
 		pData->EVA_Activated = VoxClass::FindIndex("EVA_IronCurtainActivated");
 
-		pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::IronCurtain);
+		pData->SW_Cursor = MouseCursorType::IronCurtain;
 	}
 }
 
-void SW_Protect::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_Protect::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -79,13 +83,13 @@ void SW_Protect::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pS
 	pData->Protect_PlayFadeSoundTime.Read(exINI, section, "Protect.PlayFadeSoundTime");
 }
 
-bool SW_Protect::CanFireAt(TargetingData const& data, const CellStruct& cell, bool manual) const
+bool SW_Protect::CanFireAt(TargetingData const& data, CellStruct cell, bool manual) const
 {
 	auto ret = NewSWType::CanFireAt(data, cell, manual);
 
 	// if this is a force shield requiring buildings and a building is selected, check the modifier
 	if(ret && manual && data.TypeExt->Protect_IsForceShield && data.TypeExt->SW_RequiresTarget & SuperWeaponTarget::Building) {
-		auto pCell = MapClass::Instance->GetCellAt(cell);
+		auto pCell = MapClass::Instance.GetCellAt(cell);
 		if(auto pBld = pCell->GetBuilding()) {
 			auto pExt = TechnoTypeExt::ExtMap.Find(pBld->GetTechnoType());
 			if(pExt->ForceShield_Modifier <= 0.0) {
@@ -97,13 +101,13 @@ bool SW_Protect::CanFireAt(TargetingData const& data, const CellStruct& cell, bo
 	return ret;
 }
 
-bool SW_Protect::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_Protect::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	SuperWeaponTypeClass *pSW = pThis->Type;
 	SWTypeExt::ExtData *pData = SWTypeExt::ExtMap.Find(pSW);
 
-	if(pThis->IsCharged) {
-		CellClass *pTarget = MapClass::Instance->GetCellAt(Coords);
+	if(pThis->IsReady) {
+		CellClass *pTarget = MapClass::Instance.GetCellAt(Coords);
 		CoordStruct Crd = pTarget->GetCoords();
 
 		bool isForceShield = pData->Protect_IsForceShield;

@@ -4,22 +4,22 @@
 #include <OverlayTypeClass.h>
 
 // removing hardcoded references to GAWALL and NAWALL as part of #709
-DEFINE_HOOK(440709, BuildingClass_Put, 6)
+DEFINE_HOOK(0x440709, BuildingClass_Put, 0x6)
 {
 	GET(CellClass *, Cell, EDI);
 	int idxOverlay = Cell->OverlayTypeIndex;
-	bool Sellable = idxOverlay != -1 && OverlayTypeClass::Array->GetItem(idxOverlay)->Wall;
+	bool Sellable = idxOverlay != -1 && OverlayTypeClass::Array.GetItem(idxOverlay)->Wall;
 	return Sellable ? 0x44071A : 0x440725;
 }
 
-DEFINE_HOOK(480534, CellClass_AttachesToNeighbourOverlay, 5)
+DEFINE_HOOK(0x480534, CellClass_AttachesToNeighbourOverlay, 0x5)
 {
 	GET(int, idxOverlay, EAX);
-	bool Wall = idxOverlay != -1 && OverlayTypeClass::Array->GetItem(idxOverlay)->Wall;
+	bool Wall = idxOverlay != -1 && OverlayTypeClass::Array.GetItem(idxOverlay)->Wall;
 	return Wall ? 0x480549 : 0x480552;
 }
 
-DEFINE_HOOK(47C8AB, CellClass_CanThisExistHere_GateOnWall, 6)
+DEFINE_HOOK(0x47C8AB, CellClass_CanThisExistHere_GateOnWall, 0x6)
 {
 	GET(CellClass *, pCell, EDI);
 	GET(HouseClass *, OverlayOwner, ESI);
@@ -31,7 +31,7 @@ DEFINE_HOOK(47C8AB, CellClass_CanThisExistHere_GateOnWall, 6)
 	enum { Adequate = 0x47CA70, Inadequate = 0x47C94F } Status = Inadequate;
 
 	if(PlacingObject) {
-		bool ContainsWall = idxOverlay != -1 && OverlayTypeClass::Array->GetItem(idxOverlay)->Wall;
+		bool ContainsWall = idxOverlay != -1 && OverlayTypeClass::Array.GetItem(idxOverlay)->Wall;
 
 		if(ContainsWall && PlacingObject->Gate) {
 			Status = Adequate;
@@ -39,7 +39,7 @@ DEFINE_HOOK(47C8AB, CellClass_CanThisExistHere_GateOnWall, 6)
 
 		if(OverlayTypeClass * ToOverlay = PlacingObject->ToOverlay) {
 			if(ToOverlay->ArrayIndex == idxOverlay) {
-				if(pCell->Powerup >= 0x10) {
+				if(pCell->OverlayData >= 0x10) {
 					Status = Adequate;
 				}
 			}
@@ -74,7 +74,7 @@ DEFINE_HOOK(47C8AB, CellClass_CanThisExistHere_GateOnWall, 6)
 	return Status;
 }
 
-DEFINE_HOOK(44E550, BuildingClass_Mi_Open_GateDown, 6)
+DEFINE_HOOK(0x44E550, BuildingClass_Mi_Open_GateDown, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
 	auto pExt = BuildingTypeExt::ExtMap.Find(pThis->Type);
@@ -83,7 +83,7 @@ DEFINE_HOOK(44E550, BuildingClass_Mi_Open_GateDown, 6)
 	return 0x44E556;
 }
 
-DEFINE_HOOK(44E61E, BuildingClass_Mi_Open_GateUp, 6)
+DEFINE_HOOK(0x44E61E, BuildingClass_Mi_Open_GateUp, 0x6)
 {
 	GET(DWORD, offset, ESI);
 	auto pThis = reinterpret_cast<BuildingClass*>(offset - 0x9C);

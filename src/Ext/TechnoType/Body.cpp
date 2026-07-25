@@ -1,5 +1,6 @@
 #include "Body.h"
 #include "../BuildingType/Body.h"
+#include "../House/Body.h"
 #include "../HouseType/Body.h"
 #include "../Side/Body.h"
 #include "../../Enum/Prerequisites.h"
@@ -13,13 +14,42 @@
 #include <VocClass.h>
 #include <WarheadTypeClass.h>
 
-template<> const DWORD Extension<TechnoTypeClass>::Canary = 0x44444444;
 TechnoTypeExt::ExtContainer TechnoTypeExt::ExtMap;
 
 // =============================
 // member funcs
 
-void TechnoTypeExt::ExtData::Initialize() {
+void AbilityFlags::Read(INI_EX &parser, const char* const pSection, const char* const pKey)
+{
+	if(!parser.ReadString(pSection, pKey)) {
+		return;
+	}
+
+	*this = AbilityFlags();
+
+	static const char* const Names[] = {
+		"EMPIMMUNE", "RADIMMUNE", "PROTECTED_DRIVER", "UNWARPABLE",
+		"POISONIMMUNE", "PSIONICSIMMUNE", "PSIONICWEAPONIMMUNE" };
+
+	// An unrecognised name is NOT an error and must not be reported as one.
+	// VeteranAbilities=/EliteAbilities= are the game's own keys, and the game
+	// parses its own ability set (STRONGER, FIREPOWER, SELF_HEAL, FASTER, ...)
+	// out of the very same value; Ares only adds seven names of its own on top.
+	// Shipped ParseAbilities (0x10041260) walks its seven-entry table, lets the
+	// index run past the end for anything it does not know, and silently skips
+	// it -- there is no INIParseFailed call anywhere in it.
+	char* context = nullptr;
+	for(auto cur = strtok_s(parser.value(), Ares::readDelims, &context); cur; cur = strtok_s(nullptr, Ares::readDelims, &context)) {
+		for(auto i = 0u; i < std::size(Names); ++i) {
+			if(!_strcmpi(cur, Names[i])) {
+				this->Flags[i] = true;
+				break;
+			}
+		}
+	}
+}
+
+void TechnoTypeExt::ExtData::Initialize(CCINIClass* pINI) {
 	auto pThis = this->OwnerObject();
 
 	this->PrerequisiteLists.resize(1);
@@ -34,7 +64,13 @@ void TechnoTypeExt::ExtData::Initialize() {
 		this->SmokeAnim = AnimTypeClass::Find("SGRYSMK1");
 	}
 
-	this->EVA_UnitLost = VoxClass::FindIndex("EVA_UnitLost");
+	if(pThis->WhatAmI() != BuildingTypeClass::AbsID) {
+		this->EVA_UnitLost = VoxClass::FindIndex("EVA_UnitLost");
+	}
+
+	auto const promoted = VoxClass::FindIndex("EVA_UnitPromoted");
+	this->EVA_VeteranPromoted = promoted;
+	this->EVA_ElitePromoted = promoted;
 }
 
 /*
@@ -86,20 +122,16 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	INI_EX exINI(pINI);
 
 	// survivors
-	this->Survivors_Pilots.Reserve(SideClass::Array->Count);
-	for(int i=this->Survivors_Pilots.Count; i<SideClass::Array->Count; ++i) {
-		this->Survivors_Pilots[i] = nullptr;
-	}
-	this->Survivors_Pilots.Count = SideClass::Array->Count;
+	this->Survivors_Pilots.resize(SideClass::Array.Count, nullptr);
 
-	this->Survivors_PilotCount = pINI->ReadInteger(section, "Survivor.Pilots", this->Survivors_PilotCount);
+	this->Survivors_PilotCount.Read(exINI, section, "Survivor.Pilots");
 
 	this->Survivors_PilotChance.Read(exINI, section, "Survivor.%sPilotChance");
 	this->Survivors_PassengerChance.Read(exINI, section, "Survivor.%sPassengerChance");
 
 	char flag[256];
-	for(int i = 0; i < SideClass::Array->Count; ++i) {
-		_snprintf_s(flag, 255, "Survivor.Side%d", i);
+	for(int i = 0; i < SideClass::Array.Count; ++i) {
+		_snprintf_s(flag, 255, "Survivor.Side%u", i);
 		if(pINI->ReadString(section, flag, "", Ares::readBuffer)) {
 			if((this->Survivors_Pilots[i] = InfantryTypeClass::Find(Ares::readBuffer)) == nullptr) {
 				if(!INIClass::IsBlank(Ares::readBuffer)) {
@@ -171,7 +203,7 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->Spot_DisableR = pINI->ReadBool(section, "Spotlight.DisableRed", this->Spot_DisableR);
 	this->Spot_DisableG = pINI->ReadBool(section, "Spotlight.DisableGreen", this->Spot_DisableG);
 	this->Spot_DisableB = pINI->ReadBool(section, "Spotlight.DisableBlue", this->Spot_DisableB);
-	this->Spot_Reverse = pINI->ReadBool(section, "Spotlight.IsInverted", this->Spot_Reverse);
+	this->Spot_DisableColor = pINI->ReadBool(section, "Spotlight.DisableColor", this->Spot_DisableColor);
 
 	this->Is_Bomb = pINI->ReadBool(section, "IsBomb", this->Is_Bomb);
 
@@ -183,24 +215,23 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 */
 
 	this->Insignia.Read(exINI, section, "Insignia.%s");
+	this->InsigniaFrame.Read(exINI, section, "InsigniaFrame.%s");
 	this->Parachute_Anim.Read(exINI, section, "Parachute.Anim");
 
 	// new on 08.11.09 for #342 (Operator=)
 	if(pINI->ReadString(section, "Operator", "", Ares::readBuffer)) { // try to read the flag
 		this->IsAPromiscuousWhoreAndLetsAnyoneRideIt = (strcmp(Ares::readBuffer, "_ANY_") == 0); // set whether this type accepts all operators
-		if(!this->IsAPromiscuousWhoreAndLetsAnyoneRideIt) { // if not, find the specific operator it allows
-			if(auto const pOperator = InfantryTypeClass::Find(Ares::readBuffer)) {
-				this->Operator = pOperator;
-			} else if(!INIClass::IsBlank(Ares::readBuffer)) {
-				Debug::INIParseFailed(section, "Operator", Ares::readBuffer);
-			}
+		if(this->IsAPromiscuousWhoreAndLetsAnyoneRideIt) {
+			this->Operator.clear();
+		} else { // if not, find the specific operators it allows
+			this->Operator.Read(exINI, section, "Operator");
 		}
 	}
 
 	this->InitialPayload_Types.Read(exINI, section, "InitialPayload.Types");
 	this->InitialPayload_Nums.Read(exINI, section, "InitialPayload.Nums");
 
-	this->CameoPal.LoadFromINI(CCINIClass::INI_Art, pThis->ImageFile, "CameoPalette");
+	this->CameoPal.LoadFromINI(&CCINIClass::INI_Art, pThis->ImageFile, "CameoPalette");
 
 	if(pINI->ReadString(section, "Prerequisite.StolenTechs", "", Ares::readBuffer)) {
 		this->RequiredStolenTech.reset();
@@ -215,6 +246,9 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 			}
 		}
 	}
+
+	this->VeteranAbilities.Read(exINI, section, "VeteranAbilities");
+	this->EliteAbilities.Read(exINI, section, "EliteAbilities");
 
 	this->ImmuneToEMP.Read(exINI, section, "ImmuneToEMP");
 	this->EMP_Modifier.Read(exINI, section, "EMP.Modifier");
@@ -232,29 +266,11 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 		}
 	}
 
-	if(pINI->ReadString(section, "VeteranAbilities", "", Ares::readBuffer)) {
-		char* context = nullptr;
-		for(char *cur = strtok_s(Ares::readBuffer, ",", &context); cur; cur = strtok_s(nullptr, ",", &context)) {
-			if(!_strcmpi(cur, "empimmune")) {
-				this->VeteranAbilityEMPIMMUNE = true;
-				this->EliteAbilityEMPIMMUNE = true;
-			}
-		}
-	}
-
-	if(pINI->ReadString(section, "EliteAbilities", "", Ares::readBuffer)) {
-		char* context = nullptr;
-		for(char *cur = strtok_s(Ares::readBuffer, ",", &context); cur; cur = strtok_s(nullptr, ",", &context)) {
-			if(!_strcmpi(cur, "empimmune")) {
-				this->EliteAbilityEMPIMMUNE = true;
-			}
-		}
-	}
-
 	// #733
 	this->ProtectedDriver.Read(exINI, section, "ProtectedDriver");
 	this->ProtectedDriver_MinHealth.Read(exINI, section, "ProtectedDriver.MinHealth");
 	this->CanDrive.Read(exINI, section, "CanDrive");
+	this->CanBeDriven.Read(exINI, section, "CanBeDriven");
 
 	// #346, #464, #970, #1014
 	this->PassengersGainExperience.Read(exINI, section, "Experience.PromotePassengers");
@@ -286,11 +302,13 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	this->Chronoshift_Allow.Read(exINI, section, "Chronoshift.Allow");
 	this->Chronoshift_IsVehicle.Read(exINI, section, "Chronoshift.IsVehicle");
+	this->Chronoshift_Crushable.Read(exINI, section, "Chronoshift.Crushable");
 
-	this->CameoPCX.Read(CCINIClass::INI_Art, pThis->ImageFile, "CameoPCX");
-	this->AltCameoPCX.Read(CCINIClass::INI_Art, pThis->ImageFile, "AltCameoPCX");
+	this->CameoPCX.Read(&CCINIClass::INI_Art, pThis->ImageFile, "CameoPCX");
+	this->AltCameoPCX.Read(&CCINIClass::INI_Art, pThis->ImageFile, "AltCameoPCX");
 
 	this->CanBeReversed.Read(exINI, section, "CanBeReversed");
+	this->ReversedAs.Read(exINI, section, "ReversedAs");
 
 	// #305
 	this->RadarJamRadius.Read(exINI, section, "RadarJamRadius");
@@ -309,6 +327,7 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->Cloneable.Read(exINI, section, "Cloneable");
 
 	this->ClonedAt.Read(exINI, section, "ClonedAt");
+	this->ClonedAs.Read(exINI, section, "ClonedAs");
 
 	this->CarryallAllowed.Read(exINI, section, "Carryall.Allowed");
 	this->CarryallSizeLimit.Read(exINI, section, "Carryall.SizeLimit");
@@ -319,6 +338,8 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->FactoryOwners.Read(exINI, section, "FactoryOwners");
 	this->ForbiddenFactoryOwners.Read(exINI, section, "FactoryOwners.Forbidden");
 	this->FactoryOwners_HaveAllPlans.Read(exINI, section, "FactoryOwners.HaveAllPlans");
+	this->FactoryOwners_HaveAllPlans.Read(exINI, section, "FactoryOwners.Permanent");
+	this->FactoryOwners_HasAllPlans.Read(exINI, section, "FactoryOwners.HasAllPlans");
 
 	// issue #896235: cyclic gattling
 	this->GattlingCyclic.Read(exINI, section, "Gattling.Cycle");
@@ -400,6 +421,7 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	// berserking options
 	this->BerserkROFMultiplier.Read(exINI, section, "Berserk.ROFMultiplier");
+	this->ImmuneToBerserk.Read(exINI, section, "ImmuneToBerserk");
 
 	// super weapon
 	this->DesignatorRange.Read(exINI, section, "DesignatorRange");
@@ -413,10 +435,12 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->CrushDamage.Read(exINI, section, "CrushDamage.%s");
 	this->CrushDamageWarhead.Read(exINI, section, "CrushDamage.Warhead");
 
-	//this->ReloadRate.Read(exINI, section, "ReloadRate");
-
-	//this->ReloadAmount.Read(exINI, section, "ReloadAmount");
-	//this->EmptyReloadAmount.Read(exINI, section, "EmptyReloadAmount");
+	// reloading
+	this->ReloadRate.Read(exINI, section, "ReloadRate");
+	this->ReloadAmount.Read(exINI, section, "ReloadAmount");
+	this->EmptyReloadAmount.Read(exINI, section, "EmptyReloadAmount");
+	this->NoAmmoAmount.Read(exINI, section, "NoAmmoAmount");
+	this->NoAmmoWeapon.Read(exINI, section, "NoAmmoWeapon");
 
 	this->Saboteur.Read(exINI, section, "Saboteur");
 
@@ -425,19 +449,96 @@ void TechnoTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->CanPassiveAcquire_Cloak.Read(exINI, section, "CanPassiveAquire.Cloak");
 
 	// self healing
-	//this->SelfHealing_Rate.Read(exINI, section, "SelfHealing.Rate");
-	//this->SelfHealing_Amount.Read(exINI, section, "SelfHealing.%sAmount");
-	//this->SelfHealing_Max.Read(exINI, section, "SelfHealing.%sMax");
+	this->SelfHealing_Rate.Read(exINI, section, "SelfHealing.Rate");
+	this->SelfHealing_Amount.Read(exINI, section, "SelfHealing.%sAmount");
+	this->SelfHealing_Max.Read(exINI, section, "SelfHealing.%sMax");
+	this->SelfHealing_CombatDelay.Read(exINI, section, "SelfHealing.CombatDelay");
 
 	this->PassengersWhitelist.Read(exINI, section, "Passengers.Allowed");
 	this->PassengersBlacklist.Read(exINI, section, "Passengers.Disallowed");
+	this->Passengers_BySize.Read(exINI, section, "Passengers.BySize");
 
 	this->NoManualUnload.Read(exINI, section, "NoManualUnload");
 	this->NoManualFire.Read(exINI, section, "NoManualFire");
-	//this->NoManualEnter.Read(exINI, section, "NoManualEnter");
+	this->NoManualEnter.Read(exINI, section, "NoManualEnter");
+	this->NoSelfGuardArea.Read(exINI, section, "NoSelfGuardArea");
 
-	// quick fix - remove after the rest of weapon selector code is done
-	return;
+	this->EnemyUIName.Read(exINI, section, "EnemyUIName");
+
+	// bounty
+	this->Bounty_Value.Read(exINI, section, "Bounty.%sValue");
+	this->Bounty.Read(exINI, section, "Bounty");
+	this->Bounty_Display.Read(exINI, section, "Bounty.Display");
+
+	// promotion
+	this->Promote_IncludePassengers.Read(exINI, section, "Promote.IncludePassengers");
+	this->Promote_VeteranSound.Read(exINI, section, "Promote.VeteranSound");
+	this->Promote_EliteSound.Read(exINI, section, "Promote.EliteSound");
+	this->Promote_VeteranFlash.Read(exINI, section, "Promote.VeteranFlash");
+	this->Promote_EliteFlash.Read(exINI, section, "Promote.EliteFlash");
+	this->EVA_VeteranPromoted.Read(exINI, section, "EVA.VeteranPromoted");
+	this->EVA_ElitePromoted.Read(exINI, section, "EVA.ElitePromoted");
+	this->Promote_VeteranType.Read(exINI, section, "Promote.VeteranType");
+	this->Promote_EliteType.Read(exINI, section, "Promote.EliteType");
+	this->Promote_VeteranExperience.Read(exINI, section, "Promote.VeteranExperience");
+	this->Promote_EliteExperience.Read(exINI, section, "Promote.EliteExperience");
+
+	this->FactoryPlant_Multiplier.Read(exINI, section, "FactoryPlant.Multiplier");
+
+	// digging in and out
+	this->DigInSound.Read(exINI, section, "DigInSound");
+	this->DigOutSound.Read(exINI, section, "DigOutSound");
+	this->DigInAnim.Read(exINI, section, "DigIn");
+	this->DigOutAnim.Read(exINI, section, "DigOut");
+
+	// falling
+	this->FallRate_Parachute.Read(exINI, section, "FallRate.Parachute");
+	this->FallRate_NoParachute.Read(exINI, section, "FallRate.NoParachute");
+	this->FallRate_ParachuteMax.Read(exINI, section, "FallRate.ParachuteMax");
+	this->FallRate_NoParachuteMax.Read(exINI, section, "FallRate.NoParachuteMax");
+
+	this->TurretROT.Read(exINI, section, "TurretROT");
+
+	// cursors
+	this->Cursor_Deploy.Read(exINI, section, "Cursor.Deploy");
+	this->Cursor_NoDeploy.Read(exINI, section, "Cursor.NoDeploy");
+	this->Cursor_Enter.Read(exINI, section, "Cursor.Enter");
+	this->Cursor_NoEnter.Read(exINI, section, "Cursor.NoEnter");
+	this->Cursor_Move.Read(exINI, section, "Cursor.Move");
+	this->Cursor_NoMove.Read(exINI, section, "Cursor.NoMove");
+
+	// build time
+	this->BuildTime_Speed.Read(exINI, section, "BuildTime.Speed");
+	this->BuildTime_Cost.Read(exINI, section, "BuildTime.Cost");
+	this->BuildTime_LowPowerPenalty.Read(exINI, section, "BuildTime.LowPowerPenalty");
+	this->BuildTime_MinLowPower.Read(exINI, section, "BuildTime.MinLowPower");
+	this->BuildTime_MaxLowPower.Read(exINI, section, "BuildTime.MaxLowPower");
+	this->BuildTime_MultipleFactory.Read(exINI, section, "BuildTime.MultipleFactory");
+
+	this->FakeOf.Read(exINI, section, "FakeOf");
+
+	this->DeployDir.Read(exINI, section, "DeployDir");
+
+	// type conversion
+	this->Convert_Deploy.Read(exINI, section, "Convert.Deploy");
+	this->Convert_Water.Read(exINI, section, "Convert.Water");
+	this->Convert_Land.Read(exINI, section, "Convert.Land");
+	this->Convert_Script.Read(exINI, section, "Convert.Script");
+
+	// harvesting
+	this->Harvester_LongScan.Read(exINI, section, "Harvester.LongScan");
+	this->Harvester_ShortScan.Read(exINI, section, "Harvester.ShortScan");
+	this->Harvester_ScanCorrection.Read(exINI, section, "Harvester.ScanCorrection");
+	this->Harvester_TooFarDistance.Read(exINI, section, "Harvester.TooFarDistance");
+	this->Harvester_KickDelay.Read(exINI, section, "Harvester.KickDelay");
+
+	this->Unsellable.Read(exINI, section, "Unsellable");
+	this->KeepAlive.Read(exINI, section, "KeepAlive");
+
+	this->RadialIndicatorRadius.Read(exINI, section, "RadialIndicatorRadius");
+
+	this->GapRadiusInCells.Read(exINI, section, "GapRadiusInCells");
+	this->SuperGapRadiusInCells.Read(exINI, section, "SuperGapRadiusInCells");
 }
 
 /*
@@ -504,7 +605,7 @@ void TechnoTypeClassExt::ReadWeapon(WeaponStruct *pWeapon, const char *prefix, c
 		pWeapon->WeaponType = WeaponTypeClass::FindOrAllocate(buffer);
 	}
 
-	CCINIClass *pArtINI = CCINIClass::INI_Art;
+	CCINIClass *pArtINI = &CCINIClass::INI_Art;
 
 	CoordStruct FLH;
 	// (Elite?)(Primary|Secondary)FireFLH - FIRE suffix
@@ -567,18 +668,30 @@ bool TechnoTypeExt::ExtData::CameoIsElite(HouseClass const* const pHouse) const
 		} else {
 			return pCountry->VeteranInfantry.FindItemIndex(static_cast<InfantryTypeClass*>(pType)) != -1;
 		}
+	// The cameo has to agree with what Init actually grants, otherwise the veteran
+	// chevron shows on units that will not start veteran. Naval vehicles are a
+	// strict partition: WarFactoryInfiltrated is Naval=no only, NavalYardInfiltrated
+	// is Naval=yes only. Aircraft and buildings have no Naval test at all.
 	case AbstractType::UnitType:
-		if(pHouse->WarFactoryInfiltrated && !pType->Naval && pType->Trainable) {
-			return true;
-		} else {
-			return pCountry->VeteranUnits.FindItemIndex(static_cast<UnitTypeClass*>(pType)) != -1;
+		if(pType->Trainable) {
+			auto const pHouseExt = HouseExt::ExtMap.Find(pHouse);
+			if(pType->Naval ? pHouseExt->NavalYardInfiltrated : pHouse->WarFactoryInfiltrated) {
+				return true;
+			}
 		}
+		return pCountry->VeteranUnits.FindItemIndex(static_cast<UnitTypeClass*>(pType)) != -1;
 	case AbstractType::AircraftType:
+		if(pType->Trainable && HouseExt::ExtMap.Find(pHouse)->AircraftFactoryInfiltrated) {
+			return true;
+		}
 		return pCountry->VeteranAircraft.FindItemIndex(static_cast<AircraftTypeClass*>(pType)) != -1;
 	case AbstractType::BuildingType:
 		if(auto const pItem = pType->UndeploysInto) {
 			return pCountry->VeteranUnits.FindItemIndex(static_cast<UnitTypeClass*>(pItem)) != -1;
 		} else {
+			if(pType->Trainable && HouseExt::ExtMap.Find(pHouse)->BuildingInfiltrated) {
+				return true;
+			}
 			auto const pData = HouseTypeExt::ExtMap.Find(pCountry);
 			return pData->VeteranBuildings.Contains(static_cast<BuildingTypeClass*>(pType));
 		}
@@ -634,6 +747,178 @@ bool TechnoTypeExt::ExtData::IsGenericPrerequisite() const
 	return this->GenericPrerequisite;
 }
 
+// veteran abilities are kept once elite, so an elite unit has both sets
+bool TechnoTypeExt::ExtData::HasAbility(AresAbility const ability, VeterancyStruct const& veterancy) const
+{
+	if(veterancy.IsElite()) {
+		return this->VeteranAbilities[ability] || this->EliteAbilities[ability];
+	}
+
+	return veterancy.IsVeteran() && this->VeteranAbilities[ability];
+}
+
+// the weapon and turret slots the game has no room for live in the ext vectors,
+// so every accessor has to pick the array based on the index
+WeaponStruct* TechnoTypeExt::ExtData::GetWeapon(int const index, bool const elite)
+{
+	auto const pThis = this->OwnerObject();
+
+	if(index < TechnoTypeClass::MaxWeapons) {
+		return elite ? &pThis->EliteWeapon[index] : &pThis->Weapon[index];
+	}
+
+	auto& weapons = elite ? this->EliteWeapons : this->Weapons;
+	return &weapons.data()[index - TechnoTypeClass::MaxWeapons];
+}
+
+int* TechnoTypeExt::ExtData::GetWeaponTurretIndex(int const index)
+{
+	if(index < TechnoTypeClass::MaxWeapons) {
+		return &this->OwnerObject()->TurretWeapon[index];
+	}
+
+	return &this->WeaponTurretIndex.data()[index - TechnoTypeClass::MaxWeapons];
+}
+
+VoxelStruct* TechnoTypeExt::ExtData::GetTurretVoxel(int const index)
+{
+	if(index < TechnoTypeClass::MaxWeapons) {
+		return &this->OwnerObject()->ChargerTurrets[index];
+	}
+
+	return &this->Turrets.data()[index - TechnoTypeClass::MaxWeapons];
+}
+
+VoxelStruct* TechnoTypeExt::ExtData::GetBarrelVoxel(int const index)
+{
+	if(index < TechnoTypeClass::MaxWeapons) {
+		return &this->OwnerObject()->ChargerBarrels[index];
+	}
+
+	return &this->Barrels.data()[index - TechnoTypeClass::MaxWeapons];
+}
+
+void TechnoTypeExt::ExtData::ReadWeapons(CCINIClass* pINI)
+{
+	auto const pThis = this->OwnerObject();
+
+	auto const overflow = static_cast<size_t>(
+		std::max(0, pThis->WeaponCount - TechnoTypeClass::MaxWeapons));
+
+	this->Weapons.resize(overflow);
+	this->EliteWeapons.resize(overflow);
+	this->WeaponTurretIndex.resize(overflow, -1);
+	this->WeaponUINames.resize(overflow);
+
+	INI_EX exINI(pINI);
+	INI_EX exArt(&CCINIClass::INI_Art);
+
+	auto const section = pThis->ID;
+	auto const image = pThis->ImageFile;
+
+	char flag[0x40];
+
+	for(auto i = 0; i < pThis->WeaponCount; ++i) {
+		auto const pWeapon = this->GetWeapon(i, false);
+		auto const pElite = this->GetWeapon(i, true);
+
+		// the elite key contains the ordinary one after the "Elite" prefix
+		auto const length = _snprintf_s(flag, _TRUNCATE, "EliteWeapon%u", i + 1);
+		auto const pSuffix = &flag[length];
+		auto const cchSuffix = sizeof(flag) - length;
+		auto const pPlain = &flag[5];
+
+		detail::read(pWeapon->WeaponType, exINI, section, pPlain, true);
+		detail::read(pElite->WeaponType, exINI, section, flag, true);
+
+		_snprintf_s(pSuffix, cchSuffix, _TRUNCATE, "FLH");
+		detail::read(pWeapon->FLH, exArt, image, pPlain);
+		pElite->FLH = pWeapon->FLH;
+		detail::read(pElite->FLH, exArt, image, flag);
+
+		_snprintf_s(pSuffix, cchSuffix, _TRUNCATE, "BarrelLength");
+		detail::read(pWeapon->BarrelLength, exArt, image, pPlain);
+		pElite->BarrelLength = pWeapon->BarrelLength;
+		detail::read(pElite->BarrelLength, exArt, image, flag);
+
+		_snprintf_s(pSuffix, cchSuffix, _TRUNCATE, "BarrelThickness");
+		detail::read(pWeapon->BarrelThickness, exArt, image, pPlain);
+		pElite->BarrelThickness = pWeapon->BarrelThickness;
+		detail::read(pElite->BarrelThickness, exArt, image, flag);
+
+		_snprintf_s(pSuffix, cchSuffix, _TRUNCATE, "TurretLocked");
+		detail::read(pWeapon->TurretLocked, exArt, image, pPlain);
+		pElite->TurretLocked = pWeapon->TurretLocked;
+		detail::read(pElite->TurretLocked, exArt, image, flag);
+	}
+}
+
+void TechnoTypeExt::ExtData::LoadTurrets(CCINIClass* pINI)
+{
+	static const char* const TurretNames[] = {
+		"Normal", "Repair", "MachineGun", "Flak", "Pistol", "Sniper", "Shock",
+		"Explode", "BrainBlast", "RadCannon", "Chrono", "TerroristExplode",
+		"Cow", "Initiate", "Virus", "YuriPrime", "Guardian" };
+
+	auto const pThis = this->OwnerObject();
+
+	auto const count = std::max(0, pThis->WeaponCount);
+	auto const overflow = static_cast<size_t>(
+		std::max(0, pThis->WeaponCount - TechnoTypeClass::MaxWeapons));
+
+	this->WeaponTurretIndex.resize(overflow, -1);
+	this->WeaponUINames.resize(static_cast<size_t>(count));
+
+	INI_EX exINI(pINI);
+	auto const section = pThis->ID;
+
+	char flag[0x20];
+
+	for(auto i = 0u; i < std::size(TurretNames); ++i) {
+		auto const pName = TurretNames[i];
+
+		_snprintf_s(flag, _TRUNCATE, "%sTurretWeapon", pName);
+		auto weapon = -1;
+		detail::read(weapon, exINI, section, flag);
+
+		if(weapon >= 0) {
+			_snprintf_s(flag, _TRUNCATE, "%sTurretIndex", pName);
+			auto turret = (i < 4) ? static_cast<int>(i) : 0;
+			detail::read(turret, exINI, section, flag);
+
+			if(turret >= 0) {
+				*this->GetWeaponTurretIndex(weapon) = turret;
+			}
+		}
+	}
+
+	for(auto i = 0; i < count; ++i) {
+		_snprintf_s(flag, _TRUNCATE, "WeaponTurretIndex%u", i + 1);
+
+		Nullable<int> index;
+		index.Read(exINI, section, flag);
+
+		auto const pTurret = this->GetWeaponTurretIndex(i);
+		auto value = *pTurret;
+
+		if(index.isset() && index.Get() >= 0) {
+			value = index.Get();
+			*pTurret = value;
+		}
+
+		if(value < 0 || value >= pThis->TurretCount) {
+			Debug::Log(Debug::Severity::Warning,
+				"Weapon %d on [%s] has an invalid turret index of %d.\n",
+				i + 1, section, value);
+		}
+	}
+
+	for(auto i = 0; i < count; ++i) {
+		_snprintf_s(flag, _TRUNCATE, "WeaponUIName%u", i + 1);
+		detail::read(this->WeaponUINames[i], exINI, section, flag);
+	}
+}
+
 // =============================
 // load / save
 
@@ -662,22 +947,25 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->Spot_DisableR)
 		.Process(this->Spot_DisableG)
 		.Process(this->Spot_DisableB)
-		.Process(this->Spot_Reverse)
+		.Process(this->Spot_DisableColor)
 		.Process(this->Is_Bomb)
-		//.Process(this->Weapons)
-		//.Process(this->EliteWeapons)
+		.Process(this->Weapons)
+		.Process(this->EliteWeapons)
+		.Process(this->WeaponTurretIndex)
+		.Process(this->WeaponUINames)
 		.Process(this->Insignia)
+		.Process(this->InsigniaFrame)
 		.Process(this->Insignia_ShowEnemy)
 		.Process(this->Parachute_Anim)
 		.Process(this->Operator)
 		.Process(this->IsAPromiscuousWhoreAndLetsAnyoneRideIt)
-		.Process(this->CameoPal)
 		.Process(this->InitialPayload_Types)
 		.Process(this->InitialPayload_Nums)
+		.Process(this->CameoPal)
 		.Process(this->RequiredStolenTech)
+		.Process(this->VeteranAbilities)
+		.Process(this->EliteAbilities)
 		.Process(this->ImmuneToEMP)
-		.Process(this->VeteranAbilityEMPIMMUNE)
-		.Process(this->EliteAbilityEMPIMMUNE)
 		.Process(this->EMP_Threshold)
 		.Process(this->EMP_Modifier)
 		.Process(this->EMP_Sparkles)
@@ -685,9 +973,11 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->ForceShield_Modifier)
 		.Process(this->Chronoshift_Allow)
 		.Process(this->Chronoshift_IsVehicle)
+		.Process(this->Chronoshift_Crushable)
 		.Process(this->ProtectedDriver)
 		.Process(this->ProtectedDriver_MinHealth)
 		.Process(this->CanDrive)
+		.Process(this->CanBeDriven)
 		.Process(this->AlternateTheaterArt)
 		.Process(this->PassengersGainExperience)
 		.Process(this->ExperienceFromPassengers)
@@ -718,8 +1008,8 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->CameoPCX)
 		.Process(this->AltCameoPCX)
 		.Process(this->GroupAs)
-		.Process(this->ReversedByHouses)
 		.Process(this->CanBeReversed)
+		.Process(this->ReversedAs)
 		.Process(this->RadarJamRadius)
 		.Process(this->PassengerTurret)
 		.Process(this->PoweredBy)
@@ -727,12 +1017,14 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->BuiltAt)
 		.Process(this->Cloneable)
 		.Process(this->ClonedAt)
+		.Process(this->ClonedAs)
 		.Process(this->CarryallAllowed)
 		.Process(this->CarryallSizeLimit)
 		.Process(this->ImmuneToAbduction)
 		.Process(this->FactoryOwners)
 		.Process(this->ForbiddenFactoryOwners)
 		.Process(this->FactoryOwners_HaveAllPlans)
+		.Process(this->FactoryOwners_HasAllPlans)
 		.Process(this->GattlingCyclic)
 		.Process(this->Crashable)
 		.Process(this->CrashSpin)
@@ -770,6 +1062,7 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->ParticleSystems_DamageSmoke)
 		.Process(this->ParticleSystems_DamageSparks)
 		.Process(this->BerserkROFMultiplier)
+		.Process(this->ImmuneToBerserk)
 		.Process(this->AssaulterLevel)
 		.Process(this->OmniCrusher_Aggressive)
 		.Process(this->CrushDamage)
@@ -777,26 +1070,84 @@ void TechnoTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->ReloadRate)
 		.Process(this->ReloadAmount)
 		.Process(this->EmptyReloadAmount)
+		.Process(this->NoAmmoAmount)
+		.Process(this->NoAmmoWeapon)
 		.Process(this->Saboteur)
 		.Process(this->CanPassiveAcquire_Guard)
 		.Process(this->CanPassiveAcquire_Cloak)
 		.Process(this->SelfHealing_Rate)
 		.Process(this->SelfHealing_Amount)
 		.Process(this->SelfHealing_Max)
+		.Process(this->SelfHealing_CombatDelay)
 		.Process(this->PassengersWhitelist)
 		.Process(this->PassengersBlacklist)
+		.Process(this->Passengers_BySize)
 		.Process(this->NoManualUnload)
 		.Process(this->NoManualFire)
-		.Process(this->NoManualEnter);
+		.Process(this->NoManualEnter)
+		.Process(this->NoSelfGuardArea)
+		.Process(this->EnemyUIName)
+		.Process(this->Bounty_Value)
+		.Process(this->Bounty)
+		.Process(this->Bounty_Display)
+		.Process(this->Promote_IncludePassengers)
+		.Process(this->Promote_VeteranSound)
+		.Process(this->Promote_EliteSound)
+		.Process(this->Promote_VeteranFlash)
+		.Process(this->Promote_EliteFlash)
+		.Process(this->EVA_VeteranPromoted)
+		.Process(this->EVA_ElitePromoted)
+		.Process(this->Promote_VeteranType)
+		.Process(this->Promote_EliteType)
+		.Process(this->Promote_VeteranExperience)
+		.Process(this->Promote_EliteExperience)
+		.Process(this->FactoryPlant_Multiplier)
+		.Process(this->DigInSound)
+		.Process(this->DigOutSound)
+		.Process(this->DigInAnim)
+		.Process(this->DigOutAnim)
+		.Process(this->FallRate_Parachute)
+		.Process(this->FallRate_NoParachute)
+		.Process(this->FallRate_ParachuteMax)
+		.Process(this->FallRate_NoParachuteMax)
+		.Process(this->TurretROT)
+		.Process(this->Cursor_Deploy)
+		.Process(this->Cursor_NoDeploy)
+		.Process(this->Cursor_Enter)
+		.Process(this->Cursor_NoEnter)
+		.Process(this->Cursor_Move)
+		.Process(this->Cursor_NoMove)
+		.Process(this->BuildTime_Speed)
+		.Process(this->BuildTime_Cost)
+		.Process(this->BuildTime_LowPowerPenalty)
+		.Process(this->BuildTime_MinLowPower)
+		.Process(this->BuildTime_MaxLowPower)
+		.Process(this->BuildTime_MultipleFactory)
+		.Process(this->FakeOf)
+		.Process(this->DeployDir)
+		.Process(this->Convert_Deploy)
+		.Process(this->Convert_Water)
+		.Process(this->Convert_Land)
+		.Process(this->Convert_Script)
+		.Process(this->Harvester_LongScan)
+		.Process(this->Harvester_ShortScan)
+		.Process(this->Harvester_ScanCorrection)
+		.Process(this->Harvester_TooFarDistance)
+		.Process(this->Harvester_KickDelay)
+		.Process(this->Unsellable)
+		.Process(this->KeepAlive)
+		.Process(this->RadialIndicatorRadius)
+		.Process(this->GapRadiusInCells)
+		.Process(this->SuperGapRadiusInCells);
 }
 
 void TechnoTypeExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<TechnoTypeClass>::LoadFromStream(Stm);
+	Extension<TechnoTypeClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void TechnoTypeExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<TechnoTypeClass>::SaveToStream(Stm);
+	Extension<TechnoTypeClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -811,7 +1162,7 @@ TechnoTypeExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(711835, TechnoTypeClass_CTOR, 5)
+DEFINE_HOOK(0x711835, TechnoTypeClass_CTOR, 0x5)
 {
 	GET(TechnoTypeClass*, pItem, ESI);
 
@@ -819,7 +1170,7 @@ DEFINE_HOOK(711835, TechnoTypeClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(711AE0, TechnoTypeClass_DTOR, 5)
+DEFINE_HOOK(0x711AE0, TechnoTypeClass_DTOR, 0x5)
 {
 	GET(TechnoTypeClass*, pItem, ECX);
 
@@ -827,8 +1178,8 @@ DEFINE_HOOK(711AE0, TechnoTypeClass_DTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(716DC0, TechnoTypeClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(7162F0, TechnoTypeClass_SaveLoad_Prefix, 6)
+DEFINE_HOOK_AGAIN(0x716DC0, TechnoTypeClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x7162F0, TechnoTypeClass_SaveLoad_Prefix, 0x6)
 {
 	GET_STACK(TechnoTypeClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -838,20 +1189,20 @@ DEFINE_HOOK(7162F0, TechnoTypeClass_SaveLoad_Prefix, 6)
 	return 0;
 }
 
-DEFINE_HOOK(716DAC, TechnoTypeClass_Load_Suffix, A)
+DEFINE_HOOK(0x716DAC, TechnoTypeClass_Load_Suffix, 0xA)
 {
 	TechnoTypeExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(717094, TechnoTypeClass_Save_Suffix, 5)
+DEFINE_HOOK(0x717094, TechnoTypeClass_Save_Suffix, 0x5)
 {
 	TechnoTypeExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(716132, TechnoTypeClass_LoadFromINI, 5)
-DEFINE_HOOK(716123, TechnoTypeClass_LoadFromINI, 5)
+DEFINE_HOOK_AGAIN(0x716132, TechnoTypeClass_LoadFromINI, 0x5)
+DEFINE_HOOK(0x716123, TechnoTypeClass_LoadFromINI, 0x5)
 {
 	GET(TechnoTypeClass*, pItem, EBP);
 	GET_STACK(CCINIClass*, pINI, 0x380);
@@ -860,13 +1211,38 @@ DEFINE_HOOK(716123, TechnoTypeClass_LoadFromINI, 5)
 	return 0;
 }
 
-DEFINE_HOOK(679CAF, RulesClass_LoadAfterTypeData_CompleteInitialization, 5) {
+DEFINE_HOOK(0x679CAF, RulesClass_LoadAfterTypeData_CompleteInitialization, 0x5) {
 	//GET(CCINIClass*, pINI, ESI);
 
-	for(auto const& pType : *BuildingTypeClass::Array) {
+	for(auto const& pType : BuildingTypeClass::Array) {
 		auto const pExt = BuildingTypeExt::ExtMap.Find(pType);
 		pExt->CompleteInitialization();
 	}
 
 	return 0;
 }
+
+static_assert(sizeof(TechnoTypeExt::ExtData) == 0x680, "TechnoTypeExt::ExtData must match the 3.0p1 layout");
+
+// The sizeof above cannot discriminate on its own: ExtData is alignas(64), so
+// sizeof is roundup(extent, 64) and a range of extents rounds to the same 0x680.
+// These anchor the layout on real members. A field that changes width shifts
+// everything after it while leaving the serialize order intact, which is the one
+// kind of drift nothing else here would catch.
+static_assert(offsetof(TechnoTypeExt::ExtData, Survivors_Pilots) == 0x008, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, Is_Spotlighted) == 0x077, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, Insignia) == 0x0D4, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, EMP_Sparkles) == 0x148, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, MindControlExperienceVictimModifier) == 0x190, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, CloakSound) == 0x1E8, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, AttachedTechnoEffect) == 0x290, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, AirRate) == 0x328, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, Refinery_UseStorage) == 0x390, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, DamageSparks) == 0x3F0, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, CanPassiveAcquire_Guard) == 0x46D, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, Bounty) == 0x500, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, DigOutSound) == 0x558, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, BuildTime_Cost) == 0x5B8, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, Harvester_KickDelay) == 0x63C, "TechnoTypeExt::ExtData layout slipped");
+static_assert(offsetof(TechnoTypeExt::ExtData, SuperGapRadiusInCells) == 0x654, "TechnoTypeExt::ExtData layout slipped");
+

@@ -7,7 +7,7 @@ MapRevealer::MapRevealer(const CoordStruct& coords) :
 	CellOffset(this->GetOffset(coords, this->Base())),
 	RequiredChecks(RequiresExtraChecks())
 {
-	auto const& Rect = MapClass::Instance->MapRect;
+	auto const& Rect = MapClass::Instance.MapRect;
 	this->MapWidth = Rect.Width;
 	this->MapHeight = Rect.Height;
 
@@ -18,7 +18,7 @@ MapRevealer::MapRevealer(const CoordStruct& coords) :
 }
 
 MapRevealer::MapRevealer(const CellStruct& cell)
-	: MapRevealer(MapClass::Instance->GetCellAt(cell)->GetCoordsWithBridge())
+	: MapRevealer(MapClass::Instance.GetCellAt(cell)->GetCoordsWithBridge())
 { }
 
 template <typename T>
@@ -41,7 +41,7 @@ void MapRevealer::RevealImpl(const CoordStruct& coords, int const radius, HouseC
 			if(this->IsCellAvailable(cell)) {
 				if(std::abs(offset.X) <= static_cast<int>(spread) && offset.MagnitudeSquared() < spread_limit_sqr) {
 					if(!checkLevel || this->CheckLevel(offset, level)) {
-						auto pCell = MapClass::Instance->GetCellAt(cell);
+						auto pCell = MapClass::Instance.GetCellAt(cell);
 						func(pCell);
 					}
 				}
@@ -72,11 +72,11 @@ void MapRevealer::UpdateShroud(size_t start, size_t radius, bool fog) const {
 			auto const& offset = *it;
 			auto const cell = base + offset;
 
-			auto const pCell = MapClass::Instance->GetCellAt(cell);
+			auto const pCell = MapClass::Instance.GetCellAt(cell);
 
 			auto shroudedness = TacticalClass::Instance->GetOcclusion(cell, false);
-			if(pCell->Shroudedness != shroudedness) {
-				pCell->Shroudedness = static_cast<char>(shroudedness);
+			if(pCell->Visibility != shroudedness) {
+				pCell->Visibility = static_cast<char>(shroudedness);
 				pCell->VisibilityChanged = true;
 				TacticalClass::Instance->RegisterCellAsVisible(pCell);
 			}
@@ -85,18 +85,18 @@ void MapRevealer::UpdateShroud(size_t start, size_t radius, bool fog) const {
 }
 
 void MapRevealer::Process0(CellClass* const pCell, bool unknown, bool fog, bool add) const {
-	pCell->Flags &= ~0x40;
+	pCell->Flags &= ~CellFlags::IsPlot;
 
 	if(this->IsCellAllowed(pCell->MapCoords)) {
 		if(fog) {
-			if((pCell->Flags & 3) != 3 && pCell->CopyFlags & cf2_NoShadow) {
-				MouseClass::Instance->vt_entry_98(pCell->MapCoords, HouseClass::Player);
+			if((pCell->Flags & (CellFlags::CenterRevealed | CellFlags::EdgeRevealed)) != (CellFlags::CenterRevealed | CellFlags::EdgeRevealed) && static_cast<bool>(pCell->AltFlags & AltCellFlags::Mapped)) {
+				MouseClass::Instance.MapCellFoggedness(&pCell->MapCoords, HouseClass::CurrentPlayer);
 			}
 		} else {
-			if((pCell->CopyFlags & 0x18) != 0x18 || (pCell->Flags & 3) != 3) {
+			if((pCell->AltFlags & AltCellFlags::Clear) != AltCellFlags::Clear || (pCell->Flags & (CellFlags::CenterRevealed | CellFlags::EdgeRevealed)) != (CellFlags::CenterRevealed | CellFlags::EdgeRevealed)) {
 				if(!unknown) {
 					if(add) {
-						MouseClass::Instance->vt_entry_94(pCell->MapCoords, HouseClass::Player, false);
+						MouseClass::Instance.RevealFogShroud(&pCell->MapCoords, HouseClass::CurrentPlayer, false);
 					} else {
 						pCell->Unshroud();
 					}
@@ -107,15 +107,15 @@ void MapRevealer::Process0(CellClass* const pCell, bool unknown, bool fog, bool 
 }
 
 void MapRevealer::Process1(CellClass* const pCell, bool fog, bool add) const {
-	pCell->Flags &= ~0x40;
+	pCell->Flags &= ~CellFlags::IsPlot;
 
 	if(fog) {
-		if((pCell->Flags & 3) != 3 && pCell->CopyFlags & cf2_NoShadow) {
-			MouseClass::Instance->vt_entry_98(pCell->MapCoords, HouseClass::Player);
+		if((pCell->Flags & (CellFlags::CenterRevealed | CellFlags::EdgeRevealed)) != (CellFlags::CenterRevealed | CellFlags::EdgeRevealed) && static_cast<bool>(pCell->AltFlags & AltCellFlags::Mapped)) {
+			MouseClass::Instance.MapCellFoggedness(&pCell->MapCoords, HouseClass::CurrentPlayer);
 		}
 	} else {
 		if(this->IsCellAllowed(pCell->MapCoords)) {
-			MouseClass::Instance->vt_entry_94(pCell->MapCoords, HouseClass::Player, add);
+			MouseClass::Instance.RevealFogShroud(&pCell->MapCoords, HouseClass::CurrentPlayer, add);
 		}
 	}
 }

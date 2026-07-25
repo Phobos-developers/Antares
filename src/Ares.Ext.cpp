@@ -9,6 +9,8 @@
 #include "Ext/House/Body.h"
 #include "Ext/HouseType/Body.h"
 #include "Ext/Infantry/Body.h"
+#include "Ext/ParticleSystem/Body.h"
+#include "Ext/ParticleType/Body.h"
 #include "Ext/Rules/Body.h"
 #include "Ext/Side/Body.h"
 #include "Ext/SWType/Body.h"
@@ -21,9 +23,12 @@
 #include "Ext/WeaponType/Body.h"
 
 #include "Enum/ArmorTypes.h"
+#include "Enum/CursorTypes.h"
 #include "Enum/Prerequisites.h"
 #include "Enum/RadTypes.h"
+#include "Enum/TunnelTypes.h"
 
+#include "Misc/FlyingStrings.h"
 #include "Misc/SWTypes.h"
 
 #include <utility>
@@ -193,6 +198,7 @@ private:
 // Add more class names as you like
 auto MassActions = MassAction<
 	AbstractExt, // Ext classes
+	AlphaExt,
 	AnimTypeExt,
 	BuildingExt,
 	BuildingTypeExt,
@@ -201,6 +207,8 @@ auto MassActions = MassAction<
 	HouseExt,
 	HouseTypeExt,
 	InfantryExt,
+	ParticleSystemExt,
+	ParticleTypeExt,
 	RulesExt,
 	SideExt,
 	SWTypeExt,
@@ -212,13 +220,15 @@ auto MassActions = MassAction<
 	WarheadTypeExt,
 	WeaponTypeExt,
 	ArmorType, // enum classes
+	CursorType,
 	GenericPrerequisite,
 	RadType,
+	TunnelTypeClass,
 	NewSWType, // other classes
 	SWStateMachine
 >();
 
-DEFINE_HOOK(7258D0, AnnounceInvalidPointer, 6)
+DEFINE_HOOK(0x7258D0, AnnounceInvalidPointer, 0x6)
 {
 	GET(AbstractClass* const, pInvalid, ECX);
 	GET(bool const, removed, EDX);
@@ -228,7 +238,7 @@ DEFINE_HOOK(7258D0, AnnounceInvalidPointer, 6)
 	return 0;
 }
 
-DEFINE_HOOK(685659, Scenario_ClearClasses, a)
+DEFINE_HOOK(0x685659, Scenario_ClearClasses, 0xa)
 {
 	Ares::Clear();
 	return 0;
@@ -236,6 +246,7 @@ DEFINE_HOOK(685659, Scenario_ClearClasses, a)
 
 void Ares::Clear() {
 	MassActions.Clear();
+	FlyingStrings::Clear();
 }
 
 void Ares::PointerGotInvalid(

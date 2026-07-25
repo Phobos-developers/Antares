@@ -15,6 +15,7 @@
 
 #include <DiscreteDistributionClass.h>
 #include <DiscreteSelectionClass.h>
+#include <EventClass.h>
 
 #pragma region Support
 
@@ -33,28 +34,19 @@ struct TargetingInfo {
 		Super(pSuper),
 		Owner(pSuper->Owner),
 		TypeExt(SWTypeExt::ExtMap.Find(pSuper->Type)),
-		NewType(TypeExt->GetNewSWType())
+		NewType(TypeExt->GetNewSWType()),
+		Data(NewType->GetTargetingData(TypeExt, Owner))
 	{ }
 
-	bool CanFireAt(const CellStruct &cell) const {
-		if(!this->Data) {
-			this->GetData();
-		}
-
-		return this->NewType->CanFireAt(*this->Data, cell, false);
+	bool CanFireAt(CellStruct cell) const {
+		return this->NewType->CanFireAt(this->Data, cell, false);
 	}
 
-private:
-	void GetData() const {
-		this->Data = this->NewType->GetTargetingData(this->TypeExt, this->Owner);
-	}
-
-public:
 	SuperClass* Super;
 	HouseClass* Owner;
 	SWTypeExt::ExtData* TypeExt;
 	NewSWType* NewType;
-	std::unique_ptr<const TargetingData> mutable Data;
+	TargetingData Data;
 };
 
 CellStruct ConvertToCell(const CellStruct& result) {
@@ -70,24 +62,10 @@ CellStruct ConvertToCell(const T& result) {
 	}
 }
 
-// check for blocking things, check preferred, else select something manually
-template<typename CanFire, typename Prefer, typename Selector>
-CellStruct GetTarget(const TargetingInfo& info, CanFire canFire, Prefer prefer, Selector selector) {
-	CellStruct ret = CellStruct::Empty;
-
-	// check whether SW can fire and whether it should do so
-	// on the preferred target
-	if(canFire(info)) {
-		auto const preferred = prefer(info);
-		if(preferred.first) {
-			ret = preferred.second;
-		} else {
-			// delegate finding a target, convert to cell
-			ret = ConvertToCell(selector(info));
-		}
-	}
-
-	return ret;
+// delegate finding a target, convert to cell
+template<typename Selector>
+CellStruct GetTarget(const TargetingInfo& info, Selector selector) {
+	return ConvertToCell(selector(info));
 }
 
 template<typename It, typename Valuator>
@@ -139,65 +117,6 @@ ObjectClass* GetTargetShareAny(It first, It last, Valuator value) {
 
 #pragma endregion
 
-#pragma region CanFire functors
-
-struct CanFireAlways {
-	bool operator()(const TargetingInfo& info) const {
-		// no restriction
-		return true;
-	}
-};
-
-struct CanFireRequiresEnemy {
-	bool operator()(const TargetingInfo& info) const {
-		// if we need an enemy, make sure there is one
-		return info.Owner->EnemyHouseIndex != -1;
-	}
-};
-
-#pragma endregion
-
-#pragma region Prefer functors
-
-struct PreferNothing {
-	std::pair<bool, CellStruct> operator()(const TargetingInfo& info) const {
-		// no preferred target
-		return std::make_pair(false, CellStruct::Empty);
-	}
-};
-
-struct PreferHoldIfOffensive {
-	std::pair<bool, CellStruct> operator()(const TargetingInfo& info) const {
-		// if preferred cell set, don't use it, but don't look further
-		if(info.Owner->PreferredTargetCell != CellStruct::Empty) {
-			return std::make_pair(true, CellStruct::Empty);
-		}
-		return std::make_pair(false, CellStruct::Empty);
-	}
-};
-
-struct PreferOffensive {
-	std::pair<bool, CellStruct> operator()(const TargetingInfo& info) const {
-		// if preferred cell set, use it
-		if(info.Owner->PreferredTargetCell != CellStruct::Empty) {
-			return std::make_pair(true, info.Owner->PreferredTargetCell);
-		}
-		return std::make_pair(false, CellStruct::Empty);
-	}
-};
-
-struct PreferDefensive {
-	std::pair<bool, CellStruct> operator()(const TargetingInfo& info) const {
-		// if preferred cell set, use it
-		if(info.Owner->PreferredDefensiveCell2 != CellStruct::Empty) {
-			return std::make_pair(true, info.Owner->PreferredDefensiveCell2);
-		}
-		return std::make_pair(false, CellStruct::Empty);
-	}
-};
-
-#pragma endregion
-
 #pragma region Target picking functors
 
 struct PickEmptyTarget {
@@ -231,7 +150,7 @@ struct PickIonCannonTarget {
 
 			if(passedFilter && pOwner->IsIonCannonEligibleTarget(pTechno)) {
 				auto const cell = pTechno->GetMapCoords();
-				if(!MapClass::Instance->IsWithinUsableArea(cell, true)) {
+				if(!MapClass::Instance.IsWithinUsableArea(cell, true)) {
 					return -1;
 				}
 
@@ -284,8 +203,8 @@ struct PickPreferredTypeOrIonCannon {
 	CellStruct operator()(const TargetingInfo& info) const {
 		auto pOwner = info.Owner;
 		auto type = pOwner->PreferredTargetType;
-		if(type == TargetType::Anything) {
-			auto const pEnemy = HouseClass::Array->GetItemOrDefault(
+		if(type == QuarryType::Anything) {
+			auto const pEnemy = HouseClass::Array.GetItemOrDefault(
 				info.Owner->EnemyHouseIndex);
 			return PickIonCannonTarget(pEnemy)(info);
 		} else {
@@ -305,34 +224,24 @@ struct TargetSelector {
 
 struct NuclearMissileTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanFireRequiresEnemy(), PreferOffensive(), PickPreferredTypeOrIonCannon()),
+		return{GetTarget(info, PickPreferredTypeOrIonCannon()),
 			SWTargetFlags::DisallowEmpty};
 	}
 };
 
 struct LightningStormTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanAutoFire, PreferOffensive(), PickPreferredTypeOrIonCannon()),
+		return{GetTarget(info, PickPreferredTypeOrIonCannon()),
 			SWTargetFlags::DisallowEmpty};
-	}
-
-private:
-	static bool CanAutoFire(const TargetingInfo& info) {
-		return !LightningStorm::Active && CanFireRequiresEnemy()(info);
 	}
 };
 
 struct PsychicDominatorTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanAutoFire, PreferHoldIfOffensive(), FindTargetItem),
-			SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetItem), SWTargetFlags::DisallowEmpty};
 	}
 
 private:
-	static bool CanAutoFire(const TargetingInfo& info) {
-		return !PsyDom::Active() && CanFireRequiresEnemy()(info);
-	}
-
 	static ObjectClass* FindTargetItem(const TargetingInfo& info) {
 		auto it = info.TypeExt->GetPotentialAITargets();
 		return GetTargetFirstMax(it.begin(), it.end(), [&info](TechnoClass* pTechno, int curMax) {
@@ -344,7 +253,7 @@ private:
 
 			int value = 0;
 			for(size_t i = 0; i < CellSpread::NumCells(3); ++i) {
-				auto pCell = MapClass::Instance->GetCellAt(cell + CellSpread::GetCell(i));
+				auto pCell = MapClass::Instance.GetCellAt(cell + CellSpread::GetCell(i));
 
 				for(NextObject j(pCell->FirstObject); j && abstract_cast<FootClass*>(*j); ++j) {
 					auto pFoot = static_cast<FootClass*>(*j);
@@ -369,8 +278,7 @@ private:
 
 struct GeneticMutatorTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanFireAlways(), PreferHoldIfOffensive(), FindTargetItem),
-			SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetItem), SWTargetFlags::DisallowEmpty};
 	}
 
 private:
@@ -385,7 +293,7 @@ private:
 
 			int value = 0;
 			for(size_t i = 0; i < CellSpread::NumCells(1); ++i) {
-				auto pCell = MapClass::Instance->GetCellAt(cell + CellSpread::GetCell(i));
+				auto pCell = MapClass::Instance.GetCellAt(cell + CellSpread::GetCell(i));
 
 				for(NextObject j(pCell->GetInfantry(pTechno->OnBridge)); j && abstract_cast<InfantryClass*>(*j); ++j) {
 					auto pInf = static_cast<InfantryClass*>(*j);
@@ -410,8 +318,7 @@ private:
 
 struct ParaDropTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanFireAlways(), PreferOffensive(), FindTargetCoords),
-			SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetCoords), SWTargetFlags::DisallowEmpty};
 	}
 
 private:
@@ -421,11 +328,11 @@ private:
 		static const int SpaceSize = 5;
 
 		auto target = CellStruct::Empty;
-		if(pOwner->PreferredTargetType == TargetType::Anything) {
+		if(pOwner->PreferredTargetType == QuarryType::Anything) {
 			// if no enemy yet, reinforce own base
-			auto pTargetPlayer = HouseClass::Array->GetItemOrDefault(pOwner->EnemyHouseIndex, info.Owner);
+			auto pTargetPlayer = HouseClass::Array.GetItemOrDefault(pOwner->EnemyHouseIndex, info.Owner);
 
-			target = MapClass::Instance->Pathfinding_Find(
+			target = MapClass::Instance.NearByLocation(
 				pTargetPlayer->GetBaseCenter(), SpeedType::Foot, -1,
 				MovementZone::Normal, false, SpaceSize, SpaceSize, false,
 				false, false, true, CellStruct::Empty, false, false);
@@ -449,8 +356,7 @@ private:
 
 struct ForceShieldTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanFireAlways(), PreferDefensive(), FindTargetCoords),
-			SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetCoords), SWTargetFlags::DisallowEmpty};
 	}
 
 private:
@@ -493,12 +399,11 @@ struct BaseTargetSelector final : public TargetSelector {
 struct EnemyBaseTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
 		// fire at the owner's enemy base cell
-		return{GetTarget(info, CanFireRequiresEnemy(), PreferNothing(), FindTargetCoords),
-			SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetCoords), SWTargetFlags::DisallowEmpty};
 	}
 
 	static CellStruct FindTargetCoords(const TargetingInfo& info) {
-		if(auto pEnemy = HouseClass::Array->GetItemOrDefault(info.Owner->EnemyHouseIndex)) {
+		if(auto pEnemy = HouseClass::Array.GetItemOrDefault(info.Owner->EnemyHouseIndex)) {
 			auto cell = pEnemy->GetBaseCenter();
 
 			if(info.CanFireAt(cell)) {
@@ -511,15 +416,14 @@ struct EnemyBaseTargetSelector final : public TargetSelector {
 
 struct OffensiveTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		auto const pEnemy = HouseClass::Array->GetItemOrDefault(info.Owner->EnemyHouseIndex);
-		return{GetTarget(info, CanFireRequiresEnemy(), PreferNothing(), PickIonCannonTarget(pEnemy)),
-			SWTargetFlags::DisallowEmpty};
+		auto const pEnemy = HouseClass::Array.GetItemOrDefault(info.Owner->EnemyHouseIndex);
+		return{GetTarget(info, PickIonCannonTarget(pEnemy)), SWTargetFlags::DisallowEmpty};
 	}
 };
 
 struct StealthTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanFireAlways(), PreferNothing(),
+		return{GetTarget(info,
 			PickIonCannonTarget(nullptr, PickIonCannonTarget::CloakHandling::RequireCloaked)),
 			SWTargetFlags::DisallowEmpty};
 	}
@@ -527,8 +431,7 @@ struct StealthTargetSelector final : public TargetSelector {
 
 struct SelfTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanFireAlways(), PreferNothing(), FindTargetCoords),
-			SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetCoords), SWTargetFlags::DisallowEmpty};
 	}
 
 private:
@@ -564,14 +467,13 @@ private:
 struct MultiMissileTargetSelector final : public TargetSelector {
 	// classic TS code: fire at the enemy's most threatening building
 	TargetResult operator()(const TargetingInfo& info) const {
-		return{GetTarget(info, CanFireRequiresEnemy(), PreferOffensive(), FindTargetItem),
-			SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetItem), SWTargetFlags::DisallowEmpty};
 	}
 
 private:
 	static ObjectClass* FindTargetItem(const TargetingInfo& info) {
 		auto pOwner = info.Owner;
-		auto pTargetPlayer = HouseClass::Array->GetItem(pOwner->EnemyHouseIndex);
+		auto pTargetPlayer = HouseClass::Array.GetItem(pOwner->EnemyHouseIndex);
 
 		auto it = info.TypeExt->GetPotentialAITargets(pTargetPlayer);
 		return GetTargetFirstMax(it.begin(), it.end(), [pOwner, &info](TechnoClass* pTechno, int curMax) {
@@ -579,7 +481,7 @@ private:
 
 			auto const value = TechnoExt::IsCloaked(pTechno)
 				? ScenarioClass::Instance->Random.RandomRanged(0, 100)
-				: MapClass::Instance->GetThreatPosed(cell, pOwner);
+				: MapClass::Instance.GetThreatPosed(cell, pOwner);
 
 			if(value <= curMax || !info.CanFireAt(cell)) {
 				return -1;
@@ -590,19 +492,67 @@ private:
 	}
 };
 
-struct HunterSeekerTargetSelector final : public TargetSelector {
-	// from TS: launch at empty coords only if a house has an enemy
+struct DropPodTargetSelector final : public TargetSelector {
 	TargetResult operator()(const TargetingInfo& info) const {
-		auto const hasEnemy = CanFireRequiresEnemy{}(info);
-		return{CellStruct::Empty, hasEnemy ?
-			SWTargetFlags::AllowEmpty : SWTargetFlags::DisallowEmpty};
+		return{GetTarget(info, FindTargetCoords), SWTargetFlags::DisallowEmpty};
+	}
+
+private:
+	static CellStruct FindTargetCoords(const TargetingInfo& info) {
+		auto const zone = ScenarioClass::Instance->Random.RandomRanged(1, 4);
+		auto const origin = info.Owner->PickRandomCellInZone(zone);
+
+		auto const target = MapClass::Instance.NearByLocation(
+			origin, SpeedType::Foot, -1, MovementZone::Normal, false, 1, 1, false,
+			false, false, true, CellStruct::Empty, false, false);
+
+		if(target == CellStruct::Empty || !info.CanFireAt(target)) {
+			return CellStruct::Empty;
+		}
+
+		return target;
+	}
+};
+
+struct LightningRandomTargetSelector final : public TargetSelector {
+	// keep rolling cells until one of them is a valid target
+	TargetResult operator()(const TargetingInfo& info) const {
+		auto const& bounds = MapClass::Instance.MapCoordBounds;
+
+		for(auto i = 0; i < 5; ++i) {
+			auto cell = CellStruct::Empty;
+
+			while(!MapClass::Instance.CoordinatesLegal(cell)) {
+				auto& random = ScenarioClass::Instance->Random;
+				cell.X = static_cast<short>(random.RandomRanged(0, bounds.Right));
+				cell.Y = static_cast<short>(random.RandomRanged(0, bounds.Bottom));
+			}
+
+			if(info.CanFireAt(cell)) {
+				return{cell, SWTargetFlags::AllowEmpty};
+			}
+		}
+
+		return{CellStruct::Empty, SWTargetFlags::DisallowEmpty};
 	}
 };
 
 #pragma endregion
 
-TargetResult PickSuperWeaponTarget(SuperClass* pSuper) {
-	TargetingInfo info(pSuper);
+TargetResult PickSuperWeaponTarget(const TargetingInfo& info) {
+	// the preferred cell overrides whatever the mode would pick
+	switch(info.TypeExt->GetAITargetingPreference()) {
+	case SuperWeaponAITargetingPreference::Offensive:
+		if(info.Owner->PreferredTargetCell != CellStruct::Empty) {
+			return{info.Owner->PreferredTargetCell, SWTargetFlags::AllowEmpty};
+		}
+		break;
+	case SuperWeaponAITargetingPreference::Defensive:
+		if(info.Owner->PreferredDefensiveCell2 != CellStruct::Empty) {
+			return{info.Owner->PreferredDefensiveCell2, SWTargetFlags::AllowEmpty};
+		}
+		break;
+	}
 
 	// all the different AI targeting modes
 	switch(info.TypeExt->SW_AITargetingType) {
@@ -619,6 +569,10 @@ TargetResult PickSuperWeaponTarget(SuperClass* pSuper) {
 	case SuperWeaponAITargetingMode::ForceShield:
 		return ForceShieldTargetSelector()(info);
 	case SuperWeaponAITargetingMode::NoTarget:
+	case SuperWeaponAITargetingMode::HunterSeeker:
+	case SuperWeaponAITargetingMode::Attack:
+	case SuperWeaponAITargetingMode::LowPower:
+	case SuperWeaponAITargetingMode::LowPowerAttack:
 		return NoTargetTargetSelector()(info);
 	case SuperWeaponAITargetingMode::Offensive:
 		return OffensiveTargetSelector()(info);
@@ -630,42 +584,86 @@ TargetResult PickSuperWeaponTarget(SuperClass* pSuper) {
 		return BaseTargetSelector()(info);
 	case SuperWeaponAITargetingMode::MultiMissile:
 		return MultiMissileTargetSelector()(info);
-	case SuperWeaponAITargetingMode::HunterSeeker:
-		return HunterSeekerTargetSelector()(info);
 	case SuperWeaponAITargetingMode::EnemyBase:
 		return EnemyBaseTargetSelector()(info);
+	case SuperWeaponAITargetingMode::DropPod:
+		return DropPodTargetSelector()(info);
+	case SuperWeaponAITargetingMode::LightningRandom:
+		return LightningRandomTargetSelector()(info);
 	case SuperWeaponAITargetingMode::None:
+	case SuperWeaponAITargetingMode::IronCurtain:
 	default:
 		return{CellStruct::Empty, SWTargetFlags::DisallowEmpty};
 	}
 }
 
-DEFINE_HOOK(5098F0, HouseClass_Update_AI_TryFireSW, 5) {
+bool SWTypeExt::TryFire(SuperClass* const pSuper, bool const manual) {
+	auto const pOwner = pSuper->Owner;
+	auto const pType = pSuper->Type;
+	auto const pExt = SWTypeExt::ExtMap.Find(pType);
+
+	// don't try to fire if we obviously haven't enough money
+	if(!pOwner->CanTransactMoney(pExt->Money_Amount)) {
+		return false;
+	}
+
+	if(!pExt->MeetsAITargetingConstraints(pOwner, manual)) {
+		return false;
+	}
+
+	if(pExt->GetNewSWType()) {
+		TargetingInfo info(pSuper);
+
+		auto const result = PickSuperWeaponTarget(info);
+		if(result.Target != CellStruct::Empty || result.Flags == SWTargetFlags::AllowEmpty) {
+			return pOwner->Fire_SW(pType->ArrayIndex, result.Target);
+		}
+	}
+
+	return false;
+}
+
+DEFINE_HOOK(0x5098F0, HouseClass_Update_AI_TryFireSW, 0x5) {
 	GET(HouseClass*, pThis, ECX);
 
 	// this method iterates over every available SW and checks
 	// whether it should be fired automatically. the original
 	// method would abort if this house is human-controlled.
-	bool AIFire = !pThis->ControlledByHuman();
+	bool isHuman = pThis->IsControlledByHuman();
 
 	for(const auto pSuper : pThis->Supers) {
-		auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+		// a draining SW is already active and must not be relaunched
+		if(pSuper->IsReady && pSuper->ChargeDrainState != ChargeDrainState::Draining) {
+			auto pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
 
-		// fire if this is AI owned or the SW has auto fire set.
-		if(pSuper->IsCharged && (AIFire || pExt->SW_AutoFire)) {
-
-			// don't try to fire if we obviously haven't enough money
-			if(!pThis->CanTransactMoney(pExt->Money_Amount)) {
-				continue;
-			}
-
-			auto result = PickSuperWeaponTarget(pSuper);
-			if(result.Target != CellStruct::Empty || result.Flags == SWTargetFlags::AllowEmpty) {
-				int idxSW = pThis->Supers.FindItemIndex(pSuper);
-				pThis->Fire_SW(idxSW, result.Target);
+			// fire if this is AI owned or the SW has auto fire set.
+			if(!isHuman || pExt->SW_AutoFire) {
+				SWTypeExt::TryFire(pSuper, false);
 			}
 		}
 	}
 
 	return 0x509AE7;
+}
+
+// SW.UseAITargeting makes a manually fired SW pick its own target
+DEFINE_HOOK(0x4C78D6, Networking_RespondToEvent_SpecialPlace, 0x8) {
+	GET(EventClass* const, pEvent, ESI);
+	GET(HouseClass* const, pThis, EDI);
+
+	auto const idxSW = pEvent->SpecialPlace.ID;
+	auto const& cell = pEvent->SpecialPlace.Location;
+
+	auto const pSuper = pThis->Supers.GetItem(idxSW);
+	auto const pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
+
+	if(pExt->SW_UseAITargeting) {
+		if(!SWTypeExt::TryFire(pSuper, true) && pThis == HouseClass::CurrentPlayer) {
+			pExt->PrintMessage(pExt->Message_CannotFire, pThis);
+		}
+	} else {
+		pThis->Fire_SW(idxSW, cell);
+	}
+
+	return 0x4C78F8;
 }

@@ -8,13 +8,13 @@
 #include <algorithm>
 
 //Static init
-template<> const DWORD Extension<CampaignClass>::Canary = 0x22441133;
 CampaignExt::ExtContainer CampaignExt::ExtMap;
 
-DynamicVectorClass<CampaignExt::ExtData*> CampaignExt::Array;
+DynamicVectorClass<CampaignClass*>* const CampaignExt::Campaigns =
+	reinterpret_cast<DynamicVectorClass<CampaignClass*>*>(0xA83CF8);
 int CampaignExt::lastSelectedCampaign;
 
-void CampaignExt::ExtData::Initialize()
+void CampaignExt::ExtData::Initialize(CCINIClass* pINI)
 {
 	auto pThis = this->OwnerObject();
 
@@ -41,8 +41,12 @@ void CampaignExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 }
 
 int CampaignExt::CountVisible() {
-	return std::count_if(Array.begin(), Array.end(), [](CampaignExt::ExtData* pItem) {
-		return pItem->IsVisible();
+	if(Ares::UISettings::ShowDebugCampaigns) {
+		return Campaigns->Count;
+	}
+
+	return std::count_if(Campaigns->begin(), Campaigns->end(), [](CampaignClass* pItem) {
+		return CampaignExt::ExtMap.Find(pItem)->IsVisible();
 	});
 }
 
@@ -57,28 +61,38 @@ CampaignExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(46D090, CampaignClass_DTOR, 6)
+DEFINE_HOOK_AGAIN(0x46CF3D, CampaignClass_CTOR, 0x5)
+DEFINE_HOOK(0x46CC03, CampaignClass_CTOR, 0x5)
 {
-	GET(CampaignClass*, pItem, ECX);
+	GET(CampaignClass*, pItem, ESI);
+
+	CampaignExt::ExtMap.FindOrAllocate(pItem);
+	return 0;
+}
+
+DEFINE_HOOK_AGAIN(0x46D0B6, CampaignClass_DTOR, 0x6)
+DEFINE_HOOK(0x46CC36, CampaignClass_DTOR, 0x6)
+{
+	GET(CampaignClass*, pItem, ESI);
+
 	CampaignExt::ExtMap.Remove(pItem);
 	return 0;
 }
 
-// clear our own array before readding the items again
-DEFINE_HOOK(46CE10, CampaignClass_LoadFromINIList, 5) {
-	CampaignExt::Array.Clear();
-	return 0;
-}
-
-// read Ares properties and maintain our own array
-DEFINE_HOOK(46CD56, CampaignClass_LoadFromINI, 7)
+// read Ares properties
+DEFINE_HOOK(0x46CD56, CampaignClass_LoadFromINI, 0x7)
 {
 	GET(CCINIClass*, pINI, EDI);
 	GET(CampaignClass*, pThis, EBX);
 
-	if(auto k = CampaignExt::ExtMap.FindOrAllocate(pThis)) {
-		CampaignExt::Array.AddItem(k);
-		k->LoadFromINI(pINI);
+	if(pThis) {
+		CampaignExt::ExtMap.Find(pThis)->LoadFromINI(pINI);
 	}
 	return 0;
 }
+
+static_assert(sizeof(CampaignExt::ExtData) == 0x80, "CampaignExt::ExtData must match the 3.0p1 layout");
+
+static_assert(offsetof(CampaignExt::ExtData, DebugOnly) == 0x08, "CampaignExt::ExtData layout slipped");
+static_assert(offsetof(CampaignExt::ExtData, HoverSound) == 0x09, "CampaignExt::ExtData layout slipped");
+static_assert(offsetof(CampaignExt::ExtData, Summary) == 0x2C, "CampaignExt::ExtData layout slipped");

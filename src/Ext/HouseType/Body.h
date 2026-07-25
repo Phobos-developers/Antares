@@ -19,9 +19,11 @@ class HouseTypeExt
 public:
 	using base_type = HouseTypeClass;
 
-	class ExtData final : public Extension<HouseTypeClass>
+	class ExtData final : public Extension<HouseTypeClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0xAFFEAFFE;
+
 		static const int ObserverBackgroundWidth = 121;
 		static const int ObserverBackgroundHeight = 96;
 
@@ -40,6 +42,7 @@ public:
 		Valueable<CSFText> StatusText; // for this country's Skirmish STT
 		ValueableIdx<ColorScheme> LoadTextColor; //The text color used for non-Campaign modes
 		Valueable<int> RandomSelectionWeight; //This country gets added this many times into the list of legible countries for random selection.
+		Nullable<int> AIRandomSelectionWeight; //The weight used instead when the AI picks a random country.
 		Valueable<int> CountryListIndex; //The index this country will appear in the selection list.
 
 		ValueableVector<BuildingTypeClass *> Powerplants;
@@ -59,33 +62,43 @@ public:
 		bool SettingsInherited;
 
 		Nullable<bool> Degrades;
+		Nullable<bool> CanBeDriven;
 
-		ExtData(HouseTypeClass* OwnerObject) : Extension<HouseTypeClass>(OwnerObject),
+		NullableVector<TechnoTypeClass*> StartInMultiplayer_Types;
+		Valueable<bool> StartInMultiplayer_WithConst;
+
+		Valueable<bool> GivesBounty;
+
+		ExtData(HouseTypeClass* OwnerObject) : Extension<HouseTypeClass, ExtData>(OwnerObject),
+			LoadTextColor(-1),
 			RandomSelectionWeight(1),
 			CountryListIndex(100),
 			ParaDropPlane(-1),
 			Parachute_Anim(nullptr),
 			VeteranBuildings(),
-			LoadTextColor(-1),
 			ObserverBackgroundSHP(nullptr),
 			ObserverFlagSHP(nullptr),
 			ObserverFlagYuriPAL(false),
-			SettingsInherited(false)
-		{ }
-
-		virtual ~ExtData() = default;
-
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void LoadFromRulesFile(CCINIClass *pINI) override;
-		virtual void InitializeConstants() override;
-		virtual void Initialize() override;
-
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+			SettingsInherited(false),
+			StartInMultiplayer_WithConst(false),
+			GivesBounty(true)
+		{
+			this->InitializeConstants();
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		~ExtData() = default;
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void InitializeConstants();
+		void LoadFromINIFile(CCINIClass* pINI);
+		void LoadFromRulesFile(CCINIClass *pINI);
+		void Initialize(CCINIClass* pINI);
+
+		void InvalidatePointer(void *ptr, bool bRemoved) {
+		}
+
+		void LoadFromStream(AresStreamReader &Stm);
+
+		void SaveToStream(AresStreamWriter &Stm);
 
 		AircraftTypeClass* GetParadropPlane();
 		bool GetParadropContent(Iterator<TechnoTypeClass*>&, Iterator<int>&);
@@ -101,7 +114,7 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<HouseTypeExt> {
+	class ExtContainer final : public Container<HouseTypeExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
@@ -109,5 +122,5 @@ public:
 
 	static ExtContainer ExtMap;
 
-	static int PickRandomCountry();
+	static int PickRandomCountry(bool isHuman);
 };

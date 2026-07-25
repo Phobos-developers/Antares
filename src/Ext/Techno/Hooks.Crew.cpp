@@ -6,7 +6,7 @@
 
 #include <ScenarioClass.h>
 
-DEFINE_HOOK(6F3950, TechnoClass_GetCrewCount, 8)
+DEFINE_HOOK(0x6F3950, TechnoClass_GetCrewCount, 0x8)
 {
 	GET(TechnoClass*, pThis, ECX);
 	auto pType = pThis->GetTechnoType();
@@ -26,7 +26,7 @@ DEFINE_HOOK(6F3950, TechnoClass_GetCrewCount, 8)
 	return 0x6F3967;
 }
 
-DEFINE_HOOK(451330, BuildingClass_GetCrewCount, A)
+DEFINE_HOOK(0x451330, BuildingClass_GetCrewCount, 0xA)
 {
 	GET(BuildingClass*, pThis, ECX);
 
@@ -62,7 +62,7 @@ DEFINE_HOOK(451330, BuildingClass_GetCrewCount, A)
 	return 0x4513CD;
 }
 
-DEFINE_HOOK(707D20, TechnoClass_GetCrew, 5)
+DEFINE_HOOK(0x707D20, TechnoClass_GetCrew, 0x5)
 {
 	GET(TechnoClass*, pThis, ECX);
 	auto pType = pThis->GetTechnoType();
@@ -95,10 +95,10 @@ DEFINE_HOOK(707D20, TechnoClass_GetCrew, 5)
 		if(!isTechnician) {
 			// customize with this techno's pilot type
 			auto& pPilots = pExt->Survivors_Pilots;
-			int index = pHouse->SideIndex;
+			auto const index = static_cast<size_t>(pHouse->SideIndex);
 
 			// only use it if non-null, as documented
-			if(auto pPilotType = pPilots.GetItemOrDefault(index)) {
+			if(auto pPilotType = (index < pPilots.size()) ? pPilots[index] : nullptr) {
 				pCrewType = pPilotType;
 			} else {
 				// get the side's crew
@@ -114,7 +114,7 @@ DEFINE_HOOK(707D20, TechnoClass_GetCrew, 5)
 	return 0x707DCF;
 }
 
-DEFINE_HOOK(44EB10, BuildingClass_GetCrew, 9)
+DEFINE_HOOK(0x44EB10, BuildingClass_GetCrew, 0x9)
 {
 	GET(BuildingClass*, pThis, ECX);
 	auto pTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());

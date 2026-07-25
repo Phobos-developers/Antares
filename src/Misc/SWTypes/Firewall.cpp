@@ -7,7 +7,7 @@
 SuperWeaponType SW_Firewall::FirewallType = SuperWeaponType::Invalid;
 
 bool SW_Firewall::Activate(
-	SuperClass* const pThis, const CellStruct& cell, bool const isPlayer)
+	SuperClass* const pThis, CellStruct const cell, bool const isPlayer)
 {
 	auto const pOwner = pThis->Owner;
 	auto const pExt = HouseExt::ExtMap.Find(pOwner);

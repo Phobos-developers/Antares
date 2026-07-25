@@ -19,7 +19,7 @@
 #include <string>
 #include "../Ares.version.h"
 
-DEFINE_HOOK(477007, INIClass_GetSpeedType, 8)
+DEFINE_HOOK(0x477007, INIClass_GetSpeedType, 0x8)
 {
 	if(R->EAX() == -1) {
 		GET_STACK(const char *, Section, 0x8C);
@@ -42,7 +42,7 @@ DEFINE_HOOK(477007, INIClass_GetSpeedType, 8)
 	return 0;
 }
 
-DEFINE_HOOK(474E8E, INIClass_GetMovementZone, 5)
+DEFINE_HOOK(0x474E8E, INIClass_GetMovementZone, 0x5)
 {
 	GET_STACK(const char *, Section, 0x2C);
 	GET_STACK(const char *, Key, 0x30);
@@ -51,7 +51,7 @@ DEFINE_HOOK(474E8E, INIClass_GetMovementZone, 5)
 	return 0;
 }
 
-DEFINE_HOOK(474DEE, INIClass_GetFoundation, 7)
+DEFINE_HOOK(0x474DEE, INIClass_GetFoundation, 0x7)
 {
 	GET_STACK(const char *, Section, 0x2C);
 	GET_STACK(const char *, Key, 0x30);
@@ -62,7 +62,7 @@ DEFINE_HOOK(474DEE, INIClass_GetFoundation, 7)
 	return 0;
 }
 
-DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
+DEFINE_HOOK(0x687C16, INIClass_ReadScenario_ValidateThings, 0x6)
 {
 	/*
 		all the INI files have been read
@@ -72,12 +72,12 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 	*/
 
 	// create an array of crew for faster lookup
-	DynamicVectorClass<InfantryTypeClass*> Crews(SideClass::Array->Count, nullptr);
-	for(auto const& pSide : *SideClass::Array) {
+	DynamicVectorClass<InfantryTypeClass*> Crews(SideClass::Array.Count, nullptr);
+	for(auto const& pSide : SideClass::Array) {
 		Crews.AddItem(SideExt::ExtMap.Find(pSide)->GetCrew());
 	}
 
-	for(auto const& pItem : *TechnoTypeClass::Array) {
+	for(auto const& pItem : TechnoTypeClass::Array) {
 		auto const isFoot = pItem->WhatAmI() != AbstractType::BuildingType;
 
 		if(isFoot && pItem->SpeedType == SpeedType::None) {
@@ -109,6 +109,22 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 			Debug::RegisterParserError();
 		}
 
+		// a voxel whose ShadowIndex points past the last HVA section makes the
+		// renderer read out of bounds
+		if(auto const pHVA = pItem->MainVoxel.HVA) {
+			if(pItem->Voxel) {
+				auto const layers = static_cast<int>(pHVA->LayerCount);
+				if(pItem->ShadowIndex >= layers) {
+					Debug::Log(
+						Debug::Severity::Error,
+						"ShadowIndex on [%s]'s image is %d, but the HVA only "
+						"has %d sections.\n",
+						pItem->ID, pItem->ShadowIndex, layers);
+					Debug::RegisterParserError();
+				}
+			}
+		}
+
 		auto const pExt = TechnoTypeExt::ExtMap.Find(pItem);
 		if(pItem->PoweredUnit && !pExt->PoweredBy.empty()) {
 			Debug::Log(
@@ -132,7 +148,7 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 		// if empty, set survivor pilots to the corresponding side's Crew
 		{
 			auto const count = Math::min(
-				pExt->Survivors_Pilots.Count, Crews.Count);
+				static_cast<int>(pExt->Survivors_Pilots.size()), Crews.Count);
 			for(auto j = 0; j < count; ++j) {
 				if(!pExt->Survivors_Pilots[j]) {
 					pExt->Survivors_Pilots[j] = Crews[j];
@@ -167,7 +183,7 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 		}
 	}
 
-	for(auto const pBType : *BuildingTypeClass::Array) {
+	for(auto const pBType : BuildingTypeClass::Array) {
 		auto const techLevel = pBType->TechLevel;
 		if(techLevel < 0 || techLevel > RulesClass::Instance->TechLevel) {
 			continue;
@@ -185,7 +201,7 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 		}
 	}
 
-	for(auto const& pItem : *WeaponTypeClass::Array) {
+	for(auto const& pItem : WeaponTypeClass::Array) {
 		constexpr auto const Msg =
 			"Weapon[%s] has no %s! This usually indicates one of two things:\n"
 			"- The weapon was created too late and its rules weren't read "
@@ -204,10 +220,10 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 
 	{ // new scope to keep it tidy
 		std::pair<const char*, int> LimitedClasses[] = {
-			{ "BuildingTypes", BuildingTypeClass::Array->Count },
-			{ "VehicleTypes", UnitTypeClass::Array->Count },
-			{ "InfantryTypes", InfantryTypeClass::Array->Count },
-			{ "AircraftTypes", AircraftTypeClass::Array->Count }
+			{ "BuildingTypes", BuildingTypeClass::Array.Count },
+			{ "VehicleTypes", UnitTypeClass::Array.Count },
+			{ "InfantryTypes", InfantryTypeClass::Array.Count },
+			{ "AircraftTypes", AircraftTypeClass::Array.Count }
 		};
 
 		for(auto const& limited : LimitedClasses) {
@@ -228,7 +244,7 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 		}
 	}
 
-	if(OverlayTypeClass::Array->Count > 255) {
+	if(OverlayTypeClass::Array.Count > 255) {
 		Debug::Log(Debug::Severity::Error,
 			"Only 255 OverlayTypes are supported.\n");
 		Debug::RegisterParserError();
@@ -244,7 +260,7 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 	if(auto const AresGeneral = RulesExt::Global()) {
 		if(AresGeneral->CanMakeStuffUp) {
 			Randomizer *r = &ScenarioClass::Instance->Random;
-			if(RulesClass* StockGeneral = RulesClass::Global()) { // well, the modder *said* we can make stuff up, so...
+			if(RulesClass* StockGeneral = RulesClass::Instance) { // well, the modder *said* we can make stuff up, so...
 
 				StockGeneral->VeteranRatio = r->RandomRanged(1, 500) / 100.0;
 				StockGeneral->BuildSpeed = r->RandomRanged(1, 350) / 100.0;
@@ -266,15 +282,15 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 				int cow = InfantryTypeClass::FindIndex("COW");
 				bool zooTime = r->RandomRanged(1, 5) == 3;
 				if((monkey != -1) && zooTime) {
-					StockGeneral->AlliedCrew = InfantryTypeClass::Array->GetItem(monkey);
+					StockGeneral->AlliedCrew = InfantryTypeClass::Array.GetItem(monkey);
 				}
 				zooTime = r->RandomRanged(1, 5) == 3;
 				if((camel != -1) && zooTime) {
-					StockGeneral->SovietCrew = InfantryTypeClass::Array->GetItem(camel);
+					StockGeneral->SovietCrew = InfantryTypeClass::Array.GetItem(camel);
 				}
 				zooTime = r->RandomRanged(1, 5) == 3;
 				if((cow != -1) && zooTime) {
-					StockGeneral->ThirdCrew = InfantryTypeClass::Array->GetItem(cow);
+					StockGeneral->ThirdCrew = InfantryTypeClass::Array.GetItem(cow);
 				}
 				//-
 
@@ -434,7 +450,7 @@ DEFINE_HOOK(687C16, INIClass_ReadScenario_ValidateThings, 6)
 	return 0;
 }
 
-DEFINE_HOOK(55AFB3, LogicClass_Update_1000, 6)
+DEFINE_HOOK(0x55AFB3, LogicClass_Update_1000, 0x6)
 {
 
 	if(RulesExt::ExtData *AresGeneral = RulesExt::Global()) {
@@ -445,8 +461,8 @@ DEFINE_HOOK(55AFB3, LogicClass_Update_1000, 6)
 					return ScenarioClass::Instance->Random.RandomRanged(Min, Max);
 				};
 
-				for(int i = 0; i < InfantryClass::Array->Count; ++i) {
-					auto Inf = InfantryClass::Array->GetItem(i);
+				for(int i = 0; i < InfantryClass::Array.Count; ++i) {
+					auto Inf = InfantryClass::Array.GetItem(i);
 					if(Inf->IsFallingDown) {
 						if(auto paraAnim = Inf->Parachute) {
 							int limit = RandomRanged(-300, 300) + 3000;

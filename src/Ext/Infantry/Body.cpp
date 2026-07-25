@@ -11,7 +11,6 @@
 #include "../Rules/Body.h"
 #include <GameModeOptionsClass.h>
 
-template<> const DWORD Extension<InfantryClass>::Canary = 0xE1E2E3E4;
 InfantryExt::ExtContainer InfantryExt::ExtMap;
 
 bool InfantryExt::ExtData::IsOccupant() {
@@ -41,9 +40,9 @@ Action InfantryExt::GetEngineerEnterEnemyBuildingAction(
 	// only skirmish allows to disable it, so we only check there. for all other
 	// modes, it's always on. single player campaigns also use special multi
 	// engineer behavior.
-	auto const gameMode = SessionClass::Instance->GameMode;
+	auto const gameMode = SessionClass::Instance.GameMode;
 	auto allowDamage = gameMode != GameMode::Skirmish 
-		|| GameModeOptionsClass::Instance->MultiEngineer;
+		|| GameModeOptionsClass::Instance.MultiEngineer;
 
 	if(gameMode == GameMode::Campaign) {
 		// single player missions are currently hardcoded to "don't do damage".
@@ -61,7 +60,7 @@ Action InfantryExt::GetEngineerEnterEnemyBuildingAction(
 		auto const pRulesExt = RulesExt::Global();
 		if(!isTech || !pRulesExt->EngineerAlwaysCaptureTech) {
 			// no civil structure. apply new logic.
-			auto const capLevel = RulesClass::Global()->EngineerCaptureLevel;
+			auto const capLevel = RulesClass::Instance->EngineerCaptureLevel;
 			if(pBld->GetHealthPercentage() > capLevel) {
 				return (pRulesExt->EngineerDamage > 0.0)
 					? Action::Damage : Action::NoEnter;
@@ -82,12 +81,12 @@ void InfantryExt::ExtData::Serialize(T& Stm) {
 }
 
 void InfantryExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<InfantryClass>::LoadFromStream(Stm);
+	Extension<InfantryClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void InfantryExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<InfantryClass>::SaveToStream(Stm);
+	Extension<InfantryClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -103,7 +102,7 @@ InfantryExt::ExtContainer::~ExtContainer() = default;
 // container hooks
 
 #ifdef MAKE_GAME_SLOWER_FOR_NO_REASON
-DEFINE_HOOK(517CB0, InfantryClass_CTOR, 5)
+DEFINE_HOOK(0x517CB0, InfantryClass_CTOR, 0x5)
 {
 	GET(InfantryClass*, pItem, ESI);
 
@@ -111,7 +110,7 @@ DEFINE_HOOK(517CB0, InfantryClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(517F83, InfantryClass_DTOR, 6)
+DEFINE_HOOK(0x517F83, InfantryClass_DTOR, 0x6)
 {
 	GET(InfantryClass*, pItem, ESI);
 
@@ -119,8 +118,8 @@ DEFINE_HOOK(517F83, InfantryClass_DTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(521B00, InfantryClass_SaveLoad_Prefix, 8)
-DEFINE_HOOK(521960, InfantryClass_SaveLoad_Prefix, 6)
+DEFINE_HOOK_AGAIN(0x521B00, InfantryClass_SaveLoad_Prefix, 0x8)
+DEFINE_HOOK(0x521960, InfantryClass_SaveLoad_Prefix, 0x6)
 {
 	GET_STACK(InfantryClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -130,13 +129,13 @@ DEFINE_HOOK(521960, InfantryClass_SaveLoad_Prefix, 6)
 	return 0;
 }
 
-DEFINE_HOOK(521AEC, InfantryClass_Load_Suffix, 6)
+DEFINE_HOOK(0x521AEC, InfantryClass_Load_Suffix, 0x6)
 {
 	InfantryExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(521B14, InfantryClass_Save_Suffix, 3)
+DEFINE_HOOK(0x521B14, InfantryClass_Save_Suffix, 0x3)
 {
 	InfantryExt::ExtMap.SaveStatic();
 	return 0;

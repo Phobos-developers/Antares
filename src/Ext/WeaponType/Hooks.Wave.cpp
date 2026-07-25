@@ -2,75 +2,74 @@
 #include "../Techno/Body.h"
 
 #include <HouseClass.h>
+#include <WarheadTypeClass.h>
 #include <WaveClass.h>
 
 // custom beam styles
-// 6FF5F5, 6
-DEFINE_HOOK(6FF5F5, TechnoClass_Fire, 6)
+DEFINE_HOOK(0x6FF449, TechnoClass_Fire_SonicWave, 0x5)
 {
 	GET(TechnoClass* const, pThis, ESI);
-	GET(WeaponTypeClass* const, pSource, EBX);
-	GET(TechnoClass* const, pTarget, EDI);
-
-	auto const pData = WeaponTypeExt::ExtMap.Find(pSource);
-
-	if(!pData->IsWave()) {
-		return 0;
-	}
-
-	GET_BASE(byte, idxWeapon, 0xC);
-
-	TechnoExt::ExtMap.Find(pThis)->idxSlot_Wave = idxWeapon;
-
-	if(!pData->Wave_IsLaser && !pData->Wave_IsBigLaser) {
-		return 0;
-	}
+	GET(WeaponTypeClass* const, pWeapon, EBX);
+	GET_BASE(AbstractClass* const, pTarget, 0x8);
+	GET_BASE(BYTE const, idxWeapon, 0xC);
 
 	REF_STACK(CoordStruct const, crdSrc, 0x44);
 	REF_STACK(CoordStruct const, crdTgt, 0x88);
 
-	auto const type = pData->Wave_IsBigLaser
-		? WaveType::BigLaser : WaveType::Laser;
+	auto const pData = WeaponTypeExt::ExtMap.Find(pWeapon);
 
-	auto const pWave = GameCreate<WaveClass>(
-		crdSrc, crdTgt, pThis, type, pTarget);
+	pThis->Wave = WeaponTypeExt::CreateWave(
+		crdSrc, crdTgt, pThis, WaveType::Sonic, pTarget, idxWeapon, pData);
 
-	WeaponTypeExt::WaveExt[pWave] = pData;
-	pThis->Wave = pWave;
-	return 0x6FF650;
+	return 0x6FF48A;
 }
 
-// 75E963, 6
-DEFINE_HOOK(75E963, WaveClass_CTOR, 6)
+DEFINE_HOOK(0x6FF5F5, TechnoClass_Fire_OtherWaves, 0x6)
 {
-	GET(WaveClass *, Wave, ESI);
-	GET(WaveType, Type, ECX);
-	if(Type == WaveType::Laser || Type == WaveType::BigLaser) {
-		return 0;
-	}
-	GET(WeaponTypeClass *, Weapon, EBX);
+	GET(TechnoClass* const, pThis, ESI);
+	GET(WeaponTypeClass* const, pWeapon, EBX);
+	GET(AbstractClass* const, pTarget, EDI);
+	GET_BASE(BYTE const, idxWeapon, 0xC);
 
-	if(Weapon) {
-		WeaponTypeExt::ExtData *pData = WeaponTypeExt::ExtMap.Find(Weapon);
-		WeaponTypeExt::WaveExt[Wave] = pData;
-	}
-	return 0;
-}
+	REF_STACK(CoordStruct const, crdSrc, 0x44);
+	REF_STACK(CoordStruct const, crdTgt, 0x88);
 
-/*
-// 75EB87, 0A // fsdblargh, a single instruction spanning 10 bytes
-XPORT_FUNC(WaveClass_CTOR2)
-{
-	GET(WaveClass *, Wave, ESI);
-	RET_UNLESS(CONTAINS(WeaponTypeExt::WaveExt, Wave));
-	WeaponTypeExt::WeaponTypeClassData *pData = WeaponTypeExt::WaveExt[Wave];
-//	Wave->set_WaveIntensity(pData->Wave_InitialIntensity);
-	return 0x75EB91;
+	auto const pData = WeaponTypeExt::ExtMap.Find(pWeapon);
+
+	auto type = WaveType::Magnetron;
+
+	if(pWeapon->IsMagBeam) {
+		if(pThis->Wave) {
+			return 0x6FF656;
+		}
+	} else {
+		if(!pData->Wave_IsLaser && !pData->Wave_IsBigLaser) {
+			return 0x6FF656;
+		}
+
+		// This reads backwards and is correct. Shipped Ares 3.0p1 computes the
+		// wave type as `(pWeaponExt->Wave_IsBigLaser != 0) + 1`
+		// (TechnoClass_Fire_OtherWaves, Ares.dll 0x10057B10, testing
+		// WeaponTypeExt +0x3A = Wave_IsBigLaser; +0x39 is Wave_IsLaser), so
+		// Wave.IsBigLaser must store 2 and plain Wave.IsLaser must store 1.
+		// In the engine's enum 2 is WaveType::Laser and 1 is WaveType::BigLaser --
+		// NonMagWaveMatrixes[1] is (-34,-44) and [2] is (-27,-34), i.e. slot 1 is
+		// the larger wave (WaveClass_Draw_NonMagnetic, gamemd 0x761640). So
+		// Wave.IsBigLaser genuinely selects the smaller engine wave in shipped
+		// Ares; that is reproduced on purpose. Do not "fix" either half of this:
+		// the enum labels and this ternary were both wrong in the old pin and
+		// cancelled out, and correcting only one silently inverts the effect.
+		type = pData->Wave_IsBigLaser ? WaveType::Laser : WaveType::BigLaser;
+	}
+
+	pThis->Wave = WeaponTypeExt::CreateWave(
+		crdSrc, crdTgt, pThis, type, pTarget, idxWeapon, pData);
+
+	return 0x6FF656;
 }
-*/
 
 // 763226, 6
-DEFINE_HOOK(763226, WaveClass_DTOR, 6)
+DEFINE_HOOK(0x763226, WaveClass_DTOR, 0x6)
 {
 	GET(WaveClass *, Wave, EDI);
 	WeaponTypeExt::WaveExt.erase(Wave);
@@ -79,7 +78,7 @@ DEFINE_HOOK(763226, WaveClass_DTOR, 6)
 
 // 760F50, 6
 // complete replacement for WaveClass::Update
-DEFINE_HOOK(760F50, WaveClass_Update, 6)
+DEFINE_HOOK(0x760F50, WaveClass_Update, 0x6)
 {
 	GET(WaveClass *, pThis, ECX);
 
@@ -94,21 +93,18 @@ DEFINE_HOOK(760F50, WaveClass_Update, 6)
 
 	if(Weap->AmbientDamage) {
 		CoordStruct coords;
-//		Debug::Log("Damaging Cells for weapon %X (Intensity = %d)\n", pData, pThis->WaveIntensity);
 		for(int i = 0; i < pThis->Cells.Count; ++i) {
 			CellClass *Cell = pThis->Cells.GetItem(i);
-//			Debug::Log("\t(%hd,%hd)\n", Cell->MapCoords.X, Cell->MapCoords.Y);
-			pThis->DamageArea(*Cell->Get3DCoords3(&coords));
+			pThis->DamageArea(*Cell->GetCellCoords(&coords));
 		}
-//		Debug::Log("Done damaging %X\n", pData);
 	}
 
 	switch(pThis->Type) {
 		case WaveType::Sonic:
 			pThis->Update_Wave();
-			Intensity = pThis->WaveIntensity;
+			Intensity = pThis->WaveEC;
 			--Intensity;
-			pThis->WaveIntensity = Intensity;
+			pThis->WaveEC = Intensity;
 			if(Intensity < 0) {
 				pThis->UnInit();
 			} else {
@@ -118,18 +114,18 @@ DEFINE_HOOK(760F50, WaveClass_Update, 6)
 			break;
 		case WaveType::BigLaser:
 		case WaveType::Laser:
-			Intensity = pThis->LaserIntensity;
+			Intensity = pThis->LaserEC;
 			Intensity -= 6;
-			pThis->LaserIntensity = Intensity;
+			pThis->LaserEC = Intensity;
 			if(Intensity < 32) {
 				pThis->UnInit();
 			}
 			break;
 		case WaveType::Magnetron:
 			pThis->Update_Wave();
-			Intensity = pThis->WaveIntensity;
+			Intensity = pThis->WaveEC;
 			--Intensity;
-			pThis->WaveIntensity = Intensity;
+			pThis->WaveEC = Intensity;
 			if(Intensity < 0) {
 				pThis->UnInit();
 			} else {
@@ -142,114 +138,123 @@ DEFINE_HOOK(760F50, WaveClass_Update, 6)
 	return 0x76101A;
 }
 
-/*
-// 760FFC, 5
-// Alt beams update
-XPORT_FUNC(WaveClass_UpdateLaser)
+// the colors are calculated once before the beam is drawn and then applied to
+// every pixel it covers.
+DEFINE_HOOK(0x75FA29, WaveClass_Draw_Colors, 0x6)
 {
-	GET(WaveClass *, Wave, ESI);
-	Wave->Update_Beam();
-	RET_UNLESS(CONTAINS(WeaponTypeExt::WaveExt, Wave));
-	WeaponTypeExt::WeaponTypeClassData *pData = WeaponTypeExt::WaveExt[Wave];
-	int intense = Wave->get_WaveIntensity() + pData->Wave_IntensityStep;
-	Wave->set_WaveIntensity(intense);
-	return intense >= pData->Wave_FinalIntensity ? 0x761016 : 0x76100C;
-}
-*/
+	GET(WaveClass* const, pThis, ESI);
 
-DEFINE_HOOK(760BC2, WaveClass_Draw2, 9)
-{
-	GET(WaveClass *, Wave, EBX);
-	GET(WORD *, dest, EBP);
+	WeaponTypeExt::WaveColors = WeaponTypeExt::GetWaveColorData(pThis);
 
-	return (WeaponTypeExt::ModifyWaveColor(*dest, *dest, Wave->LaserIntensity, Wave))
-		? 0x760CAFu
-		: 0u
-	;
+	return 0;
 }
 
-// 760DE2, 6
-DEFINE_HOOK(760DE2, WaveClass_Draw3, 9)
+DEFINE_HOOK(0x760BC2, WaveClass_Draw2, 0x9)
 {
-	GET(WaveClass *, Wave, EBX);
-	GET(WORD *, dest, EDI);
+	if(!WeaponTypeExt::WaveColors.Modified) {
+		return 0;
+	}
 
-	return (WeaponTypeExt::ModifyWaveColor(*dest, *dest, Wave->LaserIntensity, Wave))
-		? 0x760ECBu
-		: 0u
-	;
+	GET(WaveClass* const, pThis, EBX);
+	GET(WORD* const, pDest, EBP);
+
+	*pDest = WeaponTypeExt::ModifyWaveColor(
+		*pDest, pThis->LaserEC, WeaponTypeExt::WaveColors);
+
+	return 0x760CAF;
+}
+
+DEFINE_HOOK(0x760DE2, WaveClass_Draw3, 0x9)
+{
+	if(!WeaponTypeExt::WaveColors.Modified) {
+		return 0;
+	}
+
+	GET(WaveClass* const, pThis, EBX);
+	GET(WORD* const, pDest, EDI);
+
+	*pDest = WeaponTypeExt::ModifyWaveColor(
+		*pDest, pThis->LaserEC, WeaponTypeExt::WaveColors);
+
+	return 0x760ECB;
 }
 
 // 75EE57, 7
-DEFINE_HOOK(75EE57, WaveClass_Draw_Sonic, 7)
+DEFINE_HOOK(0x75EE57, WaveClass_Draw_Sonic, 0x7)
 {
-	GET_STACK(WaveClass *, Wave, 0x4);
-	GET(WORD*, src, EDI);
-	GET(DWORD, offset, ECX);
+	if(!WeaponTypeExt::WaveColors.Modified) {
+		return 0;
+	}
 
-	return (WeaponTypeExt::ModifyWaveColor(src[offset], *src, R->ESI(), Wave))
-		? 0x75EF1Cu
-		: 0u
-	;
+	GET(WORD* const, pDest, EDI);
+	GET(DWORD const, offset, ECX);
+
+	*pDest = WeaponTypeExt::ModifyWaveColor(
+		pDest[offset], R->ESI(), WeaponTypeExt::WaveColors);
+
+	return 0x75EF1C;
 }
 
 // 7601FB, 0B
-DEFINE_HOOK(7601FB, WaveClass_Draw_Magnetron, 0B)
+DEFINE_HOOK(0x7601FB, WaveClass_Draw_Magnetron2, 0x0B)
 {
-	GET_STACK(WaveClass *, Wave, 0x8);
-	GET(WORD*, src, EBX);
-	GET(DWORD, offset, ECX);
+	if(!WeaponTypeExt::WaveColors.Modified) {
+		return 0;
+	}
 
-	return (WeaponTypeExt::ModifyWaveColor(src[offset], *src, R->EBP(), Wave))
-		? 0x760285u
-		: 0u
-	;
+	GET(WORD* const, pDest, EBX);
+	GET(DWORD const, offset, ECX);
+
+	*pDest = WeaponTypeExt::ModifyWaveColor(
+		pDest[offset], R->EBP(), WeaponTypeExt::WaveColors);
+
+	return 0x760285;
 }
 
 // 760286, 5
-DEFINE_HOOK(760286, WaveClass_Draw_Magnetron2, 5)
+DEFINE_HOOK(0x760286, WaveClass_Draw_Magnetron3, 0x5)
 {
 	return 0x7602D3;
 }
 
-// 762C5C, 6
-DEFINE_HOOK(762C5C, WaveClass_Update_Wave, 6)
+// keep the index inside the square root table
+DEFINE_HOOK(0x75EE2E, WaveClass_Draw_Green, 0x8)
 {
-	GET(WaveClass *, Wave, ESI);
-	TechnoClass *Firer = Wave->Owner;
-	TechnoClass *Target = Wave->Target;
-	if(!Target || !Firer) {
-		return 0x762D57;
-	}
+	GET(int const, index, EDX);
 
-	auto pData = WeaponTypeExt::WaveExt.get_or_default(Wave);
+	R->EDX(index > 0x15F8F ? 0x15F8F : index);
 
-	if(!pData) {
-		return 0;
-	}
+	return 0;
+}
 
-	int weaponIdx = TechnoExt::ExtMap.Find(Firer)->idxSlot_Wave;
+DEFINE_HOOK(0x7601C7, WaveClass_Draw_Magnetron, 0x8)
+{
+	GET(int const, index, EDX);
 
-	CoordStruct xyzSrc = Firer->GetFLH(weaponIdx, CoordStruct::Empty);
-	CoordStruct xyzTgt = Target->GetCoords__(); // not GetCoords() !
+	R->EDX(index > 0x15F8F ? 0x15F8F : index);
 
-	bool reversed = pData->IsWaveReversedAgainst(Target);
+	return 0;
+}
 
-	if(Wave->Type == WaveType::Magnetron) {
-		reversed
-			? Wave->Draw_Magnetic(xyzTgt, xyzSrc)
-			: Wave->Draw_Magnetic(xyzSrc, xyzTgt);
-	} else {
-		reversed
-			? Wave->Draw_NonMagnetic(xyzTgt, xyzSrc)
-			: Wave->Draw_NonMagnetic(xyzSrc, xyzTgt);
-	}
+// the Nod laser is drawn in full regardless of the detail level
+DEFINE_HOOK(0x7609E3, WaveClass_Draw_NodLaser_Details, 0x5)
+{
+	R->EAX(2);
+	return 0x7609E8;
+}
 
-	return 0x762D57;
+// keep the buffer around instead of releasing it every time
+DEFINE_HOOK(0x76110B, WaveClass_RecalculateAffectedCells_Clear, 0x5)
+{
+	GET(DynamicVectorClass<CellClass*>* const, pCells, EBP);
+
+	pCells->Count = 0;
+
+	return 0x761110;
 }
 
 // 75F38F, 6
-DEFINE_HOOK(75F38F, WaveClass_DamageCell, 6)
+DEFINE_HOOK(0x75F38F, WaveClass_DamageCell, 0x6)
 {
 	GET(WaveClass *, Wave, EBP);
 	auto pData = WeaponTypeExt::WaveExt.get_or_default(Wave);
@@ -258,12 +263,60 @@ DEFINE_HOOK(75F38F, WaveClass_DamageCell, 6)
 	return 0x75F39D;
 }
 
-DEFINE_HOOK(7601C7, WaveClass_Draw_Purple, 8)
+DEFINE_HOOK(0x75F46E, WaveClass_DamageCell_Wall, 0x6)
 {
-	GET(int, Q, EDX);
-	if(Q > 0x15F90) {
-		Q = 0x15F90;
+	GET(WeaponTypeClass* const, pWeapon, EBX);
+
+	return pWeapon->Warhead->Wall ? 0 : 0x75F47C;
+}
+
+DEFINE_HOOK(0x762B62, WaveClass_Update_Beam, 0x6)
+{
+	GET(WaveClass* const, pThis, ESI);
+
+	auto const pTarget = pThis->Target;
+	auto const pOwner = pThis->Owner;
+
+	auto const pData = WeaponTypeExt::WaveExt.get_or_default(pThis);
+
+	BYTE idxWeapon = 0;
+	auto keepAlive = false;
+
+	if(pTarget && pOwner && pThis->WaveEC != 19 && pOwner->Target == pTarget) {
+		idxWeapon = TechnoExt::ExtMap.Find(pOwner)->idxSlot_Wave;
+
+		if(pThis->Type == WaveType::Magnetron) {
+			keepAlive = pOwner->IsCloseEnough(pTarget, idxWeapon);
+		} else {
+			auto const distance = pOwner->GetCoords().DistanceFrom(pTarget->GetCoords());
+			keepAlive = pData->OwnerObject()->Range >= distance / Math::Sqrt2;
+		}
 	}
-	R->EDX(Q);
-	return 0;
+
+	if(!keepAlive) {
+		pThis->IsTraveling = 0;
+		pThis->ShouldEnd = 1;
+	}
+
+	if(!pThis->IsTraveling) {
+		return 0x762D57;
+	}
+
+	CoordStruct crdSrc;
+	pOwner->GetFLH(&crdSrc, idxWeapon, CoordStruct::Empty);
+
+	auto const crdTgt = pTarget->GetCoords();
+	auto const reversed = pData->IsWaveReversedAgainst(pTarget);
+
+	if(pThis->Type == WaveType::Magnetron) {
+		reversed
+			? pThis->Draw_Magnetic(crdTgt, crdSrc)
+			: pThis->Draw_Magnetic(crdSrc, crdTgt);
+	} else {
+		reversed
+			? pThis->Draw_NonMagnetic(crdTgt, crdSrc)
+			: pThis->Draw_NonMagnetic(crdSrc, crdTgt);
+	}
+
+	return 0x762D57;
 }

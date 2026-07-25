@@ -5,11 +5,12 @@
 
 #include <Helpers/Iterators.h>
 #include <BulletClass.h>
+#include <HouseClass.h>
 #include <WarheadTypeClass.h>
 
 // custom ivan bomb attachment
 // bugfix #385: Only InfantryTypes can use Ivan Bombs
-DEFINE_HOOK(438E86, BombListClass_Plant_AllTechnos, 5)
+DEFINE_HOOK(0x438E86, BombListClass_Plant_AllTechnos, 0x5)
 {
 	GET(TechnoClass *, Source, EBP);
 	switch(Source->WhatAmI()) {
@@ -23,12 +24,12 @@ DEFINE_HOOK(438E86, BombListClass_Plant_AllTechnos, 5)
 	}
 }
 
-DEFINE_HOOK(438FD7, BombListClass_Plant_AttachSound, 7)
+DEFINE_HOOK(0x438FD7, BombListClass_Plant_AttachSound, 0x7)
 {
 	return 0x439022;
 }
 
-DEFINE_HOOK(438A00, BombClass_GetCurrentFrame, 6)
+DEFINE_HOOK(0x438A00, BombClass_GetCurrentFrame, 0x6)
 {
 	GET(BombClass*, pThis, ECX);
 
@@ -71,7 +72,7 @@ DEFINE_HOOK(438A00, BombClass_GetCurrentFrame, 6)
 
 // 6F523C, 5
 // custom ivan bomb drawing
-DEFINE_HOOK(6F523C, TechnoClass_DrawExtras_IvanBombImage, 5)
+DEFINE_HOOK(0x6F523C, TechnoClass_DrawExtras_IvanBombImage, 0x5)
 {
 	GET(TechnoClass*, pThis, EBP);
 	auto pBomb = pThis->AttachedBomb;
@@ -87,7 +88,7 @@ DEFINE_HOOK(6F523C, TechnoClass_DrawExtras_IvanBombImage, 5)
 
 // 6FCBAD, 6
 // custom ivan bomb disarm 1
-DEFINE_HOOK(6FCBAD, TechnoClass_GetObjectActivityState_IvanBomb, 6)
+DEFINE_HOOK(0x6FCBAD, TechnoClass_CanFire_IvanBomb, 0x6)
 {
 	GET(TechnoClass *, Target, EBP);
 	GET(WarheadTypeClass *, Warhead, EDI);
@@ -102,8 +103,41 @@ DEFINE_HOOK(6FCBAD, TechnoClass_GetObjectActivityState_IvanBomb, 6)
 	return 0;
 }
 
+// whether the local player may set off the bomb attached to this object
+static bool BombCanDetonate(TechnoClass const* const pThis)
+{
+	auto const pBomb = pThis->AttachedBomb;
+
+	if(!pBomb || !pBomb->OwnerHouse->IsControlledByCurrentPlayer()) {
+		return false;
+	}
+
+	auto const pExt = WeaponTypeExt::BombExt.get_or_default(pBomb);
+
+	return (pBomb->IsDeathBomb() == FALSE)
+		? pExt->Ivan_CanDetonateTimeBomb.Get(RulesClass::Instance->CanDetonateTimeBomb)
+		: pExt->Ivan_CanDetonateDeathBomb.Get(RulesClass::Instance->CanDetonateDeathBomb);
+}
+
+// 6FFEC0, 5
+DEFINE_HOOK(0x6FFEC0, TechnoClass_GetActionOnObject_IvanBombsA, 0x5)
+{
+	GET(TechnoClass const* const, pThis, ECX);
+	GET_STACK(ObjectClass const* const, pTarget, 0x4);
+
+	if(pThis != pTarget || ObjectClass::CurrentObjects.Count != 1
+		|| !BombCanDetonate(pThis))
+	{
+		return 0;
+	}
+
+	R->EAX(Action::Detonate);
+
+	return 0x7005EF;
+}
+
 // 51E488, 5
-DEFINE_HOOK(51E488, InfantryClass_GetCursorOverObject2, 5)
+DEFINE_HOOK(0x51E488, InfantryClass_GetActionOnObject2, 0x5)
 {
 	GET(TechnoClass *, Target, ESI);
 	BombClass *Bomb = Target->AttachedBomb;
@@ -117,7 +151,7 @@ DEFINE_HOOK(51E488, InfantryClass_GetCursorOverObject2, 5)
 
 // 438799, 6
 // custom ivan bomb detonation 1
-DEFINE_HOOK(438799, BombClass_Detonate1, 6)
+DEFINE_HOOK(0x438799, BombClass_Detonate1, 0x6)
 {
 	GET(BombClass *, Bomb, ESI);
 
@@ -130,7 +164,7 @@ DEFINE_HOOK(438799, BombClass_Detonate1, 6)
 
 // 438843, 6
 // custom ivan bomb detonation 2
-DEFINE_HOOK(438843, BombClass_Detonate2, 6)
+DEFINE_HOOK(0x438843, BombClass_Detonate2, 0x6)
 {
 	GET(BombClass *, Bomb, ESI);
 
@@ -143,7 +177,7 @@ DEFINE_HOOK(438843, BombClass_Detonate2, 6)
 
 // 438879, 6
 // custom ivan bomb detonation 3
-DEFINE_HOOK(438879, BombClass_Detonate3, 6)
+DEFINE_HOOK(0x438879, BombClass_Detonate3, 0x6)
 {
 	GET(BombClass *, Bomb, ESI);
 
@@ -153,7 +187,7 @@ DEFINE_HOOK(438879, BombClass_Detonate3, 6)
 
 // 4393F2, 5
 // custom ivan bomb cleanup
-DEFINE_HOOK(4393F2, BombClass_SDDTOR, 5)
+DEFINE_HOOK(0x4393F2, BombClass_SDDTOR, 0x5)
 {
 	GET(BombClass *, Bomb, ECX);
 	WeaponTypeExt::BombExt.erase(Bomb);
@@ -164,13 +198,13 @@ DEFINE_HOOK(4393F2, BombClass_SDDTOR, 5)
  * Makes sense, except Aircraft that lose the target so crudely in the middle of the attack
  * (i.e. ivan bomb weapon) go wtfkerboom with an IE
  */
-DEFINE_HOOK(6FA4C6, TechnoClass_Update_ZeroOutTarget, 5)
+DEFINE_HOOK(0x6FA4C6, TechnoClass_Update_ZeroOutTarget, 0x5)
 {
 	GET(TechnoClass *, T, ESI);
 	return (T->WhatAmI() == AbstractType::Aircraft) ? 0x6FA4D1 : 0;
 }
 
-DEFINE_HOOK(46934D, IvanBombs_Spread, 6)
+DEFINE_HOOK(0x46934D, BulletClass_DetonateAt_IvanBombs, 0x6)
 {
 	GET(BulletClass *, pBullet, ESI);
 
@@ -191,7 +225,7 @@ DEFINE_HOOK(46934D, IvanBombs_Spread, 6)
 
 				CoordStruct tgtCoords = pBullet->GetTargetCoords();
 
-				CellStruct centerCoords = MapClass::Instance->GetCellAt(tgtCoords)->MapCoords;
+				CellStruct centerCoords = MapClass::Instance.GetCellAt(tgtCoords)->MapCoords;
 
 				CellSpreadIterator<TechnoClass>{}(centerCoords, Spread,
 					[pOwner, pExt](TechnoClass* pTechno)
@@ -210,22 +244,26 @@ DEFINE_HOOK(46934D, IvanBombs_Spread, 6)
 	return 0x469AA4;
 }
 
-// deglobalized manual detonation settings
-DEFINE_HOOK(6FFFB1, TechnoClass_GetCursorOverObject_IvanBombs, 8)
+// the detonate action is decided at the top of the function now
+DEFINE_HOOK(0x6FFF9E, TechnoClass_GetActionOnObject_IvanBombsB, 0x8)
 {
-	GET(TechnoClass*, pThis, EDI);
-	auto pBomb = pThis->AttachedBomb;
-	auto pExt = WeaponTypeExt::BombExt.get_or_default(pBomb);
+	return 0x700006;
+}
 
-	bool canDetonate = (pBomb->IsDeathBomb() == FALSE)
-		? pExt->Ivan_CanDetonateTimeBomb.Get(RulesClass::Instance->CanDetonateTimeBomb)
-		: pExt->Ivan_CanDetonateDeathBomb.Get(RulesClass::Instance->CanDetonateDeathBomb);
-	return canDetonate ? 0x6FFFCC : 0x700006;
+// berserk objects still obey a click that sets off their own bomb
+DEFINE_HOOK(0x51F1D8, InfantryClass_ActionOnObject_IvanBombs, 0x6)
+{
+	return 0x51F1EA;
+}
+
+DEFINE_HOOK(0x7388EB, UnitClass_ActionOnObject_IvanBombs, 0x6)
+{
+	return 0x7388FD;
 }
 
 // #896027: do not announce pointers as expired to bombs
 // if the pointed to object is staying in-game.
-DEFINE_HOOK(725961, AnnounceInvalidPointer_BombCloak, 6)
+DEFINE_HOOK(0x725961, AnnounceInvalidPointer_BombCloak, 0x6)
 {
 	GET(bool, remove, EDI);
 	return remove ? 0 : 0x72596C;

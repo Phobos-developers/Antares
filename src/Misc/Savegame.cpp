@@ -1,11 +1,12 @@
 #include "SavegameDef.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 
 #include "../Ares.h"
 #include "../Ares.version.h"
 
 #include <LoadOptionsClass.h>
 
-DEFINE_HOOK(67D300, SaveGame_Start, 5)
+DEFINE_HOOK(0x67D300, SaveGame_Start, 0x5)
 {
 	Ares::SaveGame();
 	return 0;
@@ -22,7 +23,7 @@ const byte SaveGame_ReturnCode[] = {
 	0xC3              // retn
 };
 
-DEFINE_HOOK(67E42E, SaveGame, 5)
+DEFINE_HOOK(0x67E42E, SaveGame, 0x5)
 {
 	GET(HRESULT, Status, EAX);
 
@@ -36,13 +37,13 @@ DEFINE_HOOK(67E42E, SaveGame, 5)
 	return reinterpret_cast<DWORD>(SaveGame_ReturnCode);
 }
 
-DEFINE_HOOK(67E730, LoadGame_Start, 5)
+DEFINE_HOOK(0x67E730, LoadGame_Start, 0x5)
 {
 	Ares::LoadGame();
 	return 0;
 }
 
-DEFINE_HOOK(67F7C8, LoadGame_End, 5)
+DEFINE_HOOK(0x67F7C8, LoadGame_End, 0x5)
 {
 	GET(IStream *, pStm, ESI);
 
@@ -51,7 +52,7 @@ DEFINE_HOOK(67F7C8, LoadGame_End, 5)
 	return 0;
 }
 
-DEFINE_HOOK(67D04E, Game_Save_SavegameInformation, 7)
+DEFINE_HOOK(0x67D04E, Game_Save_SavegameInformation, 0x7)
 {
 	REF_STACK(SavegameInformation, Info, STACK_OFFS(0x4A4, 0x3F4));
 
@@ -63,7 +64,7 @@ DEFINE_HOOK(67D04E, Game_Save_SavegameInformation, 7)
 	return 0;
 }
 
-DEFINE_HOOK(559F31, LoadOptionsClass_GetFileInfo, 9)
+DEFINE_HOOK(0x559F31, LoadOptionsClass_GetFileInfo, 0x9)
 {
 	REF_STACK(SavegameInformation, Info, STACK_OFFS(0x400, 0x3F4));
 
@@ -76,7 +77,7 @@ DEFINE_HOOK(559F31, LoadOptionsClass_GetFileInfo, 9)
 }
 
 // log message uses wrong format specifier
-DEFINE_HOOK(67CEFE, Game_Save_FixLog, 7)
+DEFINE_HOOK(0x67CEFE, Game_Save_FixLog, 0x7)
 {
 	GET(const char*, pFilename, EDI);
 	GET(const wchar_t*, pSaveName, ESI);
@@ -87,7 +88,7 @@ DEFINE_HOOK(67CEFE, Game_Save_FixLog, 7)
 }
 
 // #895374: skip the code that removes the crates
-DEFINE_HOOK(483BF1, CellClass_Load_Crates, 7)
+DEFINE_HOOK(0x483BF1, CellClass_Load_Crates, 0x7)
 {
 	return 0x483BFE;
 }

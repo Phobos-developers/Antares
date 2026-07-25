@@ -6,74 +6,110 @@
 
 INIClass::INISection* IniSectionIncludes::includedSection = nullptr;
 
-void IniSectionIncludes::CopySection(CCINIClass* ini, INIClass::INISection* source, const char* destName)
+static char* SkipBlanks(char* pText)
 {
-	//browse through section entries and copy them over to the new section
-	for(GenericNode* node = &source->Entries.First; node; node = node->Next)
-	{
-		if(*reinterpret_cast<unsigned int*>(node) == 0x7EB734) //type check via vtable address comparison... is there a better way?
-		{
-			INIClass::INIEntry* entry = static_cast<INIClass::INIEntry*>(node);
-			ini->WriteString(destName, entry->Key, entry->Value); //simple but effective
-		}
+	while(*pText && *pText <= ' ') {
+		++pText;
 	}
+	return pText;
 }
 
-CCINIClass::INISection* IniSectionIncludes::PreProcess(CCINIClass* ini, char* str)
+INIClass::INISection* IniSectionIncludes::GetInheritSection(INIClass* pINI, char* pText)
 {
-	char* split = strchr(str, ':');
-	if(split)
-	{
-		//inclusion operator detected, make sure there's a valid section definiton after that
-		*split++ = 0;
-		if(*split == '[')
-		{
-			split++;
+	pText = SkipBlanks(pText);
+	if(*pText != ':') {
+		return nullptr;
+	}
 
-			char* includedNameEnd = strchr(split, ']');
-			if(includedNameEnd && includedNameEnd != split)
-			{
-				*includedNameEnd = 0;
-				return ini->GetSection(split);
-			}
+	pText = SkipBlanks(pText + 1);
+	if(*pText != '[') {
+		return nullptr;
+	}
+
+	pText = SkipBlanks(pText + 1);
+
+	auto pEnd = strpbrk(pText, "];");
+	if(!pEnd || *pEnd != ']' || pEnd == pText) {
+		return nullptr;
+	}
+
+	while(pEnd[-1] <= ' ') {
+		if(--pEnd == pText) {
+			return nullptr;
 		}
 	}
+
+	*pEnd = '\0';
+
+	if(auto const pSection = pINI->GetSection(pText)) {
+		return pSection;
+	}
+
+	Debug::Log(Debug::Severity::Warning,
+		"An INI section inherits from section '%s', which doesn't exist or has not been parsed yet.\n",
+		pText);
+
 	return nullptr;
 }
 
-DEFINE_HOOK_AGAIN(525D4D, IniSectionIncludes_PreProcess, 6)
-DEFINE_HOOK(525DC1, IniSectionIncludes_PreProcess, 5)
+void IniSectionIncludes::CopySection(INIClass* pINI, INIClass::INISection* pSource, const char* pDest)
 {
-	GET_STACK(CCINIClass*, ini, 0x28);
-	LEA_STACK(char*, str, 0x78);
-	IniSectionIncludes::includedSection = IniSectionIncludes::PreProcess(ini, str);
+	//browse through section entries and copy them over to the new section
+	for(auto pNode = reinterpret_cast<GenericNode*>(pSource->Entries.First()); pNode->IsValid(); pNode = pNode->Next()) {
+		auto const pEntry = static_cast<INIClass::INIEntry*>(pNode);
+		pINI->WriteString(pDest, pEntry->Key, pEntry->Value); //simple but effective
+	}
+}
+
+DEFINE_HOOK(0x525CA5, INIClass_Parse_IniSectionIncludes_PreProcess1, 0x8)
+{
+	GET(char*, pEnd, EAX);
+
+	enum { NotASection = 0x525CAD, NextSection = 0x525D4D };
+
+	if(!pEnd) {
+		return NotASection;
+	}
+
+	GET_STACK(INIClass*, pINI, 0x28);
+	IniSectionIncludes::includedSection = IniSectionIncludes::GetInheritSection(pINI, pEnd + 1);
+
+	return NextSection;
+}
+
+DEFINE_HOOK(0x525DDB, INIClass_Parse_IniSectionIncludes_PreProcess2, 0x5)
+{
+	GET_STACK(INIClass*, pINI, 0x28);
+	GET(char*, pEnd, EAX);
+
+	*pEnd = '\0';
+	IniSectionIncludes::includedSection = IniSectionIncludes::GetInheritSection(pINI, pEnd + 1);
+
+	return 0x525DEA;
+}
+
+DEFINE_HOOK(0x525C28, INIClass_Parse_IniSectionIncludes_CopySection1, 0x7)
+{
+	if(IniSectionIncludes::includedSection) {
+		GET_STACK(INIClass*, pINI, 0x28);
+		LEA_STACK(const char*, pName, 0x79); //yes, 0x79
+
+		IniSectionIncludes::CopySection(pINI, IniSectionIncludes::includedSection, pName);
+		IniSectionIncludes::includedSection = nullptr; //reset, very important
+	}
+
 	return 0;
 }
 
-DEFINE_HOOK(525E47, IniSectionIncludes_CopySection1, 6)
+DEFINE_HOOK(0x525E44, INIClass_Parse_IniSectionIncludes_CopySection2, 0x7)
 {
-	if(IniSectionIncludes::includedSection)
-	{
-		GET_STACK(CCINIClass*, ini, 0x28);
-		GET(INIClass::INISection*, section, EBX);
-		IniSectionIncludes::CopySection(ini, IniSectionIncludes::includedSection, section->Name);
+	if(IniSectionIncludes::includedSection) {
+		GET_STACK(INIClass*, pINI, 0x28);
+		GET(INIClass::INISection*, pSection, EBX);
+
+		IniSectionIncludes::CopySection(pINI, IniSectionIncludes::includedSection, pSection->Name);
 		IniSectionIncludes::includedSection = nullptr; //reset, very important
 	}
+
 	return 0;
-}
-
-DEFINE_HOOK(525C28, IniSectionIncludes_CopySection2, 0)
-{
-	LEA_STACK(char*, str, 0x79); //yes, 0x79
-	LEA_STACK(char*, sectionName, 0x278)
-	strcpy_s(sectionName, 511, str);
-
-	if(IniSectionIncludes::includedSection)
-	{
-		GET_STACK(CCINIClass*, ini, 0x28);
-		IniSectionIncludes::CopySection(ini, IniSectionIncludes::includedSection, sectionName);
-		IniSectionIncludes::includedSection = nullptr; //reset, very important
-	}
-
-	return 0x525C50;
 }

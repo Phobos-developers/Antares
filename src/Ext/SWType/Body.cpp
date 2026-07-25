@@ -8,6 +8,7 @@
 #include "../House/Body.h"
 #include "../HouseType/Body.h"
 #include "../Side/Body.h"
+#include "../../Enum/CursorTypes.h"
 #include "../../Ares.h"
 #include "../../Ares.CRT.h"
 #include "../../Utilities/Enums.h"
@@ -23,64 +24,40 @@
 #include <Notifications.h>
 #include <ScenarioClass.h>
 
-template<> const DWORD Extension<SuperWeaponTypeClass>::Canary = 0x66666666;
 SWTypeExt::ExtContainer SWTypeExt::ExtMap;
 
 SuperWeaponTypeClass *SWTypeExt::CurrentSWType = nullptr;
 
 // note: this array is indexed using the targeting mode. see that the first
 // parameter is always equal to the index of the item.
-const std::array<const AITargetingModeInfo, 15> SWTypeExt::AITargetingModes = {{
-	{SuperWeaponAITargetingMode::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
-	{SuperWeaponAITargetingMode::Nuke, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
-	{SuperWeaponAITargetingMode::LightningStorm, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
-	{SuperWeaponAITargetingMode::PsychicDominator, SuperWeaponTarget::Infantry | SuperWeaponTarget::Unit, SuperWeaponAffectedHouse::All},
-	{SuperWeaponAITargetingMode::ParaDrop, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
-	{SuperWeaponAITargetingMode::GeneticMutator, SuperWeaponTarget::Infantry, SuperWeaponAffectedHouse::All},
-	{SuperWeaponAITargetingMode::ForceShield, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
-	{SuperWeaponAITargetingMode::NoTarget, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
-	{SuperWeaponAITargetingMode::Offensive, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
-	{SuperWeaponAITargetingMode::Stealth, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
-	{SuperWeaponAITargetingMode::Self, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
-	{SuperWeaponAITargetingMode::Base, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
-	{SuperWeaponAITargetingMode::MultiMissile, SuperWeaponTarget::Building, SuperWeaponAffectedHouse::Enemies},
-	{SuperWeaponAITargetingMode::HunterSeeker, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
-	{SuperWeaponAITargetingMode::EnemyBase, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+const std::array<const AITargetingModeInfo, 21> SWTypeExt::AITargetingModes = {{
+	{SuperWeaponAITargetingMode::None, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::Nuke, SuperWeaponAITargetingConstraints::Enemy, SuperWeaponAITargetingPreference::Offensive, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
+	{SuperWeaponAITargetingMode::LightningStorm, SuperWeaponAITargetingConstraints::Enemy | SuperWeaponAITargetingConstraints::LightningStormInactive, SuperWeaponAITargetingPreference::Offensive, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
+	{SuperWeaponAITargetingMode::PsychicDominator, SuperWeaponAITargetingConstraints::OffensiveCellClear | SuperWeaponAITargetingConstraints::Enemy | SuperWeaponAITargetingConstraints::DominatorInactive, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::Infantry | SuperWeaponTarget::Unit, SuperWeaponAffectedHouse::All},
+	{SuperWeaponAITargetingMode::ParaDrop, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::Offensive, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::GeneticMutator, SuperWeaponAITargetingConstraints::OffensiveCellClear, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::Infantry, SuperWeaponAffectedHouse::All},
+	{SuperWeaponAITargetingMode::ForceShield, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::Defensive, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::NoTarget, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::Offensive, SuperWeaponAITargetingConstraints::Enemy, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
+	{SuperWeaponAITargetingMode::Stealth, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::AllTechnos, SuperWeaponAffectedHouse::Enemies},
+	{SuperWeaponAITargetingMode::Self, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::Base, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::MultiMissile, SuperWeaponAITargetingConstraints::Enemy, SuperWeaponAITargetingPreference::Offensive, SuperWeaponTarget::Building, SuperWeaponAffectedHouse::Enemies},
+	{SuperWeaponAITargetingMode::HunterSeeker, SuperWeaponAITargetingConstraints::Enemy, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::EnemyBase, SuperWeaponAITargetingConstraints::Enemy, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::IronCurtain, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::Attack, SuperWeaponAITargetingConstraints::Attacked, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::LowPower, SuperWeaponAITargetingConstraints::LowPower, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::LowPowerAttack, SuperWeaponAITargetingConstraints::Attacked | SuperWeaponAITargetingConstraints::LowPower, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::DropPod, SuperWeaponAITargetingConstraints::Enemy, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
+	{SuperWeaponAITargetingMode::LightningRandom, SuperWeaponAITargetingConstraints::None, SuperWeaponAITargetingPreference::None, SuperWeaponTarget::None, SuperWeaponAffectedHouse::None},
 }};
 
-void SWTypeExt::ExtData::InitializeConstants()
+void SWTypeExt::ExtData::Initialize(CCINIClass* pINI)
 {
 	NewSWType::Init();
 
-	MouseCursor *Cursor = &this->SW_Cursor;
-	Cursor->Frame = 53; // Attack
-	Cursor->Count = 5;
-	Cursor->Interval = 5; // test?
-	Cursor->MiniFrame = 52;
-	Cursor->MiniCount = 1;
-	Cursor->HotX = MouseHotSpotX::Center;
-	Cursor->HotY = MouseHotSpotY::Middle;
-
-	Cursor = &this->SW_NoCursor;
-	Cursor->Frame = 0;
-	Cursor->Count = 1;
-	Cursor->Interval = 5;
-	Cursor->MiniFrame = 1;
-	Cursor->MiniCount = 1;
-	Cursor->HotX = MouseHotSpotX::Center;
-	Cursor->HotY = MouseHotSpotY::Middle;
-
-	this->Text_Ready = "TXT_READY";
-	this->Text_Hold = "TXT_HOLD";
-	this->Text_Charging = "TXT_CHARGING";
-	this->Text_Active = "TXT_FIRESTORM_ON";
-
-	EVA_InsufficientFunds = VoxClass::FindIndex("EVA_InsufficientFunds");
-	EVA_SelectTarget = VoxClass::FindIndex("EVA_SelectTarget");
-}
-
-void SWTypeExt::ExtData::LoadFromRulesFile(CCINIClass *pINI)
-{
 	auto pThis = this->OwnerObject();
 	const char * section = pThis->get_ID();
 
@@ -109,7 +86,7 @@ void SWTypeExt::ExtData::LoadFromRulesFile(CCINIClass *pINI)
 	// if this is handled by a NewSWType, initialize it.
 	if(auto pNewSWType = this->GetNewSWType()) {
 		pThis->Action = Actions::SuperWeaponAllowed;
-		pNewSWType->Initialize(this, pThis);
+		pNewSWType->Initialize(this);
 	}
 	this->LastAction = pThis->Action;
 }
@@ -138,6 +115,9 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->SW_RadarEvent.Read(exINI, section, "SW.CreateRadarEvent");
 	this->SW_ShowCameo.Read(exINI, section, "SW.ShowCameo");
 	this->SW_Unstoppable.Read(exINI, section, "SW.Unstoppable");
+	this->SW_AllowPlayer.Read(exINI, section, "SW.AllowPlayer");
+	this->SW_AllowAI.Read(exINI, section, "SW.AllowAI");
+	this->SW_TimerVisibility.Read(exINI, section, "SW.TimerVisibility");
 
 	this->Money_Amount.Read(exINI, section, "Money.Amount");
 	this->Money_DrainAmount.Read(exINI, section, "Money.DrainAmount");
@@ -151,7 +131,11 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	this->SW_AnimVisibility.Read(exINI, section, "SW.AnimationVisibility");
 	this->SW_AffectsHouse.Read(exINI, section, "SW.AffectsHouse");
+	this->SW_AlwaysGranted.Read(exINI, section, "SW.AlwaysGranted");
+	this->SW_UseAITargeting.Read(exINI, section, "SW.UseAITargeting");
 	this->SW_AITargetingType.Read(exINI, section, "SW.AITargeting");
+	this->SW_AITargetingConstraints.Read(exINI, section, "SW.AITargeting.Constraints");
+	this->SW_AITargetingPreference.Read(exINI, section, "SW.AITargeting.Preference");
 	this->SW_AffectsTarget.Read(exINI, section, "SW.AffectsTarget");
 	this->SW_RequiresTarget.Read(exINI, section, "SW.RequiresTarget");
 	this->SW_RequiresHouse.Read(exINI, section, "SW.RequiresHouse");
@@ -205,6 +189,7 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->Message_Activate.Read(exINI, section, "Message.Activate");
 	this->Message_Abort.Read(exINI, section, "Message.Abort");
 	this->Message_InsufficientFunds.Read(exINI, section, "Message.InsufficientFunds");
+	this->Message_CannotFire.Read(exINI, section, "Message.CannotFire");
 
 	this->Text_Preparing.Read(exINI, section, "Text.Preparing");
 	this->Text_Ready.Read(exINI, section, "Text.Ready");
@@ -233,11 +218,16 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->SW_AuxBuildings.Read(exINI, section, "SW.AuxBuildings");
 	this->SW_NegBuildings.Read(exINI, section, "SW.NegBuildings");
 
+	this->SW_Group.Read(exINI, section, "SW.Group");
+	this->SW_Shots.Read(exINI, section, "SW.Shots");
+	this->SW_InitialReady.Read(exINI, section, "SW.InitialReady");
+	this->SW_VirtualCharge.Read(exINI, section, "SW.VirtualCharge");
+
 	// initialize the NewSWType that handles this SWType.
 	if(auto pNewSWType = this->GetNewSWType()) {
 		auto pThis = this->OwnerObject();
 		pThis->Action = this->LastAction;
-		pNewSWType->LoadFromINI(this, pThis, pINI);
+		pNewSWType->LoadFromINI(this, pINI);
 		this->LastAction = pThis->Action;
 
 		// whatever the user does, we take care of the stupid tags.
@@ -255,6 +245,19 @@ void SWTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 bool SWTypeExt::ExtData::IsAvailable(HouseClass* pHouse) const {
 	const auto pThis = this->OwnerObject();
+
+	// this super weapon has been fired as often as allowed
+	if(this->SW_Shots >= 0) {
+		const auto pExt = HouseExt::ExtMap.Find(pHouse);
+		if(pExt->ShotsAmount(pThis->ArrayIndex).ShootAmount >= this->SW_Shots) {
+			return false;
+		}
+	}
+
+	// some super weapons are only for humans or only for the AI
+	if(pHouse->IsControlledByHuman() ? !this->SW_AllowPlayer : !this->SW_AllowAI) {
+		return false;
+	}
 
 	// check whether the optional aux building exists
 	if(pThis->AuxBuilding && pHouse->CountOwnedAndPresent(pThis->AuxBuilding) <= 0) {
@@ -313,6 +316,92 @@ SuperWeaponAffectedHouse SWTypeExt::ExtData::GetAIRequiredHouse() const {
 	return SuperWeaponAffectedHouse::None;
 }
 
+bool SWTypeExt::ExtData::CanShoot(HouseClass* pHouse) const {
+	if(this->SW_Shots < 0) {
+		return true;
+	}
+
+	const auto pExt = HouseExt::ExtMap.Find(pHouse);
+	return pExt->ShotsAmount(this->OwnerObject()->ArrayIndex).ShootAmount < this->SW_Shots;
+}
+
+SuperWeaponAITargetingConstraints SWTypeExt::ExtData::GetAITargetingConstraints() const {
+	if(this->SW_AITargetingConstraints.isset()) {
+		return this->SW_AITargetingConstraints;
+	}
+
+	auto index = static_cast<unsigned int>(this->SW_AITargetingType.Get());
+
+	if(index < SWTypeExt::AITargetingModes.size()) {
+		return SWTypeExt::AITargetingModes[index].Constrain;
+	}
+
+	return SuperWeaponAITargetingConstraints::None;
+}
+
+SuperWeaponAITargetingPreference SWTypeExt::ExtData::GetAITargetingPreference() const {
+	if(this->SW_AITargetingPreference.isset()) {
+		return this->SW_AITargetingPreference;
+	}
+
+	auto index = static_cast<unsigned int>(this->SW_AITargetingType.Get());
+
+	if(index < SWTypeExt::AITargetingModes.size()) {
+		return SWTypeExt::AITargetingModes[index].Preference;
+	}
+
+	return SuperWeaponAITargetingPreference::None;
+}
+
+bool SWTypeExt::ExtData::MeetsAITargetingConstraints(HouseClass* pOwner, bool manual) const {
+	auto const flags = this->GetAITargetingConstraints();
+
+	auto const offensive = pOwner->PreferredTargetCell != CellStruct::Empty;
+	if((flags & SuperWeaponAITargetingConstraints::OffensiveCellClear) && offensive) {
+		return false;
+	}
+
+	if((flags & SuperWeaponAITargetingConstraints::OffensiveCellSet) && !offensive) {
+		return false;
+	}
+
+	auto const defensive = pOwner->PreferredDefensiveCell2 != CellStruct::Empty;
+	if((flags & SuperWeaponAITargetingConstraints::DefensiveCellClear) && defensive) {
+		return false;
+	}
+
+	if((flags & SuperWeaponAITargetingConstraints::DefensiveCellSet) && !defensive) {
+		return false;
+	}
+
+	if((flags & SuperWeaponAITargetingConstraints::Enemy) && pOwner->EnemyHouseIndex < 0) {
+		return false;
+	}
+
+	if(!manual) {
+		if((flags & SuperWeaponAITargetingConstraints::LightningStormInactive) && LightningStorm::Active) {
+			return false;
+		}
+
+		if((flags & SuperWeaponAITargetingConstraints::DominatorInactive) && PsyDom::Active()) {
+			return false;
+		}
+
+		if((flags & SuperWeaponAITargetingConstraints::Attacked)) {
+			auto const frame = pOwner->LATime;   // unknown_54D8 in the pinned YRpp
+			if(frame && frame + 75 < Unsorted::CurrentFrame) {
+				return false;
+			}
+		}
+
+		if((flags & SuperWeaponAITargetingConstraints::LowPower) && !pOwner->HasLowPower()) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 Iterator<TechnoClass*> SWTypeExt::ExtData::GetPotentialAITargets(HouseClass* pTarget) const {
 	const auto require = this->GetAIRequiredTarget() & SuperWeaponTarget::AllTechnos;
 
@@ -323,23 +412,73 @@ Iterator<TechnoClass*> SWTypeExt::ExtData::GetPotentialAITargets(HouseClass* pTa
 			if(pTarget) {
 				return make_iterator(pTarget->Buildings);
 			}
-			return make_iterator(*BuildingClass::Array);
+			return make_iterator(BuildingClass::Array);
 		}
-		return make_iterator(*TechnoClass::Array);
+		return make_iterator(TechnoClass::Array);
 	}
 
 	if(require == SuperWeaponTarget::Infantry) {
-		return make_iterator(*InfantryClass::Array);
+		return make_iterator(InfantryClass::Array);
 	}
 
 	// it's techno stuff, but not buildings
-	return make_iterator(*FootClass::Array);
+	return make_iterator(FootClass::Array);
 }
 
 // can i see the animation of pFirer's SW?
 bool SWTypeExt::ExtData::IsAnimVisible(HouseClass* pFirer) {
-	auto relation = GetRelation(pFirer, HouseClass::Player);
+	auto relation = GetRelation(pFirer, HouseClass::CurrentPlayer);
 	return (this->SW_AnimVisibility & relation) == relation;
+}
+
+// can i see the countdown of pOwner's SW?
+bool SWTypeExt::ExtData::IsTimerVisible(HouseClass* pOwner) const {
+	// observers see whatever the allies do
+	if(HouseClass::IsCurrentPlayerObserver()) {
+		return (this->SW_TimerVisibility & SuperWeaponAffectedHouse::Allies)
+			!= SuperWeaponAffectedHouse::None;
+	}
+
+	auto relation = GetRelation(pOwner, HouseClass::CurrentPlayer);
+	return (this->SW_TimerVisibility & relation) != SuperWeaponAffectedHouse::None;
+}
+
+// the action to show for firing this SW at cell, and the cursor that goes
+// with it. Action::None means this SW does not handle the cell at all.
+Action SWTypeExt::ExtData::GetAction(CellStruct cell) {
+	auto const pThis = this->OwnerObject();
+	auto const pType = this->GetNewSWType();
+
+	if(!pType && pThis->Action != Actions::SuperWeaponAllowed) {
+		return Action::None;
+	}
+
+	auto canFire = true;
+
+	// prevent firing into shroud
+	if(!this->SW_FireToShroud) {
+		auto const pCell = MapClass::Instance.GetCellAt(cell);
+		canFire = !MapClass::Instance.IsLocationShrouded(pCell->GetCoords());
+	}
+
+	// new SW types have to check whether the coordinates are valid.
+	if(canFire && pType) {
+		canFire = pType->CanFireAt(this, HouseClass::CurrentPlayer, cell, true);
+	}
+
+	auto index = this->SW_NoCursor;
+
+	if(canFire) {
+		SWTypeExt::CurrentSWType = pThis;
+		index = this->SW_Cursor;
+	} else {
+		SWTypeExt::CurrentSWType = nullptr;
+	}
+
+	CursorType::AddMappedAction(
+		index, this->SW_FireToShroud, static_cast<Action>(-1));
+
+	return canFire ? Actions::SuperWeaponAllowed : Actions::SuperWeaponDisallowed;
 }
 
 // does pFirer's SW affects object belonging to pHouse?
@@ -415,8 +554,8 @@ bool SWTypeExt::ExtData::IsTechnoAffected(TechnoClass* pTechno) {
 	return true;
 }
 
-bool SWTypeExt::ExtData::CanFireAt(HouseClass* pOwner, const CellStruct &coords, bool manual) {
-	auto pCell = MapClass::Instance->GetCellAt(coords);
+bool SWTypeExt::ExtData::CanFireAt(HouseClass* pOwner, CellStruct coords, bool manual) {
+	auto pCell = MapClass::Instance.GetCellAt(coords);
 
 	// check cell type
 	auto const AllowedTarget = !manual ? this->GetAIRequiredTarget() : SW_RequiresTarget;
@@ -472,6 +611,9 @@ bool SWTypeExt::Launch(SuperClass* pThis, NewSWType* pSW, const CellStruct &Coor
 		// launch the SW, then play sounds and animations. if the SW isn't launched
 		// nothing will be played.
 		if(pSW->Activate(pThis, Coords, IsPlayer)) {
+			auto const pOwnerExt = HouseExt::ExtMap.Find(pThis->Owner);
+			pOwnerExt->UpdateShootCount(pThis->Type->ArrayIndex);
+
 			auto const flags = pSW->Flags();
 
 			if(flags & SuperWeaponFlags::PostClick) {
@@ -484,6 +626,11 @@ bool SWTypeExt::Launch(SuperClass* pThis, NewSWType* pSW, const CellStruct &Coor
 				}
 			}
 
+			// the last shot may have made this super weapon unavailable
+			if(pThis->IsOneTime || !pData->CanShoot(pThis->Owner)) {
+				pThis->Owner->RecheckTechTree = true;
+			}
+
 			if(!Unsorted::MuteSWLaunches && (pData->EVA_Activated != -1) && !(flags & SuperWeaponFlags::NoEVA)) {
 				VoxClass::PlayIndex(pData->EVA_Activated);
 			}
@@ -492,7 +639,7 @@ bool SWTypeExt::Launch(SuperClass* pThis, NewSWType* pSW, const CellStruct &Coor
 				pThis->Owner->TransactMoney(pData->Money_Amount);
 			}
 
-			CellClass *pTarget = MapClass::Instance->GetCellAt(Coords);
+			CellClass *pTarget = MapClass::Instance.GetCellAt(Coords);
 
 			CoordStruct coords = pTarget->GetCoordsWithBridge();
 
@@ -525,7 +672,7 @@ bool SWTypeExt::Launch(SuperClass* pThis, NewSWType* pSW, const CellStruct &Coor
 				// auto-firing might happen while the player still selects a target.
 				// PostClick SWs do have a different type index, so they need to be
 				// special cased, but they can't auto-fire anyhow.
-				if(pThis->Owner == HouseClass::Player) {
+				if(pThis->Owner == HouseClass::CurrentPlayer) {
 					if(idxThis == Unsorted::CurrentSWType || (flags & SuperWeaponFlags::PostClick)) {
 						Unsorted::CurrentSWType = -1;
 					}
@@ -598,14 +745,14 @@ void SWTypeExt::ExtData::PrintMessage(const CSFText& message, HouseClass* pFirer
 		if(this->Message_ColorScheme > -1) {
 			// user defined color
 			color = this->Message_ColorScheme;
-		} else if(HouseClass::Player) {
+		} else if(HouseClass::CurrentPlayer) {
 			// default way: the current player's color
-			color = HouseClass::Player->ColorSchemeIndex;
+			color = HouseClass::CurrentPlayer->ColorSchemeIndex;
 		}
 	}
 
 	// print the message
-	MessageListClass::Instance->PrintMessage(message, RulesClass::Instance->MessageDelay, color);
+	MessageListClass::Instance.PrintMessage(message, RulesClass::Instance->MessageDelay, color);
 }
 
 void SWTypeExt::ClearChronoAnim(SuperClass* pThis)
@@ -656,17 +803,17 @@ LightingColor SWTypeExt::GetLightingColor(SuperWeaponTypeClass* pCustom) {
 	if(NukeFlash::IsFadingIn() || ChronoScreenEffect::Status) {
 		// nuke flash
 		ret.Ambient = scen->NukeAmbient;
-		ret.Red = scen->NukeRed;
-		ret.Green = scen->NukeGreen;
-		ret.Blue = scen->NukeBlue;
+		ret.Red = scen->NukeLighting.Tint.Red;
+		ret.Green = scen->NukeLighting.Tint.Green;
+		ret.Blue = scen->NukeLighting.Tint.Blue;
 
 		pType = SW_NuclearMissile::CurrentNukeType;
 	} else if(LightningStorm::Active) {
 		// lightning storm
 		ret.Ambient = scen->IonAmbient;
-		ret.Red = scen->IonRed;
-		ret.Green = scen->IonGreen;
-		ret.Blue = scen->IonBlue;
+		ret.Red = scen->IonLighting.Tint.Red;
+		ret.Green = scen->IonLighting.Tint.Green;
+		ret.Blue = scen->IonLighting.Tint.Blue;
 
 		if(SuperClass *pSuper = SW_LightningStorm::CurrentLightningStorm) {
 			pType = pSuper->Type;
@@ -674,9 +821,9 @@ LightingColor SWTypeExt::GetLightingColor(SuperWeaponTypeClass* pCustom) {
 	} else if(PsyDom::Status != PsychicDominatorStatus::Inactive && PsyDom::Status != PsychicDominatorStatus::Over) {
 		// psychic dominator
 		ret.Ambient = scen->DominatorAmbient;
-		ret.Red = scen->DominatorRed;
-		ret.Green = scen->DominatorGreen;
-		ret.Blue = scen->DominatorBlue;
+		ret.Red = scen->DominatorLighting.Tint.Red;
+		ret.Green = scen->DominatorLighting.Tint.Green;
+		ret.Blue = scen->DominatorLighting.Tint.Blue;
 
 		if(SuperClass *pSuper = SW_PsychicDominator::CurrentPsyDom) {
 			pType = pSuper->Type;
@@ -684,9 +831,9 @@ LightingColor SWTypeExt::GetLightingColor(SuperWeaponTypeClass* pCustom) {
 	} else {
 		// no special lightning
 		ret.Ambient = scen->AmbientOriginal;
-		ret.Red = scen->Red;
-		ret.Green = scen->Green;
-		ret.Blue = scen->Blue;
+		ret.Red = scen->NormalLighting.Tint.Red;
+		ret.Green = scen->NormalLighting.Tint.Green;
+		ret.Blue = scen->NormalLighting.Tint.Blue;
 
 		ret.HasValue = false;
 	}
@@ -800,7 +947,6 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->Nuke_TakeOff)
 		.Process(this->Nuke_SiloLaunch)
 		.Process(this->ParaDrop)
-		.Process(this->ParaDropPlanes)
 		.Process(this->EMPulse_Linked)
 		.Process(this->EMPulse_TargetSelf)
 		.Process(this->EMPulse_PulseDelay)
@@ -814,6 +960,7 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->Chronosphere_BlastDest)
 		.Process(this->Chronosphere_KillOrganic)
 		.Process(this->Chronosphere_KillTeleporters)
+		.Process(this->Chronosphere_KillCargo)
 		.Process(this->Chronosphere_AffectUndeployable)
 		.Process(this->Chronosphere_AffectBuildings)
 		.Process(this->Chronosphere_AffectUnwarpable)
@@ -844,6 +991,9 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->DropPod_Maximum)
 		.Process(this->DropPod_Veterancy)
 		.Process(this->DropPod_Types)
+		.Process(this->Battery_Power)
+		.Process(this->Battery_KeepOnline)
+		.Process(this->Battery_Overpower)
 		.Process(this->Money_Amount)
 		.Process(this->Money_DrainAmount)
 		.Process(this->Money_DrainDelay)
@@ -864,10 +1014,17 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->SW_RadarEvent)
 		.Process(this->SW_ShowCameo)
 		.Process(this->SW_Unstoppable)
+		.Process(this->SW_AllowPlayer)
+		.Process(this->SW_AllowAI)
+		.Process(this->SW_TimerVisibility)
 		.Process(this->SW_Cursor)
 		.Process(this->SW_NoCursor)
 		.Process(this->SW_PostDependent)
+		.Process(this->SW_AlwaysGranted)
+		.Process(this->SW_UseAITargeting)
 		.Process(this->SW_AITargetingType)
+		.Process(this->SW_AITargetingConstraints)
+		.Process(this->SW_AITargetingPreference)
 		.Process(this->SW_ChargeToDrainRatio)
 		.Process(this->SW_Range)
 		.Process(this->SW_MaxCount)
@@ -884,6 +1041,10 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->SW_ForbiddenHouses)
 		.Process(this->SW_AuxBuildings)
 		.Process(this->SW_NegBuildings)
+		.Process(this->SW_Group)
+		.Process(this->SW_Shots)
+		.Process(this->SW_InitialReady)
+		.Process(this->SW_VirtualCharge)
 		.Process(this->Lighting_Enabled)
 		.Process(this->Lighting_Ambient)
 		.Process(this->Lighting_Green)
@@ -895,6 +1056,7 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->Message_Activate)
 		.Process(this->Message_Abort)
 		.Process(this->Message_InsufficientFunds)
+		.Process(this->Message_CannotFire)
 		.Process(this->Message_ColorScheme)
 		.Process(this->Message_FirerColor)
 		.Process(this->Text_Preparing)
@@ -911,6 +1073,7 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->CameoPal)
 		.Process(this->SW_Deliverables)
 		.Process(this->SW_DeliverBuildups)
+		.Process(this->SW_DeliverBaseNormal)
 		.Process(this->SW_OwnerHouse)
 		.Process(this->SidebarPCX)
 		.Process(this->HandledByNewSWType)
@@ -918,12 +1081,12 @@ void SWTypeExt::ExtData::Serialize(T& Stm) {
 }
 
 void SWTypeExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<SuperWeaponTypeClass>::LoadFromStream(Stm);
+	Extension<SuperWeaponTypeClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void SWTypeExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<SuperWeaponTypeClass>::SaveToStream(Stm);
+	Extension<SuperWeaponTypeClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -954,7 +1117,7 @@ void SWTypeExt::ExtContainer::InvalidatePointer(void* ptr, bool bRemoved) {
 // =============================
 // container hooks
 
-DEFINE_HOOK(6CE6F6, SuperWeaponTypeClass_CTOR, 5)
+DEFINE_HOOK(0x6CE6F6, SuperWeaponTypeClass_CTOR, 0x5)
 {
 	GET(SuperWeaponTypeClass*, pItem, EAX);
 
@@ -962,7 +1125,7 @@ DEFINE_HOOK(6CE6F6, SuperWeaponTypeClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(6CEFE0, SuperWeaponTypeClass_SDDTOR, 8)
+DEFINE_HOOK(0x6CEFE0, SuperWeaponTypeClass_SDDTOR, 0x8)
 {
 	GET(SuperWeaponTypeClass*, pItem, ECX);
 
@@ -970,8 +1133,8 @@ DEFINE_HOOK(6CEFE0, SuperWeaponTypeClass_SDDTOR, 8)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(6CE8D0, SuperWeaponTypeClass_SaveLoad_Prefix, 8)
-DEFINE_HOOK(6CE800, SuperWeaponTypeClass_SaveLoad_Prefix, A)
+DEFINE_HOOK_AGAIN(0x6CE8D0, SuperWeaponTypeClass_SaveLoad_Prefix, 0x8)
+DEFINE_HOOK(0x6CE800, SuperWeaponTypeClass_SaveLoad_Prefix, 0xA)
 {
 	GET_STACK(SuperWeaponTypeClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -981,20 +1144,20 @@ DEFINE_HOOK(6CE800, SuperWeaponTypeClass_SaveLoad_Prefix, A)
 	return 0;
 }
 
-DEFINE_HOOK(6CE8BE, SuperWeaponTypeClass_Load_Suffix, 7)
+DEFINE_HOOK(0x6CE8BE, SuperWeaponTypeClass_Load_Suffix, 0x7)
 {
 	SWTypeExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(6CE8EA, SuperWeaponTypeClass_Save_Suffix, 3)
+DEFINE_HOOK(0x6CE8EA, SuperWeaponTypeClass_Save_Suffix, 0x3)
 {
 	SWTypeExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(6CEE50, SuperWeaponTypeClass_LoadFromINI, A)
-DEFINE_HOOK(6CEE43, SuperWeaponTypeClass_LoadFromINI, A)
+DEFINE_HOOK_AGAIN(0x6CEE50, SuperWeaponTypeClass_LoadFromINI, 0xA)
+DEFINE_HOOK(0x6CEE43, SuperWeaponTypeClass_LoadFromINI, 0xA)
 {
 	GET(SuperWeaponTypeClass*, pItem, EBP);
 	GET_STACK(CCINIClass*, pINI, 0x3FC);
@@ -1002,3 +1165,21 @@ DEFINE_HOOK(6CEE43, SuperWeaponTypeClass_LoadFromINI, A)
 	SWTypeExt::ExtMap.LoadFromINI(pItem, pINI);
 	return 0;
 }
+
+static_assert(sizeof(SWTypeExt::ExtData) == 0x500, "SWTypeExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the start, the middle and the end of the block.
+static_assert(offsetof(SWTypeExt::ExtData, SpyPlane_TypeIndex) == 0x008, "SWTypeExt::ExtData layout slipped");
+static_assert(offsetof(SWTypeExt::ExtData, EVA_Ready) == 0x1AC, "SWTypeExt::ExtData layout slipped");
+static_assert(offsetof(SWTypeExt::ExtData, SW_Cursor) == 0x1EC, "SWTypeExt::ExtData layout slipped");
+static_assert(offsetof(SWTypeExt::ExtData, Message_CannotFire) == 0x380, "SWTypeExt::ExtData layout slipped");
+static_assert(offsetof(SWTypeExt::ExtData, SidebarPCX) == 0x4B0, "SWTypeExt::ExtData layout slipped");
+static_assert(offsetof(SWTypeExt::ExtData, LastAction) == 0x4D8, "SWTypeExt::ExtData layout slipped");
+
+// ParaDrop streams as a map of vectors of 28-byte planes: Aircraft(4, swizzled)
+// + Types(12) + Num(12). That accounts for the whole plane with nothing padded or
+// elided, and the assert below catches a member changing width underneath it.
+static_assert(sizeof(ParadropPlane) == 28, "ParadropPlane must stay 28 bytes: Aircraft(4) + Types(12) + Num(12)");
+static_assert(offsetof(ParadropPlane, Types) == 4, "ParadropPlane layout slipped");
+static_assert(offsetof(ParadropPlane, Num) == 16, "ParadropPlane layout slipped");

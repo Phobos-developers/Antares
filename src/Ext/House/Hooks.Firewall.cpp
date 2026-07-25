@@ -10,8 +10,8 @@
 #include "../BulletType/Body.h"
 #include "../TechnoType/Body.h"
 
-DEFINE_HOOK_AGAIN(6FF860, TechnoClass_Fire_FSW, 8)
-DEFINE_HOOK(6FF008, TechnoClass_Fire_FSW, 8)
+DEFINE_HOOK_AGAIN(0x6FF860, TechnoClass_Fire_FSW, 0x8)
+DEFINE_HOOK(0x6FF008, TechnoClass_Fire_FSW, 0x8)
 {
 	REF_STACK(CoordStruct const, src, 0x44);
 	REF_STACK(CoordStruct const, tgt, 0x88);
@@ -25,8 +25,7 @@ DEFINE_HOOK(6FF008, TechnoClass_Fire_FSW, 8)
 		: R->EBX<BulletClass*>()
 	;
 
-	auto const pBulletData = BulletTypeExt::ExtMap.Find(Bullet->Type);
-	if(!pBulletData->SubjectToFirewall) {
+	if(Bullet->Type->IgnoresFirestorm) {
 		return 0;
 	}
 
@@ -37,10 +36,10 @@ DEFINE_HOOK(6FF008, TechnoClass_Fire_FSW, 8)
 
 // screw having two code paths
 
-	auto const crd = MapClass::Instance->FindFirstFirestorm(src, tgt, Bullet->Owner->Owner);
+	auto const crd = MapClass::Instance.FindFirstFirestorm(src, tgt, Bullet->Owner->Owner);
 
 	if(crd != CoordStruct::Empty) {
-		auto const pCell = MapClass::Instance->GetCellAt(crd);
+		auto const pCell = MapClass::Instance.GetCellAt(crd);
 		Bullet->Target = pCell->GetContent();
 		Bullet->Owner->ShouldLoseTargetNow = 1;
 //		Bullet->Owner->SetTarget(nullptr);

@@ -175,7 +175,7 @@ template<>
 static bool Parser<int>::TryParse(const char* pValue, OutType* outValue) {
 	const char *pFmt = nullptr;
 	if(*pValue == '$') {
-		pFmt = "$%d";
+		pFmt = "$%x";
 	} else if(tolower(static_cast<unsigned char>(pValue[strlen(pValue) - 1])) == 'h') {
 		pFmt = "%xh";
 	} else {
@@ -224,7 +224,7 @@ static bool Parser<BYTE>::TryParse(const char* pValue, OutType* outValue) {
 	// no way to read unsigned char, use short instead.
 	const char *pFmt = nullptr;
 	if(*pValue == '$') {
-		pFmt = "$%hu";
+		pFmt = "$%hx";
 	} else if(tolower(static_cast<unsigned char>(pValue[strlen(pValue) - 1])) == 'h') {
 		pFmt = "%hxh";
 	} else {

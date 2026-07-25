@@ -1,5 +1,7 @@
 #include "Body.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include "../TechnoType/Body.h"
+#include "../../Misc/SavegameDef.h"
 
 #include <AlphaShapeClass.h>
 #include <AnimClass.h>
@@ -7,26 +9,38 @@
 #include <TacticalClass.h>
 #include <Notifications.h>
 
-AresMap<ObjectClass*, AlphaShapeClass*> TechnoExt::AlphaExt;
+AresMap<ObjectClass*, AlphaShapeClass*> TechnoExt::Alpha;
+
+void AlphaExt::Clear() {
+	TechnoExt::Alpha.clear();
+}
+
+bool AlphaExt::LoadGlobals(AresStreamReader& Stm) {
+	return TechnoExt::Alpha.load(Stm, true);
+}
+
+bool AlphaExt::SaveGlobals(AresStreamWriter& Stm) {
+	return TechnoExt::Alpha.save(Stm);
+}
 
 // conventions for hashmaps like this:
 // the value's CTOR is the only thing allowed to .insert() or [] stuff
 // the value's (SD)DTOR is the only thing allowed to .erase() stuff
 
-DEFINE_HOOK(420960, AlphaShapeClass_CTOR, 5)
+DEFINE_HOOK(0x420960, AlphaShapeClass_CTOR, 0x5)
 {
 	GET_STACK(ObjectClass*, pSource, 0x4);
 	GET(AlphaShapeClass*, pAlpha, ECX);
 
-	if(auto pOldAlpha = TechnoExt::AlphaExt.get_or_default(pSource)) {
+	if(auto pOldAlpha = TechnoExt::Alpha.get_or_default(pSource)) {
 		GameDelete(pOldAlpha);
 		// pSource is erased from map
 	}
-	TechnoExt::AlphaExt[pSource] = pAlpha;
+	TechnoExt::Alpha[pSource] = pAlpha;
 	return 0;
 }
 
-DEFINE_HOOK(420A71, AlphaShapeClass_CTOR_Anims, 5)
+DEFINE_HOOK(0x420A71, AlphaShapeClass_CTOR_Anims, 0x5)
 {
 	GET(AlphaShapeClass*, pThis, ESI);
 	if(pThis->AttachedTo->WhatAmI() == AnimClass::AbsID) {
@@ -35,24 +49,24 @@ DEFINE_HOOK(420A71, AlphaShapeClass_CTOR_Anims, 5)
 	return 0;
 }
 
-DEFINE_HOOK(421730, AlphaShapeClass_SDDTOR, 8)
+DEFINE_HOOK(0x421730, AlphaShapeClass_SDDTOR, 0x8)
 {
 	GET(AlphaShapeClass*, pAlpha, ECX);
-	TechnoExt::AlphaExt.erase(pAlpha->AttachedTo);
+	TechnoExt::Alpha.erase(pAlpha->AttachedTo);
 	return 0;
 }
 
-DEFINE_HOOK(421798, AlphaShapeClass_SDDTOR_Anims, 6)
+DEFINE_HOOK(0x421798, AlphaShapeClass_SDDTOR_Anims, 0x6)
 {
 	GET(AlphaShapeClass*, pThis, ESI);
 	PointerExpiredNotification::NotifyInvalidAnim.Remove(pThis);
 	return 0;
 }
 
-DEFINE_HOOK(5F3D65, ObjectClass_DTOR, 6)
+DEFINE_HOOK(0x5F3D65, ObjectClass_DTOR, 0x6)
 {
 	GET(ObjectClass*, pThis, ESI);
-	if(auto pAlpha = TechnoExt::AlphaExt.get_or_default(pThis)) {
+	if(auto pAlpha = TechnoExt::Alpha.get_or_default(pThis)) {
 		GameDelete(pAlpha);
 		// pThis is erased from map
 	}
@@ -72,8 +86,8 @@ void UpdateAlphaShape(ObjectClass* pSource) {
 
 	CoordStruct XYZ;
 
-	RectangleStruct *ScreenArea = &TacticalClass::Instance->VisibleArea;
-	Point2D off = {ScreenArea->X - (pImage->Width / 2), ScreenArea->Y - (pImage->Height / 2)};
+	auto const& ScreenArea = TacticalClass::Instance->TacticalPos;   // VisibleArea.X/.Y in the pinned YRpp
+	Point2D off = {ScreenArea.X - (pImage->Width / 2), ScreenArea.Y - (pImage->Height / 2)};
 	Point2D xy;
 
 	// for animations attached to the owner object, consider
@@ -103,8 +117,8 @@ void UpdateAlphaShape(ObjectClass* pSource) {
 			xy.X += cellDimensions.X / 2;
 			xy.Y += cellDimensions.Y / 2;
 			xy += off;
-			RectangleStruct Dirty = {xy.X - ScreenArea->X - cellDimensions.X,
-				xy.Y - ScreenArea->Y - cellDimensions.Y, pImage->Width + cellDimensions.X * 2,
+			RectangleStruct Dirty = {xy.X - ScreenArea.X - cellDimensions.X,
+				xy.Y - ScreenArea.Y - cellDimensions.Y, pImage->Width + cellDimensions.X * 2,
 				pImage->Height + cellDimensions.Y * 2};
 			TacticalClass::Instance->RegisterDirtyArea(Dirty, true);
 		}
@@ -123,7 +137,7 @@ void UpdateAlphaShape(ObjectClass* pSource) {
 	}
 
 	if(Inactive) {
-		if(auto pAlpha = TechnoExt::AlphaExt.get_or_default(pSource)) {
+		if(auto pAlpha = TechnoExt::Alpha.get_or_default(pSource)) {
 			GameDelete(pAlpha);
 			// pSource is erased from map
 		}
@@ -134,23 +148,23 @@ void UpdateAlphaShape(ObjectClass* pSource) {
 		XYZ = pSource->GetCoords();
 		TacticalClass::Instance->CoordsToClient(&XYZ, &xy);
 		xy += off;
-		++Unsorted::IKnowWhatImDoing;
+		++Unsorted::ScenarioInit;
 		GameCreate<AlphaShapeClass>(pSource, xy.X, xy.Y);
-		--Unsorted::IKnowWhatImDoing;
+		--Unsorted::ScenarioInit;
 		//int Margin = 40;
-		RectangleStruct Dirty = {xy.X - ScreenArea->X, xy.Y - ScreenArea->Y, pImage->Width, pImage->Height};
+		RectangleStruct Dirty = {xy.X - ScreenArea.X, xy.Y - ScreenArea.Y, pImage->Width, pImage->Height};
 		TacticalClass::Instance->RegisterDirtyArea(Dirty, true);
 	}
 }
 
-DEFINE_HOOK(5F3E70, ObjectClass_Update_AlphaLight, 5)
+DEFINE_HOOK(0x5F3E70, ObjectClass_Update_AlphaLight, 0x5)
 {
 	GET(ObjectClass*, pThis, ECX);
 	UpdateAlphaShape(pThis);
 	return 0;
 }
 
-DEFINE_HOOK(423B0B, AnimClass_Update_AlphaLight, 6)
+DEFINE_HOOK(0x423B0B, AnimClass_Update_AlphaLight, 0x6)
 {
 	GET(AnimClass*, pThis, ESI);
 	// flaming guys do the update via base class
@@ -160,7 +174,7 @@ DEFINE_HOOK(423B0B, AnimClass_Update_AlphaLight, 6)
 	return 0;
 }
 
-DEFINE_HOOK(420F75, AlphaLightClass_UpdateScreen_ShouldDraw, 5)
+DEFINE_HOOK(0x420F75, AlphaLightClass_UpdateScreen_ShouldDraw, 0x5)
 {
 	GET(AlphaShapeClass*, pAlpha, ECX);
 
@@ -175,7 +189,7 @@ DEFINE_HOOK(420F75, AlphaLightClass_UpdateScreen_ShouldDraw, 5)
 	return shouldDraw ? 0x420F80 : 0x42132A;
 }
 
-DEFINE_HOOK(4210AC, AlphaLightClass_UpdateScreen_Header, 5)
+DEFINE_HOOK(0x4210AC, AlphaLightClass_UpdateScreen_Header, 0x5)
 {
 	GET(AlphaShapeClass*, pAlpha, EDX);
 	GET(SHPStruct *, pImage, ECX);
@@ -187,11 +201,11 @@ DEFINE_HOOK(4210AC, AlphaLightClass_UpdateScreen_Header, 5)
 	return 0;
 }
 
-DEFINE_HOOK(4211AC, AlphaLightClass_UpdateScreen_Body, 8)
+DEFINE_HOOK(0x4211AC, AlphaLightClass_UpdateScreen_Body, 0x8)
 {
 	GET_STACK(int, AlphaLightIndex, STACK_OFFS(0xDC, 0xB4));
 	GET_STACK(SHPStruct*, pImage, STACK_OFFS(0xDC, 0x6C));
-	auto pAlpha = AlphaShapeClass::Array->Items[AlphaLightIndex];
+	auto pAlpha = AlphaShapeClass::Array.Items[AlphaLightIndex];
 	if(auto pTechno = abstract_cast<TechnoClass*>(pAlpha->AttachedTo)) {
 		auto pData = TechnoExt::ExtMap.Find(pTechno);
 		unsigned int idx = pData->AlphaFrame(pImage);
@@ -201,10 +215,10 @@ DEFINE_HOOK(4211AC, AlphaLightClass_UpdateScreen_Body, 8)
 }
 
 
-DEFINE_HOOK(421371, TacticalClass_UpdateAlphasInRectangle_ShouldDraw, 5)
+DEFINE_HOOK(0x421371, TacticalClass_UpdateAlphasInRectangle_ShouldDraw, 0x5)
 {
 	GET(int, AlphaLightIndex, EBX);
-	auto pAlpha = AlphaShapeClass::Array->Items[AlphaLightIndex];
+	auto pAlpha = AlphaShapeClass::Array.Items[AlphaLightIndex];
 
 	bool shouldDraw = !pAlpha->IsObjectGone;
 
@@ -217,13 +231,13 @@ DEFINE_HOOK(421371, TacticalClass_UpdateAlphasInRectangle_ShouldDraw, 5)
 	return shouldDraw ? 0 : 0x421694;
 }
 
-DEFINE_HOOK(42146E, TacticalClass_UpdateAlphasInRectangle_Header, 5)
+DEFINE_HOOK(0x42146E, TacticalClass_UpdateAlphasInRectangle_Header, 0x5)
 {
 	GET(int, AlphaLightIndex, EBX);
 	GET(RectangleStruct*, buffer, EDX);
 	GET(SHPStruct*, pImage, EDI);
 
-	auto pAlpha = AlphaShapeClass::Array->Items[AlphaLightIndex];
+	auto pAlpha = AlphaShapeClass::Array.Items[AlphaLightIndex];
 	unsigned int idx = 0;
 	if(auto pTechno = abstract_cast<TechnoClass*>(pAlpha->AttachedTo)) {
 		auto pData = TechnoExt::ExtMap.Find(pTechno);
@@ -233,11 +247,11 @@ DEFINE_HOOK(42146E, TacticalClass_UpdateAlphasInRectangle_Header, 5)
 	return 0x421478;
 }
 
-DEFINE_HOOK(42152C, TacticalClass_UpdateAlphasInRectangle_Body, 8)
+DEFINE_HOOK(0x42152C, TacticalClass_UpdateAlphasInRectangle_Body, 0x8)
 {
 	GET_STACK(int, AlphaLightIndex, STACK_OFFS(0xA4, 0x78));
 	GET(SHPStruct*, pImage, ECX);
-	auto pAlpha = AlphaShapeClass::Array->Items[AlphaLightIndex];
+	auto pAlpha = AlphaShapeClass::Array.Items[AlphaLightIndex];
 	if(auto pTechno = abstract_cast<TechnoClass*>(pAlpha->AttachedTo)) {
 		auto pData = TechnoExt::ExtMap.Find(pTechno);
 		unsigned int idx = pData->AlphaFrame(pImage);
@@ -246,7 +260,7 @@ DEFINE_HOOK(42152C, TacticalClass_UpdateAlphasInRectangle_Body, 8)
 	return 0;
 }
 
-DEFINE_HOOK(71944E, TeleportLocomotionClass_ILocomotion_Process, 6)
+DEFINE_HOOK(0x71944E, TeleportLocomotionClass_ILocomotion_Process, 0x6)
 {
 	GET(FootClass*, pObject, ECX);
 	GET(CoordStruct*, XYZ, EDX);
@@ -257,11 +271,11 @@ DEFINE_HOOK(71944E, TeleportLocomotionClass_ILocomotion_Process, 6)
 		if(auto pImage = pType->AlphaImage) {
 			Point2D xy;
 			TacticalClass::Instance->CoordsToClient(XYZ, &xy);
-			RectangleStruct* ScreenArea = &TacticalClass::Instance->VisibleArea;
-			Point2D off = {ScreenArea->X - (pImage->Width / 2), ScreenArea->Y - (pImage->Height / 2)};
+			auto const& ScreenArea = TacticalClass::Instance->TacticalPos;   // VisibleArea.X/.Y in the pinned YRpp
+			Point2D off = {ScreenArea.X - (pImage->Width / 2), ScreenArea.Y - (pImage->Height / 2)};
 			xy += off;
 			RectangleStruct Dirty =
-			  { xy.X - ScreenArea->X, xy.Y - ScreenArea->Y,
+			  { xy.X - ScreenArea.X, xy.Y - ScreenArea.Y,
 				pImage->Width, pImage->Height};
 			TacticalClass::Instance->RegisterDirtyArea(Dirty, true);
 		}

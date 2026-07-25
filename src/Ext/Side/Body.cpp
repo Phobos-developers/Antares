@@ -8,7 +8,6 @@
 #include <algorithm>
 
 //Static init
-template<> const DWORD Extension<SideClass>::Canary = 0x06D106D1;
 SideExt::ExtContainer SideExt::ExtMap;
 
 int SideExt::CurrentLoadTextColor = -1;
@@ -21,7 +20,7 @@ UniqueGamePtr<SHPStruct> SideExt::DialogBackgroundImage = nullptr;
 UniqueGamePtr<BytePalette> SideExt::DialogBackgroundPalette = nullptr;
 UniqueGamePtr<ConvertClass> SideExt::DialogBackgroundConvert = nullptr;
 
-void SideExt::ExtData::Initialize()
+void SideExt::ExtData::Initialize(CCINIClass* pINI)
 {
 	const char* pID = this->OwnerObject()->ID;
 
@@ -140,8 +139,8 @@ void SideExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	for(unsigned int i = 0; i < 10; ++i) {
 		auto pFilename = this->GetMultiplayerScoreBarFilename(i);
-		if(!PCX::Instance->GetSurface(pFilename)) {
-			PCX::Instance->LoadFile(pFilename);
+		if(!PCX::Instance.GetSurface(pFilename)) {
+			PCX::Instance.LoadFile(pFilename);
 		}
 	}
 
@@ -352,7 +351,7 @@ void SideExt::UpdateGlobalFiles()
 	SideExt::DialogBackgroundPalette = nullptr;
 
 	int idxSide = ScenarioClass::Instance->PlayerSideIndex;
-	auto pSide = SideClass::Array->GetItemOrDefault(idxSide);
+	auto pSide = SideClass::Array.GetItemOrDefault(idxSide);
 	auto pExt = SideExt::ExtMap.Find(pSide);
 
 	if(!pExt) {
@@ -370,7 +369,7 @@ void SideExt::UpdateGlobalFiles()
 		if(auto pPal = FileSystem::AllocatePalette(pExt->GraphicalTextPalette)) {
 			SideExt::GraphicalTextPalette.reset(pPal);
 
-			auto pConvert = GameCreate<ConvertClass>(pPal, FileSystem::TEMPERAT_PAL, DSurface::Primary, 1, false);
+			auto pConvert = GameCreate<ConvertClass>(*pPal, FileSystem::TEMPERAT_PAL, DSurface::Primary, 1u, false);
 			SideExt::GraphicalTextConvert.reset(pConvert);
 		}
 	}
@@ -386,7 +385,7 @@ void SideExt::UpdateGlobalFiles()
 		if(auto pPal = FileSystem::AllocatePalette(pExt->DialogBackgroundPalette)) {
 			SideExt::DialogBackgroundPalette.reset(pPal);
 
-			auto pConvert = GameCreate<ConvertClass>(pPal, pPal, DSurface::Alternate, 1, false);
+			auto pConvert = GameCreate<ConvertClass>(*pPal, *pPal, DSurface::Alternate, 1u, false);
 			SideExt::DialogBackgroundConvert.reset(pConvert);
 		}
 	}
@@ -396,7 +395,7 @@ DWORD SideExt::LoadTextColor(REGISTERS* R, DWORD dwReturnAddress)
 {
 	// if there is a cached LoadTextColor, use that.
 	int index = SideExt::CurrentLoadTextColor;
-	if(auto pCS = ColorScheme::Array->GetItemOrDefault(index)) {
+	if(auto pCS = ColorScheme::Array.GetItemOrDefault(index)) {
 		R->EAX(pCS);
 		return dwReturnAddress;
 	}
@@ -408,7 +407,7 @@ DWORD SideExt::MixFileYuriFiles(REGISTERS* R, DWORD dwReturnAddress1, DWORD dwRe
 {
 	GET(ScenarioClass *, pScen, EAX); //TODO test
 
-	SideClass* pSide = SideClass::Array->GetItem(pScen->PlayerSideIndex);
+	SideClass* pSide = SideClass::Array.GetItem(pScen->PlayerSideIndex);
 	if(SideExt::ExtData *pData = SideExt::ExtMap.Find(pSide)) {
 		return pData->SidebarYuriFileNames
 			? dwReturnAddress1
@@ -477,12 +476,12 @@ void SideExt::ExtData::Serialize(T& Stm) {
 }
 
 void SideExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<SideClass>::LoadFromStream(Stm);
+	Extension<SideClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void SideExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<SideClass>::SaveToStream(Stm);
+	Extension<SideClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -513,7 +512,7 @@ SideExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(6A4609, SideClass_CTOR, 7)
+DEFINE_HOOK(0x6A4609, SideClass_CTOR, 0x7)
 {
 	GET(SideClass*, pItem, ESI);
 
@@ -521,7 +520,7 @@ DEFINE_HOOK(6A4609, SideClass_CTOR, 7)
 	return 0;
 }
 
-DEFINE_HOOK(6A499F, SideClass_SDDTOR, 6)
+DEFINE_HOOK(0x6A499F, SideClass_SDDTOR, 0x6)
 {
 	GET(SideClass*, pItem, ESI);
 
@@ -529,8 +528,8 @@ DEFINE_HOOK(6A499F, SideClass_SDDTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(6A48A0, SideClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(6A4780, SideClass_SaveLoad_Prefix, 6)
+DEFINE_HOOK_AGAIN(0x6A48A0, SideClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x6A4780, SideClass_SaveLoad_Prefix, 0x6)
 {
 	GET_STACK(SideClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -540,19 +539,19 @@ DEFINE_HOOK(6A4780, SideClass_SaveLoad_Prefix, 6)
 	return 0;
 }
 
-DEFINE_HOOK(6A488B, SideClass_Load_Suffix, 6)
+DEFINE_HOOK(0x6A488B, SideClass_Load_Suffix, 0x6)
 {
 	SideExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(6A48FC, SideClass_Save_Suffix, 5)
+DEFINE_HOOK(0x6A48FC, SideClass_Save_Suffix, 0x5)
 {
 	SideExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK(679A10, SideClass_LoadAllFromINI, 5)
+DEFINE_HOOK(0x679A10, SideClass_LoadAllFromINI, 0x5)
 {
 	GET_STACK(CCINIClass*, pINI, 0x4);
 	SideExt::ExtMap.LoadAllFromINI(pINI); // bwahaha
@@ -570,3 +569,15 @@ FINE_HOOK(6725C4, RulesClass_Addition_Sides, 8)
 	return 0;
 }
 */
+
+static_assert(sizeof(SideExt::ExtData) == 0x280, "SideExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the relocated ArrayIndex, the nullable block, the
+// three-byte color, the start of the fixed strings and the last member.
+static_assert(offsetof(SideExt::ExtData, ArrayIndex) == 0x008, "SideExt::ExtData layout slipped");
+static_assert(offsetof(SideExt::ExtData, Disguise) == 0x00C, "SideExt::ExtData layout slipped");
+static_assert(offsetof(SideExt::ExtData, BaseDefenses) == 0x034, "SideExt::ExtData layout slipped");
+static_assert(offsetof(SideExt::ExtData, ToolTipTextColor) == 0x080, "SideExt::ExtData layout slipped");
+static_assert(offsetof(SideExt::ExtData, ScoreCampaignBackground) == 0x098, "SideExt::ExtData layout slipped");
+static_assert(offsetof(SideExt::ExtData, DialogBackgroundPalette) == 0x258, "SideExt::ExtData layout slipped");

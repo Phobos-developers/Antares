@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StringTable.h>
+
 #include "Ares.h"
 #include "../Misc/Debug.h"
 
@@ -11,25 +13,25 @@ public:
 	//CommandClass
 	virtual const char* GetName() const override
 	{
-		return "FPS Counter";
+		return "FPSCounter";
 	}
 
 	virtual const wchar_t* GetUIName() const override
 	{
-		return L"FPS Counter";
+		return StringTable::LoadString("TXT_FPS_COUNTER");
 	}
 
 	virtual const wchar_t* GetUICategory() const override
 	{
-		return L"Development";
+		return StringTable::LoadString("TXT_DEVELOPMENT");
 	}
 
 	virtual const wchar_t* GetUIDescription() const override
 	{
-		return L"Shows the current and an average of frames per second.";
+		return StringTable::LoadString("TXT_FPS_COUNTER_DESC");
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		Ares::bFPSCounter = !Ares::bFPSCounter;
 	}

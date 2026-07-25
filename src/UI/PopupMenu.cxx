@@ -1,4 +1,5 @@
 #include "PopupMenu.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include <Unsorted.h>
 #include <MouseClass.h>
 #include <TechnoClass.h>
@@ -16,7 +17,7 @@ RectangleStruct PopupMenu::MenuBox = {0, 0, 0, 0};
 RectangleStruct PopupMenu::MenuItem = {0, 0, 0, 0};
 short PopupMenu::HighlightedItem = -1;
 
-DEFINE_HOOK(4AAD34, DisplayClass_RightMouseButtonUp, 6)
+DEFINE_HOOK(0x4AAD34, DisplayClass_RightMouseButtonUp, 0x6)
 {
 	enum {Yes = 0, No = 0x4AADA4 } DoNormal = Yes;
 	Debug::Log("Right clicking\n");
@@ -30,7 +31,7 @@ DEFINE_HOOK(4AAD34, DisplayClass_RightMouseButtonUp, 6)
 	return DoNormal;
 }
 
-DEFINE_HOOK(4AB9B0, DisplayClass_LeftMouseButtonUp, 5)
+DEFINE_HOOK(0x4AB9B0, DisplayClass_LeftMouseButtonUp, 0x5)
 {
 	enum {Yes = 0, No = 0x4AC2A7 } DoNormal = Yes;
 	Debug::Log("Left clicking\n");
@@ -38,7 +39,7 @@ DEFINE_HOOK(4AB9B0, DisplayClass_LeftMouseButtonUp, 5)
 	return DoNormal;
 }
 
-DEFINE_HOOK(4AAC7D, DisplayClass_MouseEvent, 8)
+DEFINE_HOOK(0x4AAC7D, DisplayClass_MouseEvent, 0x8)
 {
 	GET_STACK(Point2D , XY, 0x1C);
 	REF_STACK(const MouseEvent, MouseFlags, 0x34);
@@ -52,13 +53,13 @@ DEFINE_HOOK(4AAC7D, DisplayClass_MouseEvent, 8)
 
 
 
-DEFINE_HOOK(693263, MouseClass_ReactToClicks_LMBUp, 5)
+DEFINE_HOOK(0x693263, MouseClass_ReactToClicks_LMBUp, 0x5)
 {
 	if(PopupMenu::Drawing) {
 		if(PopupMenu::HighlightedItem != -1) {
 			Debug::Log("Clicked #%d\n", PopupMenu::HighlightedItem);
-			if(ObjectClass::CurrentObjects->Count >= 1) {
-				if(TechnoClass *T = generic_cast<TechnoClass *>(ObjectClass::CurrentObjects->Items[0])) {
+			if(ObjectClass::CurrentObjects.Count >= 1) {
+				if(TechnoClass *T = generic_cast<TechnoClass *>(ObjectClass::CurrentObjects.Items[0])) {
 					int n = 45;
 					switch(PopupMenu::HighlightedItem) {
 						case 0:
@@ -86,14 +87,14 @@ DEFINE_HOOK(693263, MouseClass_ReactToClicks_LMBUp, 5)
 		REF_STACK(CellStruct, XY, STACK_OFFS(0x24, 0x1C));
 		REF_STACK(CoordStruct, XYZ, STACK_OFFS(0x24, 0xC));
 		REF_STACK(ObjectClass*, pTarget, STACK_OFFS(0x24, -0x8));
-		Action A = MouseClass::Instance->DecideAction(XY, pTarget, 0);
-		MouseClass::Instance->LeftMouseButtonUp(XYZ, XY, pTarget, A, 0);
+		Action A = MouseClass::Instance.DecideAction(XY, pTarget, 0);
+		MouseClass::Instance.LeftMouseButtonUp(XYZ, XY, pTarget, A, 0);
 	}
 
 	return 0x693290;
 }
 
-DEFINE_HOOK(693388, MouseClass_ReactToClicks_RMBUp, 7)
+DEFINE_HOOK(0x693388, MouseClass_ReactToClicks_RMBUp, 0x7)
 {
 	GET(int, X, EAX);
 	GET(int, Y, ECX);
@@ -110,7 +111,7 @@ DEFINE_HOOK(693388, MouseClass_ReactToClicks_RMBUp, 7)
 
 	*XY = P2D;
 
-	MouseClass::Instance->ProcessClickCoords(XY, &XYdst, &XYZdst, (ObjectClass **)&ptr, &a5, &a6);
+	MouseClass::Instance.ProcessClickCoords(XY, &XYdst, &XYZdst, (ObjectClass **)&ptr, &a5, &a6);
 
 	PopupMenu::PixelCoords = P2D;
 	PopupMenu::CellCoords = XYdst;
@@ -118,7 +119,7 @@ DEFINE_HOOK(693388, MouseClass_ReactToClicks_RMBUp, 7)
 	return 0x69338F;
 }
 
-DEFINE_HOOK(6D4B42, TacticalClass_DrawStuff, 6)
+DEFINE_HOOK(0x6D4B42, TacticalClass_DrawStuff, 0x6)
 {
 	static const wchar_t * MenuItems[] = {L"Deactivate", L"Flash", L"IronCurtain", L"Damage", L"Hunt", L"\0"};
 
@@ -141,8 +142,8 @@ DEFINE_HOOK(6D4B42, TacticalClass_DrawStuff, 6)
 		pRect.X += TL.X;
 		pRect.Y += TL.Y;
 		while(*menu && **menu) {
-			DSurface::Hidden_2->FillRect(&pRect, i == PopupMenu::HighlightedItem ? COLOR_RED : COLOR_WHITE);
-			DSurface::Hidden_2->DrawTextA(*menu, &TL, COLOR_BLUE);
+			DSurface::Temp->FillRect(&pRect, i == PopupMenu::HighlightedItem ? COLOR_RED : COLOR_WHITE);
+			DSurface::Temp->DrawTextA(*menu, &TL, COLOR_BLUE);
 			TL.Y += pRect.Height;
 			pRect.Y += pRect.Height;
 			PopupMenu::MenuBox.Height += pRect.Height;
@@ -153,7 +154,7 @@ DEFINE_HOOK(6D4B42, TacticalClass_DrawStuff, 6)
 	return 0;
 }
 
-DEFINE_HOOK(692FDC, sub_692F30, 8)
+DEFINE_HOOK(0x692FDC, sub_692F30, 0x8)
 {
 	if(PopupMenu::Drawing && PopupMenu::MenuItem.Height) {
 		LEA_STACK(Point2D *, XY, STACK_OFFS(0x30, 0x18));

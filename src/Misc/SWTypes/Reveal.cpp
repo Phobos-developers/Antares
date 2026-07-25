@@ -26,27 +26,29 @@ SWRange SW_Reveal::GetRange(const SWTypeExt::ExtData* pData) const
 	return pData->SW_Range;
 }
 
-void SW_Reveal::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_Reveal::Initialize(SWTypeExt::ExtData *pData)
 {
 	pData->SW_RadarEvent = false;
 
 	pData->EVA_Ready = VoxClass::FindIndex("EVA_PsychicRevealReady");
 
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::ParaDrop;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::PsychicReveal);
+	pData->SW_Cursor = MouseCursorType::PsychicReveal;
 }
 
-void SW_Reveal::LoadFromINI(SWTypeExt::ExtData* pData, SuperWeaponTypeClass* pSW, CCINIClass* pINI)
+void SW_Reveal::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	pSW->Action = (GetRange(pData).WidthOrRange < 0.0) ? Action::None : Actions::SuperWeaponAllowed;
 }
 
-bool SW_Reveal::Activate(SuperClass* const pThis, const CellStruct &Coords, bool const IsPlayer)
+bool SW_Reveal::Activate(SuperClass* const pThis, CellStruct const Coords, bool const IsPlayer)
 {
 	auto const pSW = pThis->Type;
 	auto const pData = SWTypeExt::ExtMap.Find(pSW);
 	
-	if(pThis->IsCharged) {
+	if(pThis->IsReady) {
 		MapRevealer const revealer(Coords);
 
 		if(revealer.AffectsHouse(pThis->Owner)) {
@@ -55,9 +57,9 @@ bool SW_Reveal::Activate(SuperClass* const pThis, const CellStruct &Coords, bool
 
 				if(range.WidthOrRange < 0.0) {
 					// reveal all cells without hundred thousands function calls
-					auto const Map = MapClass::Instance;
-					Map->CellIteratorReset();
-					while(auto const pCell = Map->CellIteratorNext()) {
+					auto& Map = MapClass::Instance;
+					Map.CellIteratorReset();
+					while(auto const pCell = Map.CellIteratorNext()) {
 						if(revealer.IsCellAvailable(pCell->MapCoords) && revealer.IsCellAllowed(pCell->MapCoords)) {
 							revealer.Process1(pCell, false, add);
 						}
@@ -83,7 +85,7 @@ bool SW_Reveal::Activate(SuperClass* const pThis, const CellStruct &Coords, bool
 			Apply(false);
 			Apply(true);
 
-			MapClass::Instance->MarkNeedsRedraw(1);
+			MapClass::Instance.MarkNeedsRedraw(1);
 		}
 	}
 

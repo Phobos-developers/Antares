@@ -6,6 +6,7 @@
 class AbstractTypeClass;
 class AnimClass;
 class AnimTypeClass;
+class HouseClass;
 class TechnoClass;
 
 class AttachEffectTypeClass {
@@ -14,6 +15,7 @@ public:
 	AbstractTypeClass* Owner{ nullptr };
 	Valueable<int> Duration{ 0 };
 	Valueable<bool> Cumulative{ false };
+
 	Valueable<bool> ForceDecloak{ false };
 	Valueable<bool> DiscardOnEntry{ false };
 
@@ -22,9 +24,12 @@ public:
 	Valueable<bool> AnimResetOnReapply{ false };
 	Valueable<bool> TemporalHidesAnim{ false };
 
+	Valueable<bool> PenetratesIC{ false };
+
 	//#255, crate stat modifiers on weapons
 	Valueable<double> FirepowerMultiplier{ 1.0 };
 	Valueable<double> ArmorMultiplier{ 1.0 };
+	Valueable<double> ROFMultiplier{ 1.0 };
 	Valueable<double> SpeedMultiplier{ 1.0 };
 	Valueable<bool> Cloakable{ false };
 
@@ -37,8 +42,10 @@ public:
 
 	//#1623-only tags
 	Valueable<int> Delay{ 0 };
+	Valueable<int> InitialDelay{ 0 };
 
-	void Attach(TechnoClass* pTarget, int duration, TechnoClass* pInvoker);
+	bool Attach(TechnoClass* pTarget, int duration, HouseClass* pInvoker);
+	void Decloak(TechnoClass* pTarget) const;
 	//void Attach(TechnoClass* pTarget, int duration, TechnoClass* pInvoker, int damageDelay);
 
 	bool Load(AresStreamReader &Stm, bool RegisterForChange);
@@ -68,7 +75,10 @@ public:
 	Handle<AnimClass*, UninitAnim> Animation{ nullptr };
 	int ActualDuration{ 0 };
 
-	TechnoClass* Invoker{ nullptr };
+	// the house that invoked the effect. 3.0p1 stores the house, not the
+	// techno: AttachEffectClass::CreateAnim (0x10059380) assigns it straight
+	// into AnimClass::Owner.
+	HouseClass* Invoker{ nullptr };
 	//int ActualDamageDelay{ 0 };
 
 	void InvalidatePointer(void* ptr);

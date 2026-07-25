@@ -1,7 +1,7 @@
 #include "../../Ares.h"
 #include "../../Misc/MapRevealer.h"
 
-DEFINE_HOOK(5673A0, MapClass_RevealArea0, 5)
+DEFINE_HOOK(0x5673A0, MapClass_RevealArea0, 0x5)
 {
 	//GET(MapClass*, pThis, ECX);
 	GET_STACK(CoordStruct const*, pCoords, 0x4);
@@ -20,7 +20,7 @@ DEFINE_HOOK(5673A0, MapClass_RevealArea0, 5)
 	return 0x5678D6;
 }
 
-DEFINE_HOOK(5678E0, MapClass_RevealArea1, 5)
+DEFINE_HOOK(0x5678E0, MapClass_RevealArea1, 0x5)
 {
 	//GET(MapClass*, pThis, ECX);
 	GET_STACK(CoordStruct const*, pCoords, 0x4);
@@ -38,7 +38,7 @@ DEFINE_HOOK(5678E0, MapClass_RevealArea1, 5)
 	return 0x567D8F;
 }
 
-DEFINE_HOOK(567DA0, MapClass_RevealArea2, 5)
+DEFINE_HOOK(0x567DA0, MapClass_RevealArea2, 0x5)
 {
 	//GET(MapClass*, pThis, ECX);
 	GET_STACK(CoordStruct const*, pCoords, 0x4);

@@ -2,6 +2,7 @@
 
 #include <CCINIClass.h>
 #include <SuperWeaponTypeClass.h>
+#include <VoxClass.h>
 
 #include "../../Ares.CRT.h"
 #include "../../Misc/Actions.h"
@@ -27,10 +28,11 @@ class ParadropPlane;
 class RadarEventClass;
 class SuperClass;
 class VocClass;
-class VoxClass;
 
 struct AITargetingModeInfo {
 	SuperWeaponAITargetingMode Mode;
+	SuperWeaponAITargetingConstraints Constrain;
+	SuperWeaponAITargetingPreference Preference;
 	SuperWeaponTarget Target;
 	SuperWeaponAffectedHouse House;
 };
@@ -70,14 +72,16 @@ class SWTypeExt
 public:
 	using base_type = SuperWeaponTypeClass;
 
-	static const std::array<const AITargetingModeInfo, 15> AITargetingModes;
+	static const std::array<const AITargetingModeInfo, 21> AITargetingModes;
 
 	// the index of the first custom sw type
 	static const int FirstCustomType = 12;
 
-	class ExtData final : public Extension<SuperWeaponTypeClass>
+	class ExtData final : public Extension<SuperWeaponTypeClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x66666666;
+
 		// SpyPlane
 		ValueableIdx<AircraftTypeClass> SpyPlane_TypeIndex;
 		Valueable<int> SpyPlane_Count;
@@ -109,8 +113,7 @@ public:
 		Valueable<bool> Nuke_SiloLaunch;
 
 		// Generic Paradrop
-		AresMap<AbstractTypeClass*, std::vector<ParadropPlane*>> ParaDrop;
-		std::vector<std::unique_ptr<ParadropPlane>> ParaDropPlanes;
+		AresMap<AbstractTypeClass*, std::vector<ParadropPlane>> ParaDrop;
 
 		// EMPulse / Fire
 		Valueable<bool> EMPulse_Linked;
@@ -130,6 +133,7 @@ public:
 		Nullable<AnimTypeClass *> Chronosphere_BlastDest;
 		Valueable<bool> Chronosphere_KillOrganic;
 		Valueable<bool> Chronosphere_KillTeleporters;
+		Valueable<bool> Chronosphere_KillCargo;
 		Valueable<bool> Chronosphere_AffectUndeployable;
 		Valueable<bool> Chronosphere_AffectBuildings;
 		Valueable<bool> Chronosphere_AffectUnwarpable;
@@ -171,6 +175,11 @@ public:
 		Valueable<double> DropPod_Veterancy;
 		ValueableVector<TechnoTypeClass*> DropPod_Types;
 
+		// Battery
+		Valueable<int> Battery_Power;
+		ValueableVector<BuildingTypeClass*> Battery_KeepOnline;
+		ValueableVector<BuildingTypeClass*> Battery_Overpower;
+
 		// Money
 		Valueable<int> Money_Amount;
 		Valueable<int> Money_DrainAmount;
@@ -197,10 +206,17 @@ public:
 		Valueable<bool> SW_RadarEvent;
 		Valueable<bool> SW_ShowCameo;
 		Valueable<bool> SW_Unstoppable;
-		Valueable<MouseCursor> SW_Cursor;
-		Valueable<MouseCursor> SW_NoCursor;
+		Valueable<bool> SW_AllowPlayer;
+		Valueable<bool> SW_AllowAI;
+		Valueable<SuperWeaponAffectedHouse> SW_TimerVisibility;
+		Valueable<MouseCursorType> SW_Cursor;
+		Valueable<MouseCursorType> SW_NoCursor;
 		AresFixedString<0x19> SW_PostDependent;
+		Valueable<bool> SW_AlwaysGranted;
+		Valueable<bool> SW_UseAITargeting;
 		Valueable<SuperWeaponAITargetingMode> SW_AITargetingType;
+		Nullable<SuperWeaponAITargetingConstraints> SW_AITargetingConstraints;
+		Nullable<SuperWeaponAITargetingPreference> SW_AITargetingPreference;
 		Nullable<double> SW_ChargeToDrainRatio;
 
 		SWRange SW_Range;
@@ -219,6 +235,11 @@ public:
 		ValueableVector<BuildingTypeClass*> SW_AuxBuildings;
 		ValueableVector<BuildingTypeClass*> SW_NegBuildings;
 
+		Valueable<int> SW_Group;
+		Valueable<int> SW_Shots;
+		Valueable<bool> SW_InitialReady;
+		Valueable<bool> SW_VirtualCharge;
+
 		// Lighting
 		Valueable<bool> Lighting_Enabled;
 		Nullable<int> Lighting_Ambient;
@@ -233,6 +254,7 @@ public:
 		Valueable<CSFText> Message_Activate;
 		Valueable<CSFText> Message_Abort;
 		Valueable<CSFText> Message_InsufficientFunds;
+		Valueable<CSFText> Message_CannotFire;
 		Valueable<int> Message_ColorScheme;
 		Valueable<bool> Message_FirerColor;
 
@@ -256,6 +278,7 @@ public:
 		// Unit Delivery
 		ValueableVector<TechnoTypeClass *> SW_Deliverables;
 		Valueable<bool> SW_DeliverBuildups;
+		Valueable<bool> SW_DeliverBaseNormal;
 		Valueable<OwnerHouseKind> SW_OwnerHouse;
 
 		AresPCXFile SidebarPCX;
@@ -263,7 +286,7 @@ public:
 		SuperWeaponType HandledByNewSWType;
 		Action LastAction;
 
-		ExtData(SuperWeaponTypeClass* OwnerObject) : Extension<SuperWeaponTypeClass>(OwnerObject),
+		ExtData(SuperWeaponTypeClass* OwnerObject) : Extension<SuperWeaponTypeClass, ExtData>(OwnerObject),
 			SpyPlane_TypeIndex(0),
 			SpyPlane_Count(1),
 			SpyPlane_Mission(Mission::SpyplaneApproach),
@@ -290,21 +313,22 @@ public:
 			EVA_Activated(-1),
 			EVA_Detected(-1),
 			EVA_Impatient(-1),
-			EVA_InsufficientFunds(-1),
-			EVA_SelectTarget(-1),
+			EVA_InsufficientFunds(VoxClass::FindIndex("EVA_InsufficientFunds")),
+			EVA_SelectTarget(VoxClass::FindIndex("EVA_SelectTarget")),
 			Message_Detected(),
 			Message_Ready(),
 			Message_Launch(),
 			Message_Activate(),
 			Message_Abort(),
 			Message_InsufficientFunds(),
+			Message_CannotFire(CSFText("MSG:CannotFire")),
 			Message_ColorScheme(-1),
 			Message_FirerColor(false),
 			Text_Preparing(),
-			Text_Ready(),
-			Text_Hold(),
-			Text_Charging(),
-			Text_Active(),
+			Text_Ready(CSFText("TXT_READY")),
+			Text_Hold(CSFText("TXT_HOLD")),
+			Text_Charging(CSFText("TXT_CHARGING")),
+			Text_Active(CSFText("TXT_FIRESTORM_ON")),
 			Lighting_Enabled(true),
 			SW_AnimHeight(0),
 			SW_AnimVisibility(SuperWeaponAffectedHouse::All),
@@ -312,6 +336,13 @@ public:
 			SW_ManualFire(true),
 			SW_ShowCameo(true),
 			SW_Unstoppable(false),
+			SW_AllowPlayer(true),
+			SW_AllowAI(true),
+			SW_TimerVisibility(SuperWeaponAffectedHouse::All),
+			SW_Cursor(MouseCursorType::Attack),
+			SW_NoCursor(MouseCursorType::Disallowed),
+			SW_AlwaysGranted(false),
+			SW_UseAITargeting(false),
 			SW_AffectsHouse(SuperWeaponAffectedHouse::All),
 			SW_RequiresHouse(SuperWeaponAffectedHouse::None),
 			SW_AffectsTarget(SuperWeaponTarget::All),
@@ -320,6 +351,10 @@ public:
 			SW_FireToShroud(true),
 			SW_RadarEvent(true),
 			SW_Range(),
+			SW_Group(0),
+			SW_Shots(-1),
+			SW_InitialReady(false),
+			SW_VirtualCharge(false),
 			SW_RangeMinimum(-1.0),
 			SW_RangeMaximum(-1.0),
 			SW_Designators(),
@@ -331,19 +366,21 @@ public:
 			HandledByNewSWType(SuperWeaponType::Invalid),
 			LastAction(Action::None),
 			CameoPal(),
-			SW_DeliverBuildups(false)
+			SW_DeliverBuildups(true),
+			SW_DeliverBaseNormal(true)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromRulesFile(CCINIClass *pINI) override;
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void InitializeConstants() override;
+		void LoadFromINIFile(CCINIClass* pINI);
+		void Initialize(CCINIClass* pINI);
 
 		bool UpdateLightingColor(LightingColor& Lighting) const;
 
 		bool IsAnimVisible(HouseClass* pFirer);
-		bool CanFireAt(HouseClass* pOwner, const CellStruct &coords, bool manual);
+		bool IsTimerVisible(HouseClass* pOwner) const;
+		Action GetAction(CellStruct cell);
+		bool CanFireAt(HouseClass* pOwner, CellStruct coords, bool manual);
 		bool IsHouseAffected(HouseClass* pFirer, HouseClass* pHouse);
 		bool IsHouseAffected(HouseClass* pFirer, HouseClass* pHouse, SuperWeaponAffectedHouse value);
 		bool IsTechnoAffected(TechnoClass* pTechno);
@@ -351,9 +388,13 @@ public:
 
 		SuperWeaponTarget GetAIRequiredTarget() const;
 		SuperWeaponAffectedHouse GetAIRequiredHouse() const;
+		SuperWeaponAITargetingConstraints GetAITargetingConstraints() const;
+		SuperWeaponAITargetingPreference GetAITargetingPreference() const;
+		bool MeetsAITargetingConstraints(HouseClass* pOwner, bool manual) const;
 		Iterator<TechnoClass*> GetPotentialAITargets(HouseClass* pTarget = nullptr) const;
 
 		bool IsAvailable(HouseClass* pHouse) const;
+		bool CanShoot(HouseClass* pHouse) const;
 
 		NewSWType* GetNewSWType() const;
 		bool IsOriginalType() const;
@@ -368,12 +409,12 @@ public:
 		SWRange GetRange() const;
 		double GetChargeToDrainRatio() const;
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 	private:
 		static SuperWeaponAffectedHouse GetRelation(HouseClass* pFirer, HouseClass* pHouse);
@@ -384,12 +425,12 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<SWTypeExt> {
+	class ExtContainer final : public Container<SWTypeExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
 
-		virtual void InvalidatePointer(void* ptr, bool bRemove) override;
+		void InvalidatePointer(void* ptr, bool bRemove);
 	};
 
 	static ExtContainer ExtMap;
@@ -400,6 +441,7 @@ public:
 
 	static bool Activate(SuperClass* pSuper, CellStruct cell, bool isPlayer);
 	static bool Deactivate(SuperClass* pSuper, CellStruct cell, bool isPlayer);
+	static bool TryFire(SuperClass* pSuper, bool manual);
 
 	bool static Launch(SuperClass* pThis, NewSWType* pData, const CellStruct &Coords, bool IsPlayer);
 	void static ClearChronoAnim(SuperClass* pThis);

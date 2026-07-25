@@ -6,7 +6,7 @@
 #include <HouseClass.h>
 
 // replace the cloak checking functions to include checks for new features
-DEFINE_HOOK(6FB757, TechnoClass_UpdateCloak, 8)
+DEFINE_HOOK(0x6FB757, TechnoClass_UpdateCloak, 0x8)
 {
 	GET(TechnoClass*, pThis, ESI);
 	TechnoExt::ExtData* pExt = TechnoExt::ExtMap.Find(pThis);
@@ -16,7 +16,7 @@ DEFINE_HOOK(6FB757, TechnoClass_UpdateCloak, 8)
 	return tryCloak ? 0x6FB7FD : 0x6FB75F;
 }
 
-DEFINE_HOOK(6FBDC0, TechnoClass_ShouldBeCloaked, 5)
+DEFINE_HOOK(0x6FBDC0, TechnoClass_ShouldBeCloaked, 0x5)
 {
 	GET(TechnoClass*, pThis, ECX);
 	TechnoExt::ExtData* pExt = TechnoExt::ExtMap.Find(pThis);
@@ -27,7 +27,7 @@ DEFINE_HOOK(6FBDC0, TechnoClass_ShouldBeCloaked, 5)
 	return 0x6FBF93;
 }
 
-DEFINE_HOOK(6FBC90, TechnoClass_ShouldNotBeCloaked, 5)
+DEFINE_HOOK(0x6FBC90, TechnoClass_ShouldNotBeCloaked, 0x5)
 {
 	GET(TechnoClass*, pThis, ECX);
 	TechnoExt::ExtData* pExt = TechnoExt::ExtMap.Find(pThis);
@@ -41,7 +41,7 @@ DEFINE_HOOK(6FBC90, TechnoClass_ShouldNotBeCloaked, 5)
 	return 0x6FBDBC;
 }
 
-DEFINE_HOOK(70380A, TechnoClass_Cloak_CloakSound, 6)
+DEFINE_HOOK(0x70380A, TechnoClass_Cloak_CloakSound, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	auto pExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
@@ -49,7 +49,7 @@ DEFINE_HOOK(70380A, TechnoClass_Cloak_CloakSound, 6)
 	return 0x703810;
 }
 
-DEFINE_HOOK(70375B, TechnoClass_Uncloak_DecloakSound, 6)
+DEFINE_HOOK(0x70375B, TechnoClass_Uncloak_DecloakSound, 0x6)
 {
 	GET(int, ptr, ESI);
 	TechnoClass* pThis = reinterpret_cast<TechnoClass*>(ptr - 0x9C);
@@ -61,7 +61,7 @@ DEFINE_HOOK(70375B, TechnoClass_Uncloak_DecloakSound, 6)
 
 // replace Is_Moving_Now, because it doesn't check the
 // current speed in case the unit is turning.
-DEFINE_HOOK(4DBDD4, FootClass_IsCloakable_CloakStop, 6)
+DEFINE_HOOK(0x4DBDD4, FootClass_IsCloakable_CloakStop, 0x6)
 {
 	GET(FootClass*, pThis, ESI);
 	R->AL(pThis->Locomotor->Is_Moving());
@@ -69,14 +69,14 @@ DEFINE_HOOK(4DBDD4, FootClass_IsCloakable_CloakStop, 6)
 }
 
 // health bar for detected submerged units
-DEFINE_HOOK(6F5388, TechnoClass_DrawExtras_Submerged, 6)
+DEFINE_HOOK(0x6F5388, TechnoClass_DrawExtras_Submerged, 0x6)
 {
 	GET(TechnoClass*, pThis, EBP);
 
 	bool drawHealth = pThis->IsSelected;
 	if(!drawHealth) {
 		// sensed submerged units
-		drawHealth = !pThis->IsSurfaced() && pThis->GetCell()->Sensors_InclHouse(HouseClass::Player->ArrayIndex);
+		drawHealth = !pThis->IsSurfaced() && pThis->GetCell()->Sensors_InclHouse(HouseClass::CurrentPlayer->ArrayIndex);
 	}
 
 	R->EAX(drawHealth);
@@ -84,7 +84,7 @@ DEFINE_HOOK(6F5388, TechnoClass_DrawExtras_Submerged, 6)
 }
 
 // customizable cloaking stages
-DEFINE_HOOK(7036EB, TechnoClass_Uncloak_CloakingStages, 6)
+DEFINE_HOOK(0x7036EB, TechnoClass_Uncloak_CloakingStages, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 
@@ -95,7 +95,7 @@ DEFINE_HOOK(7036EB, TechnoClass_Uncloak_CloakingStages, 6)
 	return 0x7036F1;
 }
 
-DEFINE_HOOK(703A79, TechnoClass_VisualCharacter_CloakingStages, A)
+DEFINE_HOOK(0x703A79, TechnoClass_VisualCharacter_CloakingStages, 0xA)
 {
 	GET(TechnoClass*, pThis, ESI);
 
@@ -110,7 +110,7 @@ DEFINE_HOOK(703A79, TechnoClass_VisualCharacter_CloakingStages, A)
 }
 
 // respect the remove state when updating the parasite.
-DEFINE_HOOK(4D99AA, FootClass_PointerGotInvalid_Parasite, 6)
+DEFINE_HOOK(0x4D99AA, FootClass_PointerGotInvalid_Parasite, 0x6)
 {
 	GET(FootClass*, pThis, ESI);
 	GET(AbstractClass*, ptr, EDI);
@@ -135,7 +135,7 @@ DEFINE_HOOK(4D99AA, FootClass_PointerGotInvalid_Parasite, 6)
 
 // only eject the parasite if the unit leaves the battlefield,
 // not just when it goes out of sight.
-DEFINE_HOOK(62A283, ParasiteClass_PointerGotInvalid_Cloak, 9)
+DEFINE_HOOK(0x62A283, ParasiteClass_PointerGotInvalid_Cloak, 0x9)
 {
 	GET(ParasiteClass*, pThis, ESI);
 	GET(void*, ptr, EAX);

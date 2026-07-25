@@ -2,7 +2,7 @@
 
 #include <ScenarioClass.h>
 
-DEFINE_HOOK(6FE709, TechnoClass_Fire_BallisticScatter1, 6)
+DEFINE_HOOK(0x6FE709, TechnoClass_Fire_BallisticScatter1, 0x6)
 {
 	GET_STACK(BulletTypeClass*, pProjectile, 0x68);
 	auto pExt = BulletTypeExt::ExtMap.Find(pProjectile);
@@ -17,7 +17,7 @@ DEFINE_HOOK(6FE709, TechnoClass_Fire_BallisticScatter1, 6)
 	return 0x6FE71C;
 }
 
-DEFINE_HOOK(6FE7FE, TechnoClass_Fire_BallisticScatter2, 5)
+DEFINE_HOOK(0x6FE7FE, TechnoClass_Fire_BallisticScatter2, 0x5)
 {
 	GET_STACK(BulletTypeClass*, pProjectile, 0x68);
 	auto pExt = BulletTypeExt::ExtMap.Find(pProjectile);

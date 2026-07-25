@@ -12,21 +12,21 @@
 
 class BulletClass;
 class ConvertClass;
+class ParticleSystemTypeClass;
 
 class BulletTypeExt
 {
 public:
 	using base_type = BulletTypeClass;
 
-	class ExtData final : public Extension<BulletTypeClass>
+	class ExtData final : public Extension<BulletTypeClass, ExtData>
 	{
 	public:
-		// solid
-		Valueable<bool> SubjectToSolid;
-		Valueable<int> Solid_Level;
+		static constexpr DWORD Canary = 0xF00DF00D;
 
-		// firewall
-		Valueable<bool> SubjectToFirewall;
+		// solid
+		Valueable<bool> SubjectToBuildings;
+		Valueable<int> SolidLevel;
 
 		Valueable<bool> Parachuted;
 
@@ -37,6 +37,7 @@ public:
 		OptionalStruct<ConvertClass*> ImageConvert;
 
 		Valueable<bool> Splits;
+		Valueable<bool> RetargetSelf;
 		Valueable<double> RetargetAccuracy;
 		Valueable<double> AirburstSpread;
 		Nullable<bool> AroundTarget; // aptly named, for both Splits and Airburst, defaulting to Splits
@@ -45,28 +46,32 @@ public:
 
 		Valueable<int> AnimLength;
 
-		ExtData(BulletTypeClass* OwnerObject) : Extension<BulletTypeClass>(OwnerObject),
-			Splits(false),
-			RetargetAccuracy(0.0),
-			AirburstSpread(1.5),
-			SubjectToSolid(false),
-			Solid_Level(0),
-			SubjectToFirewall(true),
+		Valueable<ParticleSystemTypeClass*> AttachedSystem;
+
+		ExtData(BulletTypeClass* OwnerObject) : Extension<BulletTypeClass, ExtData>(OwnerObject),
+			SubjectToBuildings(false),
+			SolidLevel(0),
 			Parachuted(false),
 			SubjectToTrenches(true),
-			ImageConvert()
+			ImageConvert(),
+			Splits(false),
+			RetargetSelf(true),
+			RetargetAccuracy(0.0),
+			AirburstSpread(1.5),
+			AnimLength(0),
+			AttachedSystem(nullptr)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
+		void LoadFromINIFile(CCINIClass* pINI);
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		ConvertClass* GetConvert();
 
@@ -80,7 +85,7 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<BulletTypeExt> {
+	class ExtContainer final : public Container<BulletTypeExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();

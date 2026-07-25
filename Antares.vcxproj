@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <ShowAllFiles>true</ShowAllFiles>
@@ -18,22 +18,20 @@
     <Keyword>Win32Proj</Keyword>
     <ProjectGuid>{f5c59cf6-3fb0-44cf-b792-bed854923b84}</ProjectGuid>
     <RootNamespace>Antares</RootNamespace>
-    <WindowsTargetPlatformVersion>7.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v141_xp</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>NotSet</CharacterSet>
-    <XPDeprecationWarning>false</XPDeprecationWarning>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
     <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v141_xp</PlatformToolset>
+    <PlatformToolset>v142</PlatformToolset>
     <CharacterSet>NotSet</CharacterSet>
-    <XPDeprecationWarning>false</XPDeprecationWarning>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -49,14 +47,14 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <GenerateManifest>false</GenerateManifest>
-    <IncludePath>$(SolutionDir)src\;$(SolutionDir)yrpp;$(VC_IncludePath);$(WindowsSdk_71A_IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)src\;$(SolutionDir)yrpp;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(Configuration)\</OutDir>
     <IntDir>$(Configuration)\IntDir\</IntDir>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <GenerateManifest>false</GenerateManifest>
-    <IncludePath>$(SolutionDir)src\;$(SolutionDir)yrpp;$(VC_IncludePath);$(WindowsSdk_71A_IncludePath)</IncludePath>
+    <IncludePath>$(SolutionDir)src\;$(SolutionDir)yrpp;$(VC_IncludePath);$(WindowsSDK_IncludePath)</IncludePath>
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(Configuration)\</OutDir>
     <IntDir>$(Configuration)\IntDir\</IntDir>
@@ -66,9 +64,10 @@
       <WarningLevel>Level4</WarningLevel>
       <Optimization>Disabled</Optimization>
       <SDLCheck>false</SDLCheck>
-      <PreprocessorDefinitions>SYR_VER=2;HAS_EXCEPTIONS=0;NOMINMAX;_CRT_SECURE_NO_WARNINGS;_USING_V110_SDK71_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>SYR_VER=2;HAS_EXCEPTIONS=0;NOMINMAX;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <SupportJustMyCode>false</SupportJustMyCode>
       <DiagnosticsFormat>Caret</DiagnosticsFormat>
@@ -104,9 +103,10 @@
       <WarningLevel>Level4</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
       <SDLCheck>false</SDLCheck>
-      <PreprocessorDefinitions>IS_RELEASE_VER;SYR_VER=2;HAS_EXCEPTIONS=0;NOMINMAX;_CRT_SECURE_NO_WARNINGS;_USING_V110_SDK71_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>IS_RELEASE_VER;SYR_VER=2;HAS_EXCEPTIONS=0;NOMINMAX;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
-      <LanguageStandard>stdcpp14</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <AdditionalOptions>/permissive %(AdditionalOptions)</AdditionalOptions>
       <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
       <SupportJustMyCode>false</SupportJustMyCode>
       <DiagnosticsFormat>Caret</DiagnosticsFormat>
@@ -159,8 +159,10 @@
     <ClInclude Include="src\Commands\MapSnapshot.h" />
     <ClInclude Include="src\Commands\TogglePower.h" />
     <ClInclude Include="src\Enum\ArmorTypes.h" />
+    <ClInclude Include="src\Enum\CursorTypes.h" />
     <ClInclude Include="src\Enum\Prerequisites.h" />
     <ClInclude Include="src\Enum\RadTypes.h" />
+    <ClInclude Include="src\Enum\TunnelTypes.h" />
     <ClInclude Include="src\Enum\_Enumerator.hpp" />
     <ClInclude Include="src\Ext\Abstract\Body.h" />
     <ClInclude Include="src\Ext\AnimType\Body.h" />
@@ -173,10 +175,14 @@
     <ClInclude Include="src\Ext\House\Body.h" />
     <ClInclude Include="src\Ext\House\MacroHacks.h" />
     <ClInclude Include="src\Ext\Infantry\Body.h" />
+    <ClInclude Include="src\Ext\ParticleSystem\Body.h" />
+    <ClInclude Include="src\Ext\ParticleType\Body.h" />
     <ClInclude Include="src\Ext\Rules\Body.h" />
+    <ClInclude Include="src\Ext\Script\Body.h" />
     <ClInclude Include="src\Ext\Side\Body.h" />
     <ClInclude Include="src\Ext\SWType\Body.h" />
     <ClInclude Include="src\Ext\TAction\Body.h" />
+    <ClInclude Include="src\Ext\Team\Body.h" />
     <ClInclude Include="src\Ext\TechnoType\Body.h" />
     <ClInclude Include="src\Ext\Techno\Body.h" />
     <ClInclude Include="src\Ext\TEvent\Body.h" />
@@ -192,6 +198,7 @@
     <ClInclude Include="src\Misc\EMPulse.h" />
     <ClInclude Include="src\Misc\EVAVoices.h" />
     <ClInclude Include="src\Misc\Exception.h" />
+    <ClInclude Include="src\Misc\FlyingStrings.h" />
     <ClInclude Include="src\Misc\Includes.h" />
     <ClInclude Include="src\Misc\IniIteratorChar.h" />
     <ClInclude Include="src\Misc\IniSectionIncludes.h" />
@@ -200,16 +207,17 @@
     <ClInclude Include="src\Misc\MapRevealer.h" />
     <ClInclude Include="src\Misc\MoviesList.h" />
     <ClInclude Include="src\Misc\Network.h" />
+    <ClInclude Include="src\Misc\Networking.h" />
     <ClInclude Include="src\Misc\PoweredUnitClass.h" />
     <ClInclude Include="src\Misc\RMG.h" />
     <ClInclude Include="src\Misc\Savegame.h" />
     <ClInclude Include="src\Misc\SavegameDef.h" />
     <ClInclude Include="src\Misc\Skirmish.h" />
-    <ClInclude Include="src\Misc\Status.h" />
     <ClInclude Include="src\Misc\Stream.h" />
     <ClInclude Include="src\Misc\Surfaces.h" />
     <ClInclude Include="src\Misc\Swizzle.h" />
     <ClInclude Include="src\Misc\SWTypes.h" />
+    <ClInclude Include="src\Misc\SWTypes\Battery.h" />
     <ClInclude Include="src\Misc\SWTypes\ChronoSphere.h" />
     <ClInclude Include="src\Misc\SWTypes\ChronoWarp.h" />
     <ClInclude Include="src\Misc\SWTypes\Dominator.h" />
@@ -231,7 +239,10 @@
     <ClInclude Include="src\Misc\TrajectoryHelper.h" />
     <ClInclude Include="src\UI\Dialogs.h" />
     <ClInclude Include="src\UI\registered.h" />
+    <ClInclude Include="src\Utilities\AresEnums.h" />
+    <ClInclude Include="src\Utilities\Checksummer.h" />
     <ClInclude Include="src\Utilities\Constructs.h" />
+    <ClInclude Include="src\Utilities\DirMath.h" />
     <ClInclude Include="src\Utilities\Enums.h" />
     <ClInclude Include="src\Utilities\Helpers.Alex.h" />
     <ClInclude Include="src\Utilities\INIParser.h" />
@@ -249,8 +260,10 @@
     <ClCompile Include="src\Ares.GlobalControls.cpp" />
     <ClCompile Include="src\Ares.UISettings.cpp" />
     <ClCompile Include="src\Enum\ArmorTypes.cpp" />
+    <ClCompile Include="src\Enum\CursorTypes.cpp" />
     <ClCompile Include="src\Enum\Prerequisites.cpp" />
     <ClCompile Include="src\Enum\RadTypes.cpp" />
+    <ClCompile Include="src\Enum\TunnelTypes.cpp" />
     <ClCompile Include="src\Ext\Abstract\Body.cpp" />
     <ClCompile Include="src\Ext\AnimType\Body.cpp" />
     <ClCompile Include="src\Ext\AnimType\Hooks.cpp" />
@@ -259,13 +272,16 @@
     <ClCompile Include="src\Ext\BuildingType\PrismForward.cpp" />
     <ClCompile Include="src\Ext\Building\Body.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.cpp" />
+    <ClCompile Include="src\Ext\Building\Hooks.Anims.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Firewall.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Foundation.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Gates.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Infiltrate.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Prism.cpp" />
+    <ClCompile Include="src\Ext\Building\Hooks.Sell.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Sensor.cpp" />
     <ClCompile Include="src\Ext\Building\Hooks.Trenches.cpp" />
+    <ClCompile Include="src\Ext\Building\Hooks.Tunnels.cpp" />
     <ClCompile Include="src\Ext\Building\PrismForward.cpp" />
     <ClCompile Include="src\Ext\BulletType\Body.cpp" />
     <ClCompile Include="src\Ext\BulletType\Hooks.cpp" />
@@ -278,20 +294,28 @@
     <ClCompile Include="src\Ext\House\Hooks.100.cpp" />
     <ClCompile Include="src\Ext\House\Hooks.Academy.cpp" />
     <ClCompile Include="src\Ext\House\Hooks.BasePlan.cpp" />
+    <ClCompile Include="src\Ext\House\Hooks.Battery.cpp" />
     <ClCompile Include="src\Ext\House\Hooks.cpp" />
     <ClCompile Include="src\Ext\House\Hooks.Firewall.cpp" />
+    <ClCompile Include="src\Ext\House\Hooks.KeepAlive.cpp" />
     <ClCompile Include="src\Ext\House\Hooks.Queue.cpp" />
     <ClCompile Include="src\Ext\Infantry\Body.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.Doggie.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.MakeInf.cpp" />
     <ClCompile Include="src\Ext\Infantry\Hooks.Saboteur.cpp" />
+    <ClCompile Include="src\Ext\ParticleSystem\Body.cpp" />
+    <ClCompile Include="src\Ext\ParticleSystem\Hooks.cpp" />
+    <ClCompile Include="src\Ext\ParticleSystem\Runtime.cpp" />
+    <ClCompile Include="src\Ext\ParticleType\Body.cpp" />
+    <ClCompile Include="src\Ext\ParticleType\Hooks.cpp" />
     <ClCompile Include="src\Ext\Rules\Body.cpp" />
     <ClCompile Include="src\Ext\Rules\Hooks.CameoList.cpp" />
     <ClCompile Include="src\Ext\Rules\Hooks.cpp" />
     <ClCompile Include="src\Ext\Rules\Hooks.Dropships.cpp" />
     <ClCompile Include="src\Ext\Side\Body.cpp" />
     <ClCompile Include="src\Ext\Side\Hooks.cpp" />
+    <ClCompile Include="src\Ext\Script\Body.cpp" />
     <ClCompile Include="src\Ext\SWType\Body.cpp" />
     <ClCompile Include="src\Ext\SWType\Hooks.cpp" />
     <ClCompile Include="src\Ext\SWType\Hooks.Legacy.cpp" />
@@ -300,26 +324,40 @@
     <ClCompile Include="src\Ext\TAction\Body.cpp" />
     <ClCompile Include="src\Ext\TAction\Hooks.cpp" />
     <ClCompile Include="src\Ext\TAction\Hooks.Replacements.cpp" />
+    <ClCompile Include="src\Ext\Team\Body.cpp" />
     <ClCompile Include="src\Ext\Team\Hooks.cpp" />
     <ClCompile Include="src\Ext\TechnoType\Body.cpp" />
     <ClCompile Include="src\Ext\TechnoType\Hooks.Art.cpp" />
+    <ClCompile Include="src\Ext\TechnoType\Hooks.BuildTime.cpp" />
     <ClCompile Include="src\Ext\TechnoType\Hooks.cpp" />
+    <ClCompile Include="src\Ext\TechnoType\Hooks.Harvester.cpp" />
+    <ClCompile Include="src\Ext\TechnoType\Hooks.UIName.cpp" />
+    <ClCompile Include="src\Ext\TechnoType\Hooks.Weapons.cpp" />
     <ClCompile Include="src\Ext\Techno\Body.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Abilities.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Alpha.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Ammo.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Art.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Cloak.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Bounty.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Convert.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Crew.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Cursor.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Deactivated.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Dock.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Firing.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Gap.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.HealTarget.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.HunterSeeker.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Insignia.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Pips.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Prerequisites.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Sight.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Spotlights.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Temporal.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Tracers.cpp" />
+    <ClCompile Include="src\Ext\Techno\Hooks.Turrets.cpp" />
     <ClCompile Include="src\Ext\Techno\Hooks.Veterancy.cpp" />
     <ClCompile Include="src\Ext\Terrain\Hooks.cpp" />
     <ClCompile Include="src\Ext\TEvent\Body.cpp" />
@@ -329,6 +367,7 @@
     <ClCompile Include="src\Ext\WarheadType\Body.cpp" />
     <ClCompile Include="src\Ext\WarheadType\Hooks.CellSpread.cpp" />
     <ClCompile Include="src\Ext\WarheadType\Hooks.cpp" />
+    <ClCompile Include="src\Ext\WarheadType\Hooks.Damage.cpp" />
     <ClCompile Include="src\Ext\WarheadType\Hooks.EMP.cpp" />
     <ClCompile Include="src\Ext\WarheadType\Hooks.Ion.cpp" />
     <ClCompile Include="src\Ext\WarheadType\Hooks.Verses.cpp" />
@@ -345,7 +384,10 @@
     <ClCompile Include="src\Misc\Audio.cpp" />
     <ClCompile Include="src\Misc\Bugfixes.Buffer.cpp" />
     <ClCompile Include="src\Misc\Bugfixes.cpp" />
+    <ClCompile Include="src\Misc\Bugfixes.Minimap.cpp" />
     <ClCompile Include="src\Misc\Bugfixes.Perf.cpp" />
+    <ClCompile Include="src\Misc\Bugfixes.Pointers.cpp" />
+    <ClCompile Include="src\Misc\Bugfixes.Residual.cpp" />
     <ClCompile Include="src\Misc\Bugfixes.Safeguards.cpp" />
     <ClCompile Include="src\Misc\Cameos.cpp" />
     <ClCompile Include="src\Misc\Checksum.cpp" />
@@ -357,15 +399,19 @@
     <ClCompile Include="src\Misc\EMPulse.cpp" />
     <ClCompile Include="src\Misc\EVAVoices.cpp" />
     <ClCompile Include="src\Misc\Exception.cpp" />
+    <ClCompile Include="src\Misc\FlyingStrings.cpp" />
     <ClCompile Include="src\Misc\Includes.cpp" />
+    <ClCompile Include="src\Misc\IniIndex.cpp" />
     <ClCompile Include="src\Misc\IniIteratorChar.cpp" />
     <ClCompile Include="src\Misc\IniSectionIncludes.cpp" />
     <ClCompile Include="src\Misc\Interface.Buttons.cpp" />
     <ClCompile Include="src\Misc\Interface.cpp" />
+    <ClCompile Include="src\Misc\Interface.Sidebar.cpp" />
     <ClCompile Include="src\Misc\Interface.PlayerColors.cpp" />
     <ClCompile Include="src\Misc\Interface.UIColors.cpp" />
     <ClCompile Include="src\Misc\Invalidators.cpp" />
     <ClCompile Include="src\Misc\JammerClass.cpp" />
+    <ClCompile Include="src\Misc\Locomotors.cpp" />
     <ClCompile Include="src\Misc\MapRevealer.cpp" />
     <ClCompile Include="src\Misc\MoviesList.cpp" />
     <ClCompile Include="src\Misc\Network.cpp" />
@@ -379,6 +425,7 @@
     <ClCompile Include="src\Misc\Surfaces.cpp" />
     <ClCompile Include="src\Misc\Swizzle.cpp" />
     <ClCompile Include="src\Misc\SWTypes.cpp" />
+    <ClCompile Include="src\Misc\SWTypes\Battery.cpp" />
     <ClCompile Include="src\Misc\SWTypes\ChronoSphere.cpp" />
     <ClCompile Include="src\Misc\SWTypes\ChronoWarp.cpp" />
     <ClCompile Include="src\Misc\SWTypes\Dominator.cpp" />

@@ -7,16 +7,49 @@
 #include "../../Utilities/TemplateDef.h"
 
 #include <HouseTypeClass.h>
+#include <InfantryTypeClass.h>
 
 // =============================
 // other hooks
 
-DEFINE_HOOK(732D10, TacticalClass_CollectSelectedIDs, 5)
+DEFINE_HOOK(0x71136F, TechnoTypeClass_CTOR_Initialize, 0x6)
 {
-	// create in dll. all internal memory will be allocated on the game's heap
-	// but as our vtable is used, the virtual destructor will free this instance
-	// from the dll's heap.
-	auto pNames = DLLCreate<DynamicVectorClass<const char*>>();
+	GET(TechnoTypeClass*, pThis, ESI);
+
+	pThis->WeaponCount = 0;
+	pThis->Bunkerable = false;
+	pThis->Parasiteable = false;
+	pThis->ImmuneToPoison = false;
+	pThis->ConsideredAircraft = false;
+	pThis->Organic = false;
+
+	return 0;
+}
+
+DEFINE_HOOK(0x523932, InfantryTypeClass_CTOR_Initialize, 0x8)
+{
+	GET(InfantryTypeClass*, pThis, ESI);
+
+	for(auto& sequence : pThis->Sequence->Sequences) {
+		sequence.StartFrame = 0;
+		sequence.CountFrames = 0;
+		sequence.FacingMultiplier = 0;
+		sequence.Facing = static_cast<SequenceFacing>(-1);
+		sequence.SoundCount = 0;
+		sequence.Sound1StartFrame = 0;
+		sequence.Sound1Index = 0;
+		sequence.Sound2StartFrame = 0;
+		sequence.Sound2Index = 0;
+	}
+
+	return 0x523970;
+}
+
+DEFINE_HOOK(0x732D47, TacticalClass_CollectSelectedIDs, 0x5)
+{
+	// the game created this vector on its own heap and with its own vtable,
+	// so the game's destructor frees it again.
+	GET(DynamicVectorClass<const char*>*, pNames, EBX);
 
 	auto Add = [pNames](TechnoTypeClass* pType) {
 		if(auto pExt = TechnoTypeExt::ExtMap.Find(pType)) {
@@ -32,7 +65,7 @@ DEFINE_HOOK(732D10, TacticalClass_CollectSelectedIDs, 5)
 
 	bool useDeploy = RulesExt::Global()->TypeSelectUseDeploy;
 
-	for(auto pObject : *ObjectClass::CurrentObjects) {
+	for(auto pObject : ObjectClass::CurrentObjects) {
 		// add this object's id used for grouping
 		if(TechnoTypeClass* pType = pObject->GetTechnoType()) {
 			Add(pType);
@@ -50,10 +83,10 @@ DEFINE_HOOK(732D10, TacticalClass_CollectSelectedIDs, 5)
 	}
 
 	R->EAX(pNames);
-	return 0x732FE1;
+	return 0x732FD9;
 }
 
-DEFINE_HOOK(7327AA, TechnoClass_PlayerOwnedAliveAndNamed_GroupAs, 8)
+DEFINE_HOOK(0x7327AA, TechnoClass_PlayerOwnedAliveAndNamed_GroupAs, 0x8)
 {
 	GET(TechnoClass*, pThis, ESI);
 	GET(const char*, pID, EDI);
@@ -64,16 +97,16 @@ DEFINE_HOOK(7327AA, TechnoClass_PlayerOwnedAliveAndNamed_GroupAs, 8)
 	return 0x7327B2;
 }
 
-DEFINE_HOOK_AGAIN(4ABD9D, DisplayClass_LeftMouseButtonUp_GroupAs, A)
-DEFINE_HOOK_AGAIN(4ABE58, DisplayClass_LeftMouseButtonUp_GroupAs, A)
-DEFINE_HOOK(4ABD6C, DisplayClass_LeftMouseButtonUp_GroupAs, A)
+DEFINE_HOOK_AGAIN(0x4ABD9D, DisplayClass_LeftMouseButtonUp_GroupAs, 0xA)
+DEFINE_HOOK_AGAIN(0x4ABE58, DisplayClass_LeftMouseButtonUp_GroupAs, 0xA)
+DEFINE_HOOK(0x4ABD6C, DisplayClass_LeftMouseButtonUp_GroupAs, 0xA)
 {
 	GET(ObjectClass*, pThis, ESI);
 	R->EAX(TechnoTypeExt::GetSelectionGroupID(pThis->GetType()));
 	return R->Origin() + 13;
 }
 
-DEFINE_HOOK(6DA665, sub_6DA5C0_GroupAs, A)
+DEFINE_HOOK(0x6DA665, sub_6DA5C0_GroupAs, 0xA)
 {
 	GET(ObjectClass*, pThis, ESI);
 	R->EAX(TechnoTypeExt::GetSelectionGroupID(pThis->GetType()));
@@ -81,7 +114,7 @@ DEFINE_HOOK(6DA665, sub_6DA5C0_GroupAs, A)
 }
 
 /*
-A_FINE_HOOK(5F8480, ObjectTypeClass_Load3DArt, 6)
+A_FINE_HOOK(0x5F8480, ObjectTypeClass_Load3DArt, 0x6)
 {
 	GET(ObjectTypeClass *, O, ESI);
 	if(O->WhatAmI() == abs_UnitType) {
@@ -94,7 +127,7 @@ A_FINE_HOOK(5F8480, ObjectTypeClass_Load3DArt, 6)
 }
 */
 
-DEFINE_HOOK(715320, TechnoTypeClass_LoadFromINI_EarlyReader, 6)
+DEFINE_HOOK(0x715320, TechnoTypeClass_LoadFromINI_EarlyReader, 0x6)
 {
 	GET(CCINIClass *, pINI, EDI);
 	GET(TechnoTypeClass *, pType, EBP);
@@ -108,22 +141,7 @@ DEFINE_HOOK(715320, TechnoTypeClass_LoadFromINI_EarlyReader, 6)
 }
 
 
-DEFINE_HOOK(5F79B0, TechnoTypeClass_FindFactory, 6)
-{
-	enum { Eligible = 0x5F79C7, Ineligible = 0x5F7A57 };
-
-	GET(TechnoTypeClass *, pProduction, EDI);
-	GET(BuildingClass *, pFactory, ESI);
-
-	auto pData = TechnoTypeExt::ExtMap.Find(pProduction);
-
-	return (pData->CanBeBuiltAt(pFactory->Type))
-		? Eligible
-		: Ineligible
-	;
-}
-
-DEFINE_HOOK(4444E2, BuildingClass_KickOutUnit_FindAlternateKickout, 6)
+DEFINE_HOOK(0x4444E2, BuildingClass_KickOutUnit_FindAlternateKickout, 0x6)
 {
 	GET(BuildingClass *, Src, ESI);
 	GET(BuildingClass *, Tst, EBP);
@@ -144,39 +162,39 @@ DEFINE_HOOK(4444E2, BuildingClass_KickOutUnit_FindAlternateKickout, 6)
 	return 0x444508;
 }
 
-DEFINE_HOOK(444DBC, BuildingClass_KickOutUnit_Infantry, 5) {
+DEFINE_HOOK(0x444DBC, BuildingClass_KickOutUnit_Infantry, 0x5) {
 	GET(TechnoClass*, Production, EDI);
 	GET(BuildingClass*, Factory, ESI);
 
 	// turn it off
-	--Unsorted::IKnowWhatImDoing;
+	--Unsorted::ScenarioInit;
 
 	auto pFactoryData = BuildingExt::ExtMap.Find(Factory);
 	pFactoryData->KickOutClones(Production);
 
 	// turn it back on so the game can turn it off again
-	++Unsorted::IKnowWhatImDoing;
+	++Unsorted::ScenarioInit;
 
 	return 0;
 }
 
-DEFINE_HOOK(4445F6, BuildingClass_KickOutUnit_Clone_NonNavalUnit, 5) {
+DEFINE_HOOK(0x4445F6, BuildingClass_KickOutUnit_Clone_NonNavalUnit, 0x5) {
 	GET(TechnoClass*, Production, EDI);
 	GET(BuildingClass*, Factory, ESI);
 
 	// turn it off
-	--Unsorted::IKnowWhatImDoing;
+	--Unsorted::ScenarioInit;
 
 	auto pFactoryData = BuildingExt::ExtMap.Find(Factory);
 	pFactoryData->KickOutClones(Production);
 
 	// turn it back on so the game can turn it off again
-	++Unsorted::IKnowWhatImDoing;
+	++Unsorted::ScenarioInit;
 
 	return 0x444971;
 }
 
-DEFINE_HOOK(44441A, BuildingClass_KickOutUnit_Clone_NavalUnit, 6) {
+DEFINE_HOOK(0x44441A, BuildingClass_KickOutUnit_Clone_NavalUnit, 0x6) {
 	GET(TechnoClass*, Production, EDI);
 	GET(BuildingClass*, Factory, ESI);
 
@@ -186,7 +204,7 @@ DEFINE_HOOK(44441A, BuildingClass_KickOutUnit_Clone_NavalUnit, 6) {
 	return 0;
 }
 
-DEFINE_HOOK(4449DF, BuildingClass_KickOutUnit_PreventClone, 6)
+DEFINE_HOOK(0x4449DF, BuildingClass_KickOutUnit_PreventClone, 0x6)
 {
 	return 0x444A53;
 }

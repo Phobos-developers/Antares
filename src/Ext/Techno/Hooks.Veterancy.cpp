@@ -1,4 +1,5 @@
 #include "Body.h"
+#include "../Rules/Body.h"
 #include "../TechnoType/Body.h"
 
 #include <AirstrikeClass.h>
@@ -7,9 +8,91 @@
 #include <VocClass.h>
 #include <VoxClass.h>
 
+// applies everything that changes when a unit reaches a new rank: the promotion
+// of its passengers, the sound, the EVA line and the promotion flash.
+static void HandlePromotion(TechnoClass* const pThis, bool const silent, bool const flash)
+{
+	auto rank = pThis->Veterancy.GetRemainingLevel();
+
+	if(pThis->CurrentRanking == rank) {
+		return;
+	}
+
+	if(pThis->CurrentRanking != Rank::Invalid) {
+		auto const pExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
+
+		if(pExt->Promote_IncludePassengers) {
+			auto const veterancy = pThis->Veterancy;
+
+			auto pObject = static_cast<ObjectClass*>(pThis->Passengers.FirstPassenger);
+			while(pObject) {
+				auto const pNext = pObject->NextObject;
+
+				if(auto const pPassenger = abstract_cast<FootClass*>(pObject)) {
+					if(pPassenger->GetTechnoType()->Trainable) {
+						pPassenger->Veterancy = veterancy;
+						HandlePromotion(pPassenger, true, false);
+					}
+				}
+
+				pObject = pNext;
+			}
+		}
+
+		auto sound = -1;
+		auto duration = 0;
+		auto eva = -1;
+		TechnoTypeClass* pToType = nullptr;
+		auto experience = 0.0;
+
+		if(rank == Rank::Veteran) {
+			sound = pExt->Promote_VeteranSound.Get(RulesClass::Instance->UpgradeVeteranSound);
+			duration = pExt->Promote_VeteranFlash.Get(RulesExt::Global()->VeteranFlashTimer);
+			eva = pExt->EVA_VeteranPromoted;
+			pToType = pExt->Promote_VeteranType;
+			experience = pExt->Promote_VeteranExperience;
+		} else if(rank == Rank::Elite) {
+			sound = pExt->Promote_EliteSound.Get(RulesClass::Instance->UpgradeEliteSound);
+			duration = pExt->Promote_EliteFlash.Get(RulesClass::Instance->EliteFlashTimer);
+			eva = pExt->EVA_ElitePromoted;
+			pToType = pExt->Promote_EliteType;
+			experience = pExt->Promote_EliteExperience;
+		}
+
+		if(!silent && pThis->Owner->IsControlledByCurrentPlayer()) {
+			auto const pSource = pThis->Transporter ? pThis->Transporter : pThis;
+			VocClass::PlayAt(sound, pSource->Location, nullptr);
+			VoxClass::PlayIndex(eva);
+		}
+
+		if(flash && duration > 0) {
+			pThis->Flashing.DurationRemaining = duration;
+		}
+
+		if(pToType && TechnoExt::UpdateType(pThis, pToType) && experience != 0.0) {
+			auto const value = Math::clamp(experience + pThis->Veterancy.Veterancy,
+				0.0, RulesClass::Instance->VeteranCap);
+			pThis->Veterancy.Veterancy = static_cast<float>(value);
+			rank = pThis->Veterancy.GetRemainingLevel();
+			TechnoExt::ExtMap.Find(pThis)->RecalculateStats();
+		}
+	}
+
+	pThis->CurrentRanking = rank;
+}
+
+DEFINE_HOOK(0x6FA054, TechnoClass_Update_Veterancy, 0x6)
+{
+	GET(TechnoClass* const, pThis, ESI);
+
+	HandlePromotion(pThis, false, true);
+
+	return 0x6FA14B;
+}
+
 // #346, #464, #970, #1014
 // handle all veterancy gains ourselves
-DEFINE_HOOK(702E9D, TechnoClass_RegisterDestruction_Veterancy, 6) {
+DEFINE_HOOK(0x702E9D, TechnoClass_RegisterDestruction_Veterancy, 0x6) {
 	GET(TechnoClass*, pKiller, EDI);
 	GET(TechnoClass*, pVictim, ESI);
 	GET(const int, VictimCost, EBP);
@@ -93,6 +176,9 @@ DEFINE_HOOK(702E9D, TechnoClass_RegisterDestruction_Veterancy, 6) {
 			InfantryClass* pOccupant = pKillerBld->Occupants[pKillerBld->FiringOccupantIndex];
 			if(pOccupant->Type->Trainable) {
 				pExperience = pOccupant;
+				// like gunners, occupiers otherwise only cash in their
+				// experience after leaving the building once
+				promoteImmediately = true;
 			}
 		}
 	}
@@ -116,6 +202,9 @@ DEFINE_HOOK(702E9D, TechnoClass_RegisterDestruction_Veterancy, 6) {
 			// owner then. this way, a mind-controlled owner is supported.
 			TechnoClass* pSpawn = nullptr;
 			double SpawnFactor = 1.0;
+			// the owner's own multiplier is kept out of ExpFactor: it applies
+			// to the owner alone, not to the spawn and not to a mind-controller
+			double OwnerFactor = 1.0;
 			if(auto pSpawner = pExperience->SpawnOwner) {
 				auto pTSpawner = pSpawner->GetTechnoType();
 
@@ -127,8 +216,8 @@ DEFINE_HOOK(702E9D, TechnoClass_RegisterDestruction_Veterancy, 6) {
 					SpawnFactor = pTSpawnerData->SpawnExperienceSpawnModifier;
 					pSpawn = pExperience;
 
-					// switch over to spawn owners, and factor in the spawner multiplier
-					ExpFactor *= pTSpawnerData->SpawnExperienceOwnerModifier;
+					// switch over to spawn owners, and remember the spawner multiplier
+					OwnerFactor = pTSpawnerData->SpawnExperienceOwnerModifier;
 					pExperience = pSpawner;
 				}
 			}
@@ -154,7 +243,7 @@ DEFINE_HOOK(702E9D, TechnoClass_RegisterDestruction_Veterancy, 6) {
 			}
 
 			// default. promote the unit this function selected.
-			AddExperience(pExperience, VictimCost, ExpFactor);
+			AddExperience(pExperience, VictimCost, ExpFactor * OwnerFactor);
 
 			// if there is a spawn, let it get its share.
 			if(pSpawn) {
@@ -164,25 +253,7 @@ DEFINE_HOOK(702E9D, TechnoClass_RegisterDestruction_Veterancy, 6) {
 			// gunners need to be promoted manually, or they won't only get
 			// the experience until after they exited their transport once.
 			if(promoteImmediately) {
-				auto newRank = pExperience->Veterancy.GetRemainingLevel();
-
-				if(pExperience->CurrentRanking != newRank) {
-					if(pExperience->CurrentRanking != Rank::Invalid) {
-						int sound = -1;
-						if(pExperience->Veterancy.IsVeteran()) {
-							sound = RulesClass::Instance->UpgradeVeteranSound;
-						} else if (pExperience->Veterancy.IsElite()) {
-							sound = RulesClass::Instance->UpgradeEliteSound;
-						}
-
-						if(pExperience->Owner->ControlledByHuman()) {
-							VocClass::PlayAt(sound, pExperience->Transporter->Location, nullptr);
-							VoxClass::Play("EVA_UnitPromoted");
-						}
-					}
-
-					pExperience->CurrentRanking = newRank;
-				}
+				HandlePromotion(pExperience, false, false);
 			}
 		}
 	}

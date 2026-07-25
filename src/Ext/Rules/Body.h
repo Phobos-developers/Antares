@@ -12,7 +12,6 @@
 //endif
 
 class AnimTypeClass;
-class MouseCursor;
 class TechnoTypeClass;
 class VocClass;
 class WarheadTypeClass;
@@ -22,26 +21,26 @@ class RulesExt
 public:
 	using base_type = RulesClass;
 
-	class ExtData final : public Extension<RulesClass>
+	class ExtData final : public Extension<RulesClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x12341234;
+
 		Valueable<AnimTypeClass* >ElectricDeath;
 		Valueable<double> EngineerDamage;
 		Valueable<bool> EngineerAlwaysCaptureTech;
-		Valueable<MouseCursor> EngineerDamageCursor;
 		bool MultiEngineer[3];
 
 		Valueable<bool> TogglePowerAllowed;
 		Valueable<int> TogglePowerDelay;
 		Valueable<int> TogglePowerIQ;
-		Valueable<MouseCursor> TogglePowerCursor;
-		Valueable<MouseCursor> TogglePowerNoCursor;
 
 		Valueable<bool> CanMakeStuffUp;
 
 		Valueable<bool> Tiberium_DamageEnabled;
 		Valueable<bool> Tiberium_HealEnabled;
 		Valueable<WarheadTypeClass*> Tiberium_ExplosiveWarhead;
+		Valueable<AnimTypeClass*> Tiberium_ExplosiveAnim;
 
 		Valueable<int> OverlayExplodeThreshold;
 
@@ -101,19 +100,45 @@ public:
 
 		Valueable<bool> DiskLaserAnimEnabled;
 
-		ExtData(RulesClass* OwnerObject) : Extension<RulesClass>(OwnerObject),
+		Valueable<double> DisplayCreditsDelay;
+		Valueable<double> StealthSpeakDelay;
+		Valueable<double> SubterraneanSpeakDelay;
+
+		// bounty
+		ValueableVector<BuildingTypeClass*> BountyEnablers;
+		Valueable<bool> BountyDisplay;
+
+		Valueable<bool> UnitsUnsellable;
+
+		Valueable<int> VeteranFlashTimer;
+
+		Valueable<int> RandomCrateMoney;
+
+		// [GlobalControls]
+		Valueable<bool> DebugKeysEnabled;
+		Valueable<bool> AllowParallelAIQueues;
+		bool AllowBypassBuildLimit[3];
+
+		Valueable<bool> IronCurtainFlash;
+		Valueable<bool> RepairStopOnInsufficientFunds;
+		Valueable<bool> ChronoInfantryCrush;
+
+		Nullable<int> StartInMultiplayerUnitCost;
+		Nullable<int> AIFriendlyDistance;
+		Nullable<Mission> EMPAIRecoverMission;
+
+		ExtData(RulesClass* OwnerObject) : Extension<RulesClass, ExtData>(OwnerObject),
 			ElectricDeath(nullptr),
 			EngineerDamage(0.0),
 			EngineerAlwaysCaptureTech(true),
-			EngineerDamageCursor(MouseCursor::GetCursor(MouseCursorType::Detonate)),
-			TogglePowerCursor(MouseCursor::GetCursor(MouseCursorType::Power)),
-			TogglePowerNoCursor(MouseCursor::GetCursor(MouseCursorType::Disallowed)),
 			TogglePowerAllowed(false),
 			TogglePowerDelay(45),
 			TogglePowerIQ(-1),
+			CanMakeStuffUp(false),
 			Tiberium_DamageEnabled(false),
 			Tiberium_HealEnabled(false),
 			Tiberium_ExplosiveWarhead(nullptr),
+			Tiberium_ExplosiveAnim(nullptr),
 			OverlayExplodeThreshold(0),
 			DecloakSound(),
 			CloakHeight(),
@@ -138,28 +163,48 @@ public:
 			DropPodTrailer(),
 			DegradeAmountNormal(0),
 			DegradeAmountConsumer(1),
-			CanMakeStuffUp(false)
+			DisplayCreditsDelay(0.02),
+			StealthSpeakDelay(0.0),
+			SubterraneanSpeakDelay(0.0),
+			BountyEnablers(),
+			BountyDisplay(false),
+			UnitsUnsellable(false),
+			VeteranFlashTimer(0),
+			RandomCrateMoney(900),
+			DebugKeysEnabled(true),
+			AllowParallelAIQueues(true),
+			IronCurtainFlash(true),
+			RepairStopOnInsufficientFunds(true),
+			ChronoInfantryCrush(true),
+			StartInMultiplayerUnitCost(),
+			AIFriendlyDistance(),
+			EMPAIRecoverMission()
 		{
 			MultiEngineer[0] = false; // Skirmish
 			MultiEngineer[1] = false; // LAN
 			MultiEngineer[2] = false; // WOnline
+
+			// indexed by HouseClass::AIDifficulty, thus the reverse of the tag's order
+			AllowBypassBuildLimit[0] = false; // Hard
+			AllowBypassBuildLimit[1] = false; // Normal
+			AllowBypassBuildLimit[2] = false; // Easy
 		}
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI);
-		virtual void LoadAfterTypeData(RulesClass* pThis, CCINIClass* pINI);
-		virtual void InitializeConstants() override;
+		void LoadFromINIFile(CCINIClass* pINI);
+		void LoadBeforeTypeData(RulesClass* pThis, CCINIClass* pINI);
+		void LoadAfterTypeData(RulesClass* pThis, CCINIClass* pINI);
+		void Initialize(CCINIClass* pINI);
 
 		void InitializeAfterTypeData(RulesClass* pThis);
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 	private:
 		template <typename T>
@@ -182,7 +227,7 @@ public:
 		return Data.get();
 	}
 
-	static DynamicVectorClass<CameoDataStruct> TabCameos[4];
+	static DynamicVectorClass<BuildType> TabCameos[4];
 
 	static void ClearCameos();
 

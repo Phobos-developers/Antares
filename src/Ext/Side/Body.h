@@ -23,9 +23,13 @@ class SideExt
 public:
 	using base_type = SideClass;
 
-	class ExtData final : public Extension<SideClass>
+	class ExtData final : public Extension<SideClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x06D106D1;
+
+		int ArrayIndex;
+
 		Nullable<InfantryTypeClass*> Disguise;
 		Nullable<InfantryTypeClass*> Crew;
 		Nullable<InfantryTypeClass*> Engineer;
@@ -63,31 +67,29 @@ public:
 		AresFixedString<0x20> DialogBackgroundImage;
 		AresFixedString<0x20> DialogBackgroundPalette;
 
-		int ArrayIndex;
-
-		ExtData(SideClass* OwnerObject) : Extension<SideClass>(OwnerObject),
+		ExtData(SideClass* OwnerObject) : Extension<SideClass, ExtData>(OwnerObject),
 			ArrayIndex(-1),
 			ParaDropPlane(-1),
-			HunterSeeker(nullptr),
 			ToolTipTextColor(),
 			MessageTextColorIndex(-1),
+			EVAIndex(-1),
+			HunterSeeker(nullptr),
 			ScoreCampaignThemeUnderPar("SCORE"),
 			ScoreCampaignThemeOverPar("SCORE"),
 			ScoreMultiplayThemeWin("SCORE"),
-			ScoreMultiplayThemeLose("SCORE"),
-			EVAIndex(-1)
+			ScoreMultiplayThemeLose("SCORE")
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void Initialize() override;
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void LoadFromINIFile(CCINIClass* pINI);
+		void Initialize(CCINIClass* pINI);
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		int GetSurvivorDivisor() const;
 		int GetDefaultSurvivorDivisor() const;
@@ -122,7 +124,7 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<SideExt> {
+	class ExtContainer final : public Container<SideExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();

@@ -8,7 +8,7 @@
 #include <TerrainClass.h>
 #include <WarheadTypeClass.h>
 
-DEFINE_HOOK(5F4FF9, ObjectClass_Put_IsFlammable, 7)
+DEFINE_HOOK(0x5F4FF9, ObjectClass_Put_IsFlammable, 0x7)
 {
 	//GET(ObjectClass*, pThis, ESI);
 	GET(ObjectTypeClass*, pType, EBX);
@@ -26,7 +26,7 @@ DEFINE_HOOK(5F4FF9, ObjectClass_Put_IsFlammable, 7)
 	return RequiresUpdate;
 }
 
-DEFINE_HOOK(71C5D2, TerrainClass_Ignite_IsFlammable, 6)
+DEFINE_HOOK(0x71C5D2, TerrainClass_Ignite_IsFlammable, 0x6)
 {
 	GET(TerrainClass*, pThis, EDI);
 	auto pType = pThis->Type;
@@ -37,7 +37,7 @@ DEFINE_HOOK(71C5D2, TerrainClass_Ignite_IsFlammable, 6)
 	return (pType->SpawnsTiberium || !pType->IsFlammable) ? CantBurn : Ignite;
 }
 
-DEFINE_HOOK(71C7C2, TerrainClass_Update_ForestFire, 6)
+DEFINE_HOOK(0x71C7C2, TerrainClass_Update_ForestFire, 0x6)
 {
 	GET(TerrainClass*, pThis, ESI);
 
@@ -51,7 +51,7 @@ DEFINE_HOOK(71C7C2, TerrainClass_Update_ForestFire, 6)
 			// check all neighbour cells that contain terrain objects and
 			// roll the dice for each of them.
 			for(unsigned int i = 0; i < 8; ++i) {
-				auto pNeighbour = pCell->GetNeighbourCell(i);
+				auto pNeighbour = pCell->GetNeighbourCell(static_cast<FacingType>(i));
 				if(auto pTree = pNeighbour->GetTerrain(false)) {
 					if(!pTree->IsBurning && ScenarioClass::Instance->Random.RandomDouble() < flammability) {
 						pTree->Ignite();
@@ -64,7 +64,7 @@ DEFINE_HOOK(71C7C2, TerrainClass_Update_ForestFire, 6)
 	return 0;
 }
 
-DEFINE_HOOK(71B99E, TerrainClass_ReceiveDamage_ForestFire, 9)
+DEFINE_HOOK(0x71B99E, TerrainClass_ReceiveDamage_ForestFire, 0x9)
 {
 	GET(TerrainClass*, pThis, ESI);
 	GET(DamageState, res, EAX);

@@ -8,7 +8,7 @@
 std::vector<const char*> EVAVoices::Types;
 
 // replace the complete ini loading function
-DEFINE_HOOK(753000, VoxClass_CreateFromINIList, 6)
+DEFINE_HOOK(0x753000, VoxClass_CreateFromINIList, 0x6)
 {
 	GET(CCINIClass* const, pINI, ECX);
 
@@ -56,9 +56,9 @@ DEFINE_HOOK(753000, VoxClass_CreateFromINIList, 6)
 }
 
 // need to destroy manually because of non-virtual destructor
-DEFINE_HOOK(7531CF, VoxClass_DeleteAll, 5)
+DEFINE_HOOK(0x7531CF, VoxClass_DeleteAll, 0x5)
 {
-	auto& Array = *VoxClass::Array;
+	auto& Array = VoxClass::Array;
 
 	while(Array.Count) {
 		// destroy backwards instead of forwards
@@ -70,7 +70,7 @@ DEFINE_HOOK(7531CF, VoxClass_DeleteAll, 5)
 }
 
 // also load all additional filenames
-DEFINE_HOOK(752FDC, VoxClass_LoadFromINI, 5)
+DEFINE_HOOK(0x752FDC, VoxClass_LoadFromINI, 0x5)
 {
 	GET(VoxClass2* const, pThis, ESI);
 	GET(CCINIClass* const, pINI, EBP);
@@ -91,7 +91,7 @@ DEFINE_HOOK(752FDC, VoxClass_LoadFromINI, 5)
 }
 
 // undo the inlining. call the function we hook
-DEFINE_HOOK(7528E8, VoxClass_PlayEVASideSpecific, 5)
+DEFINE_HOOK(0x7528E8, VoxClass_PlayEVASideSpecific, 0x5)
 {
 	GET(VoxClass* const, pVox, EBP);
 	auto const ret = pVox->GetFilename();
@@ -101,7 +101,7 @@ DEFINE_HOOK(7528E8, VoxClass_PlayEVASideSpecific, 5)
 }
 
 // resolve EVA index to filename
-DEFINE_HOOK(753380, VoxClass_GetFilename, 5)
+DEFINE_HOOK(0x753380, VoxClass_GetFilename, 0x5)
 {
 	GET(VoxClass2* const, pThis, ECX);
 	auto const index = VoxClass::EVAIndex;

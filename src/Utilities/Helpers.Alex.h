@@ -148,10 +148,10 @@ namespace Helpers {
 			DistinctCollector<TechnoClass*> set;
 
 			// the quick way. only look at stuff residing on the very cells we are affecting.
-			auto const cellCoords = MapClass::Instance->GetCellAt(coords)->MapCoords;
+			auto const cellCoords = MapClass::Instance.GetCellAt(coords)->MapCoords;
 			auto const range = static_cast<size_t>(spread + 0.99);
 			for(CellSpreadEnumerator it(range); it; ++it) {
-				auto const pCell = MapClass::Instance->GetCellAt(*it + cellCoords);
+				auto const pCell = MapClass::Instance.GetCellAt(*it + cellCoords);
 				for(NextObject obj(pCell->GetContent()); obj; ++obj) {
 					if(auto const pTechno = abstract_cast<TechnoClass*>(*obj)) {
 						set.insert(pTechno);
@@ -162,7 +162,7 @@ namespace Helpers {
 			// flying objects are not included normally
 			if(includeInAir) {
 				// the not quite so fast way. skip everything not in the air.
-				for(auto const& pTechno : *TechnoClass::Array) {
+				for(auto const& pTechno : TechnoClass::Array) {
 					if(pTechno->GetHeight() > 0) {
 						// rough estimation
 						if(pTechno->Location.DistanceFrom(coords) <= spread * 256) {

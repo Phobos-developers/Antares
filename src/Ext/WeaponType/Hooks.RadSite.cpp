@@ -3,7 +3,7 @@
 #include "Body.h"
 #include "../Techno/Body.h"
 /*
-A_FINE_HOOK(4691D5, RadSite_Create_1, 5)
+A_FINE_HOOK(0x4691D5, RadSite_Create_1, 0x5)
 {
 	GET(RadSiteClass *, Rad, EDI);
 	GET(BulletClass *, B, ESI);
@@ -17,7 +17,7 @@ A_FINE_HOOK(4691D5, RadSite_Create_1, 5)
 	return 0x4691DA;
 }
 
-A_FINE_HOOK(65B593, RadSiteClass_Radiate_0, 6)
+A_FINE_HOOK(0x65B593, RadSiteClass_Radiate_0, 0x6)
 {
 	GET(RadSiteClass *, Rad, ECX);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -29,7 +29,7 @@ A_FINE_HOOK(65B593, RadSiteClass_Radiate_0, 6)
 }
 
 
-A_FINE_HOOK(65B5CE, RadSiteClass_Radiate_1, 6)
+A_FINE_HOOK(0x65B5CE, RadSiteClass_Radiate_1, 0x6)
 {
 	GET(RadSiteClass *, Rad, ESI);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -55,7 +55,7 @@ A_FINE_HOOK(65B5CE, RadSiteClass_Radiate_1, 6)
 	return 0x65B604;
 }
 
-A_FINE_HOOK(65B63E, RadSiteClass_Radiate_2, 6)
+A_FINE_HOOK(0x65B63E, RadSiteClass_Radiate_2, 0x6)
 {
 	GET(RadSiteClass *, Rad, EDI);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -66,7 +66,7 @@ A_FINE_HOOK(65B63E, RadSiteClass_Radiate_2, 6)
 	return 0x65B644;
 }
 
-A_FINE_HOOK(65B6A0, RadSiteClass_Radiate_3, 6)
+A_FINE_HOOK(0x65B6A0, RadSiteClass_Radiate_3, 0x6)
 {
 	GET(RadSiteClass *, Rad, EDI);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -76,7 +76,7 @@ A_FINE_HOOK(65B6A0, RadSiteClass_Radiate_3, 6)
 	return 0x65B6A6;
 }
 
-A_FINE_HOOK(65B6CA, RadSiteClass_Radiate_4, 6)
+A_FINE_HOOK(0x65B6CA, RadSiteClass_Radiate_4, 0x6)
 {
 	GET(RadSiteClass *, Rad, EDI);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -87,7 +87,7 @@ A_FINE_HOOK(65B6CA, RadSiteClass_Radiate_4, 6)
 }
 
 
-A_FINE_HOOK(65B6F2, RadSiteClass_Radiate_5, 6)
+A_FINE_HOOK(0x65B6F2, RadSiteClass_Radiate_5, 0x6)
 {
 	GET(RadSiteClass *, Rad, EDI);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -98,7 +98,7 @@ A_FINE_HOOK(65B6F2, RadSiteClass_Radiate_5, 6)
 }
 
 
-A_FINE_HOOK(65B73A, RadSiteClass_Radiate_6, 5)
+A_FINE_HOOK(0x65B73A, RadSiteClass_Radiate_6, 0x5)
 {
 	if(!R->get_EAX()) {
 		R->set_EAX(1);
@@ -107,7 +107,7 @@ A_FINE_HOOK(65B73A, RadSiteClass_Radiate_6, 5)
 }
 
 
-A_FINE_HOOK(65B843, RadSiteClass_Update_1, 6)
+A_FINE_HOOK(0x65B843, RadSiteClass_Update_1, 0x6)
 {
 	GET(RadSiteClass *, Rad, ESI);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -116,7 +116,7 @@ A_FINE_HOOK(65B843, RadSiteClass_Update_1, 6)
 	return 0x65B849;
 }
 
-A_FINE_HOOK(65B8B9, RadSiteClass_Update_2, 6)
+A_FINE_HOOK(0x65B8B9, RadSiteClass_Update_2, 0x6)
 {
 	GET(RadSiteClass *, Rad, ESI);
 	WeaponTypeExt::ExtData *pData = WeaponTypeExt::RadSiteExt[Rad];
@@ -144,7 +144,7 @@ FINE_HOOK(487CB0, CellClass_GetRadLevel, 5)
 }
 */
 
-DEFINE_HOOK(65B5FB, RadSiteClass_Radiate_UnhardcodeSnow, 0)
+DEFINE_HOOK(0x65B5FB, RadSiteClass_Radiate_UnhardcodeSnow, 0x0)
 {
 	return 0x65B604;
 }

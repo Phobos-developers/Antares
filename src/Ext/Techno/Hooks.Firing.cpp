@@ -1,4 +1,5 @@
 #include "Body.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 
 #include "../Rules/Body.h"
 #include "../../Misc/TrajectoryHelper.h"
@@ -6,8 +7,8 @@
 #include <AnimClass.h>
 #include <DiskLaserClass.h>
 
-DEFINE_HOOK_AGAIN(6F7631, TechnoClass_IsCloseEnoughToTarget_Obstacle, 6)
-DEFINE_HOOK(6F7511, TechnoClass_IsCloseEnoughToTarget_Obstacle, 6)
+DEFINE_HOOK_AGAIN(0x6F7631, TechnoClass_IsCloseEnoughToTarget_Obstacle, 0x6)
+DEFINE_HOOK(0x6F7511, TechnoClass_IsCloseEnoughToTarget_Obstacle, 0x6)
 {
 	GET_BASE(WeaponTypeClass* const, pWeapon, 0x10);
 	GET_BASE(AbstractClass* const, pTarget, 0xC);
@@ -24,7 +25,7 @@ DEFINE_HOOK(6F7511, TechnoClass_IsCloseEnoughToTarget_Obstacle, 6)
 	return 0x6F7647;
 }
 
-DEFINE_HOOK(4A76ED, DiskLaserClass_Update_Anim, 7)
+DEFINE_HOOK(0x4A76ED, DiskLaserClass_Update_Anim, 0x7)
 {
 	GET(DiskLaserClass* const, pThis, ESI);
 	REF_STACK(CoordStruct, coords, STACK_OFFS(0x54, 0x1C));

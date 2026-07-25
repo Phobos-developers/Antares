@@ -49,7 +49,7 @@ int SW_NuclearMissile::GetDamage(const SWTypeExt::ExtData* pData) const
 	return damage;
 }
 
-void SW_NuclearMissile::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_NuclearMissile::Initialize(SWTypeExt::ExtData *pData)
 {
 	// default values for the original Nuke
 	pData->Nuke_Payload = WeaponTypeClass::FindOrAllocate("NukePayload");
@@ -61,11 +61,13 @@ void SW_NuclearMissile::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeCla
 	pData->EVA_Activated = VoxClass::FindIndex("EVA_NuclearMissileLaunched");
 
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::Nuke;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::Nuke);
+	pData->SW_Cursor = MouseCursorType::Nuke;
 }
 
-void SW_NuclearMissile::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_NuclearMissile::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -80,20 +82,20 @@ void SW_NuclearMissile::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeCl
 	pData->Nuke_SiloLaunch.Read(exINI, section, "Nuke.SiloLaunch");
 }
 
-bool SW_NuclearMissile::Activate(SuperClass* const pThis, const CellStruct &Coords, bool const IsPlayer)
+bool SW_NuclearMissile::Activate(SuperClass* const pThis, CellStruct const Coords, bool const IsPlayer)
 {
-	if(pThis->IsCharged) {
+	if(pThis->IsReady) {
 		auto const pType = pThis->Type;
 		auto const pData = SWTypeExt::ExtMap.Find(pType);
 
-		auto const pCell = MapClass::Instance->GetCellAt(Coords);
+		auto const pCell = MapClass::Instance.GetCellAt(Coords);
 		auto const target = pCell->GetCoordsWithBridge();
 
 		// the nuke has two ways to fire. first the granted way used by nukes
 		// collected from crates. second, the normal way firing from a silo.
 		BuildingClass* pSilo = nullptr;
 				
-		if((!pThis->Granted || !pThis->OneTime) && pData->Nuke_SiloLaunch) {
+		if((!pThis->IsPresent || !pThis->IsOneTime) && pData->Nuke_SiloLaunch) {
 			// find a building owned by the player that can fire this SWType
 			auto const& Buildings = pThis->Owner->Buildings;
 			auto it = std::find_if(Buildings.begin(), Buildings.end(), [=](BuildingClass* pBld) {
@@ -159,7 +161,7 @@ bool SW_NuclearMissile::Activate(SuperClass* const pThis, const CellStruct &Coor
 		if(fired) {
 			// allies can see the target location before the enemy does
 			if(pData->SW_RadarEvent) {
-				if(pThis->Owner->IsAlliedWith(HouseClass::Player)) {
+				if(pThis->Owner->IsAlliedWith(HouseClass::CurrentPlayer)) {
 					RadarEventClass::Create(RadarEventType::SuperweaponActivated, Coords);
 				}
 			}

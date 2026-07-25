@@ -69,12 +69,12 @@ void CustomPalette::CreateConvert()
 	ConvertClass* buffer = nullptr;
 	if(this->Mode == PaletteMode::Temperate) {
 		buffer = GameCreate<ConvertClass>(
-			this->Palette.get(), FileSystem::TEMPERAT_PAL, DSurface::Primary,
-			53, false);
+			*this->Palette.get(), FileSystem::TEMPERAT_PAL, DSurface::Primary,
+			53u, false);
 	} else {
 		buffer = GameCreate<ConvertClass>(
-			this->Palette.get(), this->Palette.get(), DSurface::Alternate,
-			1, false);
+			*this->Palette.get(), *this->Palette.get(), DSurface::Alternate,
+			1u, false);
 	}
 	this->Convert.reset(buffer);
 }

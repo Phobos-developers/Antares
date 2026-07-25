@@ -1,4 +1,5 @@
 #include <InfantryClass.h>
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include <HouseTypeClass.h>
 #include <HouseClass.h>
 #include <TActionClass.h>
@@ -10,7 +11,7 @@
 
 /* #188 - InfDeaths */
 
-DEFINE_HOOK(5185C8, InfantryClass_ReceiveDamage_InfDeath, 6)
+DEFINE_HOOK(0x5185C8, InfantryClass_ReceiveDamage_InfDeath, 0x6)
 {
 	GET(InfantryClass *, I, ESI);
 	LEA_STACK(args_ReceiveDamage *, Arguments, 0xD4);
@@ -44,7 +45,7 @@ DEFINE_HOOK(5185C8, InfantryClass_ReceiveDamage_InfDeath, 6)
 	;
 }
 
-DEFINE_HOOK(51849A, InfantryClass_ReceiveDamage_DeathAnim, 5)
+DEFINE_HOOK(0x51849A, InfantryClass_ReceiveDamage_DeathAnim, 0x5)
 {
 	GET(InfantryClass *, I, ESI);
 	LEA_STACK(args_ReceiveDamage *, Arguments, 0xD4);
@@ -66,8 +67,8 @@ DEFINE_HOOK(51849A, InfantryClass_ReceiveDamage_DeathAnim, 5)
 	return 0x5184F2;
 }
 
-DEFINE_HOOK_AGAIN(518575, InfantryClass_ReceiveDamage_InfantryVirus1, 6)
-DEFINE_HOOK(5183DE, InfantryClass_ReceiveDamage_InfantryVirus1, 6)
+DEFINE_HOOK_AGAIN(0x518575, InfantryClass_ReceiveDamage_InfantryVirus1, 0x6)
+DEFINE_HOOK(0x5183DE, InfantryClass_ReceiveDamage_InfantryVirus1, 0x6)
 {
 	GET(InfantryClass*, pThis, ESI);
 	GET(AnimClass*, pAnim, EDI);
@@ -83,19 +84,19 @@ DEFINE_HOOK(5183DE, InfantryClass_ReceiveDamage_InfantryVirus1, 6)
 
 	// bonus: don't require SpawnsParticle to be present
 
-	if(ParticleSystemClass::Array->ValidIndex(pAnim->Type->SpawnsParticle)) {
+	if(ParticleSystemClass::Array.ValidIndex(pAnim->Type->SpawnsParticle)) {
 		return 0;
 	}
 
 	return (R->Origin() == 0x5183DE) ? 0x518422 : 0x5185B9;
 }
 
-DEFINE_HOOK_AGAIN(518B93, InfantryClass_ReceiveDamage_Anims, 5) // InfantryBrute
-DEFINE_HOOK_AGAIN(518821, InfantryClass_ReceiveDamage_Anims, 5) // InfantryNuked
-DEFINE_HOOK_AGAIN(5187BB, InfantryClass_ReceiveDamage_Anims, 5) // InfantryHeadPop
-DEFINE_HOOK_AGAIN(518755, InfantryClass_ReceiveDamage_Anims, 5) // InfantryElectrocuted
-DEFINE_HOOK_AGAIN(5186F2, InfantryClass_ReceiveDamage_Anims, 5) // FlamingInfantry
-DEFINE_HOOK(518698, InfantryClass_ReceiveDamage_Anims, 5) // InfantryExplode
+DEFINE_HOOK_AGAIN(0x518B93, InfantryClass_ReceiveDamage_Anims, 0x5) // InfantryBrute
+DEFINE_HOOK_AGAIN(0x518821, InfantryClass_ReceiveDamage_Anims, 0x5) // InfantryNuked
+DEFINE_HOOK_AGAIN(0x5187BB, InfantryClass_ReceiveDamage_Anims, 0x5) // InfantryHeadPop
+DEFINE_HOOK_AGAIN(0x518755, InfantryClass_ReceiveDamage_Anims, 0x5) // InfantryElectrocuted
+DEFINE_HOOK_AGAIN(0x5186F2, InfantryClass_ReceiveDamage_Anims, 0x5) // FlamingInfantry
+DEFINE_HOOK(0x518698, InfantryClass_ReceiveDamage_Anims, 0x5) // InfantryExplode
 {
 	GET(InfantryClass*, pThis, ESI);
 	GET(AnimClass*, pAnim, EAX);
@@ -112,7 +113,7 @@ DEFINE_HOOK(518698, InfantryClass_ReceiveDamage_Anims, 5) // InfantryExplode
 	return 0x5185F1;
 }
 
-DEFINE_HOOK(51887B, InfantryClass_ReceiveDamage_InfantryVirus2, A)
+DEFINE_HOOK(0x51887B, InfantryClass_ReceiveDamage_InfantryVirus2, 0xA)
 {
 	GET(InfantryClass*, pThis, ESI);
 	GET(AnimClass*, pAnim, EAX);
@@ -133,7 +134,7 @@ DEFINE_HOOK(51887B, InfantryClass_ReceiveDamage_InfantryVirus2, A)
 	return 0x5185F1;
 }
 
-DEFINE_HOOK(518A96, InfantryClass_ReceiveDamage_InfantryMutate, 7)
+DEFINE_HOOK(0x518A96, InfantryClass_ReceiveDamage_InfantryMutate, 0x7)
 {
 	GET(InfantryClass*, pThis, ESI);
 	GET(AnimClass*, pAnim, EDI);
@@ -150,13 +151,13 @@ DEFINE_HOOK(518A96, InfantryClass_ReceiveDamage_InfantryMutate, 7)
 	return 0x518AFF;
 }
 
-DEFINE_HOOK(6E232E, ActionClass_PlayAnimAt, 5)
+DEFINE_HOOK(0x6E232E, ActionClass_PlayAnimAt, 0x5)
 {
 	GET(TActionClass *, pAction, ESI);
 	GET_STACK(HouseClass *, pHouse, 0x1C);
 	LEA_STACK(CoordStruct *, pCoords, 0xC);
 
-	AnimTypeClass *AnimType = AnimTypeClass::Array->GetItem(pAction->Value);
+	AnimTypeClass *AnimType = AnimTypeClass::Array.GetItem(pAction->Value);
 	AnimClass *Anim = GameCreate<AnimClass>(AnimType, *pCoords);
 
 	if(AnimType->MakeInfantry > -1) {
@@ -168,7 +169,7 @@ DEFINE_HOOK(6E232E, ActionClass_PlayAnimAt, 5)
 	return 0x6E2368;
 }
 
-DEFINE_HOOK(469C4E, BulletClass_DetonateAt_DamageAnimSelected, 5)
+DEFINE_HOOK(0x469C4E, BulletClass_DetonateAt_DamageAnimSelected, 0x5)
 {
 	GET(AnimTypeClass *, AnimType, EBX);
 	LEA_STACK(CoordStruct *, XYZ, 0x64);

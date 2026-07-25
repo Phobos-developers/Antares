@@ -29,7 +29,7 @@ public:
 	{
 		return pType->SubjectToCliffs
 			|| pType->SubjectToWalls
-			|| pTypeExt->SubjectToSolid;
+			|| pTypeExt->SubjectToBuildings;
 	}
 
 	// gets the obstacle when moving from pCellBullet to crdCur
