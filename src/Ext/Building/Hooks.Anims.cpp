@@ -39,6 +39,28 @@ DEFINE_HOOK(0x451E40, BuildingClass_DestroyNthAnim_Destroy, 0x7)
 	return 0x451E93;
 }
 
+// Letting the anim expire above means it outlives the building, so the pointer
+// invalidation it runs when it finally dies lands in Detach -- which puts the
+// Idle and Active anims back on a building that has since been sold, erased or
+// destroyed. Under the game's own outright delete this ran while the building
+// was still there, so it never showed.
+DEFINE_HOOK_AGAIN(0x44E997, BuildingClass_Detach_SkipAnimRestore, 0x6) // Idle
+DEFINE_HOOK(0x44E9FA, BuildingClass_Detach_SkipAnimRestore, 0x6) // Active
+{
+	enum {
+		SkipIdleAnim = 0x44E9A4u,
+		SkipActiveAnim = 0x44EA07u
+	};
+
+	GET(BuildingClass* const, pThis, ESI);
+
+	if(!pThis->InLimbo) {
+		return 0;
+	}
+
+	return (R->Origin() == 0x44E997u) ? SkipIdleAnim : SkipActiveAnim;
+}
+
 // the assaulter killed the occupant, not the other way round
 DEFINE_HOOK(0x4586D6, BuildingClass_KillOccupiers, 0x9)
 {

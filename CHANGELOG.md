@@ -36,6 +36,12 @@ Unreleased
   themselves.
   (NetsuNegi, [Phobos #1995](https://github.com/Phobos-developers/Phobos/pull/1995))
 
++ **Building animations** are no longer put back on a building that has been
+  sold, erased or destroyed. Ares lets them expire rather than deleting them,
+  so they outlive the building and their death lands in `Detach`, which used to
+  restore the Idle and Active anims onto a corpse.
+  (Trsdy, [Phobos #1588](https://github.com/Phobos-developers/Phobos/pull/1588))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
