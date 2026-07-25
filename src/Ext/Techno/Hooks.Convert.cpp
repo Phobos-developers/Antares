@@ -47,5 +47,8 @@ DEFINE_HOOK(0x73DE90, UnitClass_Mi_Unload_SimpleDeployer, 0x6)
 		}
 	}
 
-	return pThis->Locomotor->Is_Moving_Now() ? 0x73E5B1u : 0u;
+	// no early-out on Is_Moving_Now(). It pre-empts the game's own Deploying and
+	// Undeploying checks below, so a turning unit never advances its deploy state,
+	// Deployed stays set, and the conversion above runs again every frame.
+	return 0;
 }

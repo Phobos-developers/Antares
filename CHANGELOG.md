@@ -47,6 +47,11 @@ Unreleased
   them.
   (NetsuNegi, [Phobos #1967](https://github.com/Phobos-developers/Phobos/pull/1967))
 
++ **`Convert.Deploy`** no longer fires repeatedly while the unit is turning or
+  moving. Ares checked the locomotor ahead of the game's own deploy-state
+  checks, so a turning unit never advanced its state and converted every frame.
+  (CrimRecya, [Phobos #1782](https://github.com/Phobos-developers/Phobos/pull/1782))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
