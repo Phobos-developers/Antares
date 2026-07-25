@@ -27,7 +27,7 @@ You can also get an automatic build. There are two ways to do that.
 
 Documentation
 -------------
-The documentation should be identical to Ares one that can be found at [here @ ares-developers.github.io](https://ares-developers.github.io/Ares-docs/).
+The documentation should be identical to Ares one that can be found at [here @ ares-developers.github.io](https://ares-developers.github.io/Ares-docs/). Where Antares deliberately behaves differently from shipped Ares, [CHANGELOG.md](CHANGELOG.md) records it.
 
 Credits
 -------
