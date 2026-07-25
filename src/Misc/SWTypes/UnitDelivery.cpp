@@ -140,8 +140,13 @@ void UnitDeliveryStateMachine::PlaceUnits()
 			// place and set up
 			auto XYZ = pCell->GetCoordsWithBridge();
 			// the cell index picks one of eight facings; the shift lifts it into the
-			// 256-direction space Unlimbo expects (shipped 0x10076D9C: and/shl 5)
-			if(Item->Unlimbo(XYZ, static_cast<DirType>((MapClass::GetCellIndex(pCell->MapCoords) & 7u) << 5))) {
+			// 256-direction space Unlimbo expects (shipped 0x10076D9C: and/shl 5).
+			// buildings have no business facing anywhere but north.
+			auto const facing = ItemBuilding
+				? DirType::North
+				: static_cast<DirType>((MapClass::GetCellIndex(pCell->MapCoords) & 7u) << 5);
+
+			if(Item->Unlimbo(XYZ, facing)) {
 				if(ItemBuilding) {
 					if(pData->SW_DeliverBuildups) {
 						ItemBuilding->DiscoveredBy(this->Super->Owner);

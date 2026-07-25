@@ -27,6 +27,10 @@ Unreleased
   `MovementZone=Amphibious` was exempted from the naval mismatch check.
   (CrimRecya, [Phobos #1595](https://github.com/Phobos-developers/Phobos/pull/1595))
 
++ **UnitDelivery** places buildings facing north, rather than at a facing
+  derived from the target cell index. That facing is still used for units.
+  (NetsuNegi, [Phobos #2155](https://github.com/Phobos-developers/Phobos/pull/2155))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
