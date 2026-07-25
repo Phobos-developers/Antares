@@ -852,7 +852,12 @@ void TechnoExt::ExtData::CreateInitialPayload()
 		freeSlots -= count;
 
 		for(auto j = 0; j < count; ++j) {
+			// the payload is built from inside the carrier's own init, where the
+			// mutex is set. Leaving it set costs the payload its Academy veterancy,
+			// and teams spawned by trigger actions come out empty entirely.
+			auto const scenarioInit = std::exchange(Unsorted::ScenarioInit, 0);
 			auto const pObject = pPayloadType->CreateObject(pThis->Owner);
+			Unsorted::ScenarioInit = scenarioInit;
 
 			if(pBld) {
 				// buildings only allow infantry payload, so this in infantry

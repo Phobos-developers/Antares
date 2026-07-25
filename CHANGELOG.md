@@ -61,6 +61,11 @@ Unreleased
   of a destroyed transport lands at the wreck rather than being relocated.
   (NetsuNegi, [Phobos #2020](https://github.com/Phobos-developers/Phobos/pull/2020))
 
++ **InitialPayload** is created outside the scenario-init mutex, so payload units
+  get their Academy veterancy and teams spawned by trigger actions are no longer
+  created empty.
+  (Trsdy, [Phobos #1283](https://github.com/Phobos-developers/Phobos/pull/1283))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
