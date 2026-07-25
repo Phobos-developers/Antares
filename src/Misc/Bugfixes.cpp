@@ -574,8 +574,13 @@ DEFINE_HOOK(0x62A2F8, ParasiteClass_PointerGotInvalid, 0x6)
 DEFINE_HOOK(0x4DB87E, FootClass_SetLocation_Parasite, 0x6)
 {
 	GET(FootClass *, F, ESI);
-	if(F->ParasiteEatingMe) {
-		F->ParasiteEatingMe->SetLocation(F->Location);
+	// only while it is still inside. A parasite that has already emerged is a
+	// normal object on the map, and dragging it back onto the host every time
+	// the host moves both looks wrong and catches it mid-transition.
+	if(auto const pParasite = F->ParasiteEatingMe) {
+		if(pParasite->InLimbo) {
+			pParasite->SetLocation(F->Location);
+		}
 	}
 	return 0;
 }

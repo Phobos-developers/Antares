@@ -81,6 +81,12 @@ Unreleased
   for was ignored.
   (Sovietianqi, [Phobos #1821](https://github.com/Phobos-developers/Phobos/pull/1821))
 
++ **Parasites** only follow their host while they are still inside it. Ares
+  synced the position unconditionally, so a parasite that had already emerged
+  was dragged back onto the host whenever it moved, which looked wrong and
+  caught the parasite mid-transition.
+  (NetsuNegi, [Phobos #2140](https://github.com/Phobos-developers/Phobos/pull/2140))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
