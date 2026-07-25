@@ -309,6 +309,39 @@ DEFINE_HOOK(0x702819, TechnoClass_ReceiveDamage_Aftermath, 0xA)
 	return ret;
 }
 
+// The heal path of ObjectClass::ReceiveDamage flashes for a hardcoded seven
+// frames. That runs before the Flash.Duration handling above, which only ever
+// raises the remaining duration -- so a repair warhead asking for anything
+// shorter than seven was silently ignored. Read the warhead here instead.
+DEFINE_HOOK(0x5F547E, ObjectClass_ReceiveDamage_RepairFlash, 0x6)
+{
+	enum { Done = 0x5F548Cu };
+
+	GET(ObjectClass* const, pThis, ESI);
+	GET(int const, oldHealth, EDX);
+	GET_STACK(WarheadTypeClass* const, pWH, 0x30);
+
+	// the game only flashes when the heal actually moved the health
+	if(pThis->Health == oldHealth) {
+		return Done;
+	}
+
+	auto duration = 7;
+
+	if(pWH) {
+		auto const flashWH = WarheadTypeExt::ExtMap.Find(pWH)->Flash_Duration;
+		if(flashWH > 0) {
+			duration = flashWH;
+		}
+	}
+
+	if(duration > 0) {
+		pThis->Flash(duration);
+	}
+
+	return Done;
+}
+
 // weapons stay silent while a DisableWeapons warhead's effect lasts
 DEFINE_HOOK(0x6FC0D3, TechnoClass_CanFire_DisableWeapons, 0x8)
 {

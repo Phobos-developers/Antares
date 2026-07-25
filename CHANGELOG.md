@@ -75,6 +75,12 @@ Unreleased
   instead of leaving it at the angle the old type set.
   (TaranDahl, [Phobos #1838](https://github.com/Phobos-developers/Phobos/pull/1838))
 
++ **`Flash.Duration`** now applies to repair weapons. The game's heal path
+  flashes for a hardcoded seven frames before Ares gets to look at the warhead,
+  and Ares only ever raised the remaining duration, so any shorter value asked
+  for was ignored.
+  (Sovietianqi, [Phobos #1821](https://github.com/Phobos-developers/Phobos/pull/1821))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
