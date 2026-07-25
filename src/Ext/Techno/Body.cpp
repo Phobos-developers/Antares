@@ -893,6 +893,10 @@ void TechnoExt::ExtData::CreateInitialPayload()
 			} else {
 				auto const pPayload = static_cast<FootClass*>(pObject);
 				pPayload->SetLocation(pThis->Location);
+				// without this the payload counts as never having been on the map,
+				// and an OpenTopped carrier that later stands somewhere the payload
+				// could not have walked to will not let it fire
+				pPayload->IsInPlayfield = true;
 				pPayload->Limbo();
 
 				if(pType->OpenTopped) {

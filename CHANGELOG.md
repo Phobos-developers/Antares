@@ -66,6 +66,11 @@ Unreleased
   created empty.
   (Trsdy, [Phobos #1283](https://github.com/Phobos-developers/Phobos/pull/1283))
 
++ **InitialPayload** passengers are marked as having been on the map, so an
+  `OpenTopped=yes` carrier standing somewhere they could not have reached on
+  their own still lets them fire.
+  (NetsuNegi, [Phobos #2166](https://github.com/Phobos-developers/Phobos/pull/2166))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
