@@ -190,6 +190,8 @@
     <ClInclude Include="src\Ext\WarheadType\Body.h" />
     <ClInclude Include="src\Ext\WeaponType\Body.h" />
     <ClInclude Include="src\Ext\_Container.hpp" />
+    <ClInclude Include="src\Interop\Api.h" />
+    <ClInclude Include="src\Interop\Features.h" />
     <ClInclude Include="src\Misc\Actions.h" />
     <ClInclude Include="src\Misc\AttachEffect.h" />
     <ClInclude Include="src\Misc\Audio.h" />
@@ -379,6 +381,8 @@
     <ClCompile Include="src\Ext\WeaponType\Hooks.RadSite.cpp" />
     <ClCompile Include="src\Ext\WeaponType\Hooks.Wave.cpp" />
     <ClCompile Include="src\Ext\_Container.cpp" />
+    <ClCompile Include="src\Interop\Api.cpp" />
+    <ClCompile Include="src\Interop\Features.cpp" />
     <ClCompile Include="src\Misc\Actions.cpp" />
     <ClCompile Include="src\Misc\AttachEffect.cpp" />
     <ClCompile Include="src\Misc\Audio.cpp" />

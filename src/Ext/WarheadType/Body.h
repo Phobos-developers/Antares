@@ -280,8 +280,9 @@ public:
 	}
 	static bool applyPermaMC(WarheadTypeClass* pWH, HouseClass* House, AbstractClass* Target) {
 		if(auto pWHExt = WarheadTypeExt::ExtMap.Find(pWH)) {
-			pWHExt->applyPermaMC(House, Target);
+			return pWHExt->applyPermaMC(House, Target);
 		}
+		return false;
 	}
 	static void applyOccupantDamage(BulletClass *);
 
