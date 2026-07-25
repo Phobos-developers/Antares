@@ -677,6 +677,12 @@ bool TechnoExt::UpdateType(TechnoClass* const pThis, TechnoTypeClass* const pToT
 	pThis->SecondaryFacing.SetROT(
 		static_cast<short>(pToTypeExt->TurretROT.Get(pToType->ROT)));
 
+	// the barrel keeps the angle the old type set it to, so a conversion between
+	// types with different FireAngle leaves it pointing wrong until it next fires
+	if(pThis->WhatAmI() == AbstractType::Unit) {
+		pThis->BarrelFacing.SetCurrent(DirStruct(0x4000 - (pToType->FireAngle << 8)));
+	}
+
 	auto const pFoot = static_cast<FootClass*>(pThis);
 
 	if(pToType->Locomotor != pFromType->Locomotor) {

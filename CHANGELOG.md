@@ -71,6 +71,10 @@ Unreleased
   their own still lets them fire.
   (NetsuNegi, [Phobos #2166](https://github.com/Phobos-developers/Phobos/pull/2166))
 
++ **Type conversion** resets the barrel facing from the new type's `FireAngle`,
+  instead of leaving it at the angle the old type set.
+  (TaranDahl, [Phobos #1838](https://github.com/Phobos-developers/Phobos/pull/1838))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
