@@ -42,7 +42,7 @@ DEFINE_HOOK(0x41668B, AircraftClass_ReceiveDamage, 0x6)
 {
 	GET(AircraftClass *, a, ESI);
 	GET_STACK(TechnoClass *, Killer, 0x28);
-	GET_STACK(int, ignoreDefenses, 0x20);
+	GET_STACK(int, ignoreDefenses, 0x2C);
 	bool select = a->IsSelected && a->Owner->IsControlledByCurrentPlayer();
 	TechnoExt::SpawnSurvivors(a, Killer, select, ignoreDefenses != 0);
 
