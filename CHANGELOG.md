@@ -52,6 +52,11 @@ Unreleased
   checks, so a turning unit never advanced its state and converted every frame.
   (CrimRecya, [Phobos #1782](https://github.com/Phobos-developers/Phobos/pull/1782))
 
++ **Type conversion** releases a unit held by a Temporal weapon instead of just
+  detaching from it, which used to leave the victim frozen with nothing left to
+  warp it back in.
+  (Starkku, [Phobos #1560](https://github.com/Phobos-developers/Phobos/pull/1560))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 

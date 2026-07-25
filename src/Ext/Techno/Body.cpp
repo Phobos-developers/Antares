@@ -609,7 +609,9 @@ bool TechnoExt::UpdateType(TechnoClass* const pThis, TechnoTypeClass* const pToT
 
 	if(auto const pTemporal = pThis->TemporalImUsing) {
 		if(pTemporal->Target) {
-			pTemporal->Detach();
+			// Detach drops the link without releasing the victim, which leaves it
+			// frozen with nothing left to warp it back in
+			pTemporal->LetGo();
 		}
 	}
 
