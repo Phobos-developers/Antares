@@ -249,10 +249,9 @@ bool WeaponTypeExt::ExtData::Abduct(
 		GameCreate<AnimClass>(this->Abductor_AnimType, Target->Location);
 	}
 
-	Target->Locomotor->Force_Track(-1, CoordStruct::Empty);
-	CoordStruct coordsUnitSource = Target->GetCoords();
-	Target->Locomotor->Mark_All_Occupation_Bits(MarkType::Up);
-	Target->MarkAllOccupationBits(coordsUnitSource);
+	// Limbo() below takes the occupation bits down by itself. Doing it here as
+	// well re-marks them at GetCoords(), which for a moving target is not the
+	// cell the locomotor tracked -- so that cell stays occupied forever.
 	Target->ClearPlanningTokens(nullptr);
 	Target->Flashing.DurationRemaining = 0;
 

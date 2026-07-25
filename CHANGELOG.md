@@ -18,7 +18,9 @@ Unreleased
 
 ### Fixes to Ares bugs
 
-*(nothing yet)*
++ **Abduction** no longer leaves occupation bits behind on the terrain when the
+  victim was moving, which used to make the cell permanently impassable.
+  (Trsdy, [Phobos #1417](https://github.com/Phobos-developers/Phobos/pull/1417))
 
 Ares 3.0p1 (21.352.1218)
 ------------------------
