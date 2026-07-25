@@ -1,4 +1,5 @@
-#include <Checksummer.h>
+#include "../Utilities/Checksummer.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include "../Ext/Abstract/Body.h"
 #include <AnimClass.h>
 #include <CellClass.h>
@@ -8,47 +9,12 @@
 #include <UnitClass.h>
 #include <BuildingClass.h>
 #include <AircraftClass.h>
-#include <Networking.h>
+#include "Networking.h"
 #include <ScenarioClass.h>
+#include <SessionClass.h>
 #include <FPSCounter.h>
 #include <GameOptionsClass.h>
 #include "../Ares.version.h"
-
-#ifdef MAKE_GAME_SLOWER_FOR_NO_REASON
-template<typename T>
-inline void ChecksumItem(const T *it, DWORD &CombinedChecksum) {
-	if(it->WhatAmI() != AnimClass::AbsID || it->Fetch_ID() != -2) {
-		SafeChecksummer Ch;
-		it->CalculateChecksum(Ch);
-		if(auto ExtData = AbstractExt::ExtMap.Find(it)) {
-			ExtData->LastChecksum = Ch.Intermediate();
-		}
-		CombinedChecksum = Ch.Intermediate() + ((CombinedChecksum >> 31) + 2 * CombinedChecksum);
-	}
-}
-
-template<typename T>
-inline void VectorChecksummer(const DynamicVectorClass<T>* Array, DWORD &CombinedChecksum) {
-	if(Array) {
-		for(auto i = 0; i < Array->Count; ++i) {
-			auto it = Array->Items[i];
-			ChecksumItem(it, CombinedChecksum);
-		}
-	}
-}
-
-A_FINE_HOOK(64DAC3, Networking_CalculateFrameCRC, 0)
-{
-	DWORD Checksum(0);
-	VectorChecksummer(AbstractClass::Array0, Checksum);
-	VectorChecksummer(AbstractTypeClass::Array, Checksum);
-
-	Checksum = ((Checksum >> 31) + 2 * Checksum) + ScenarioClass::Instance->Random.Random();
-	Networking::CurrentFrameCRC = Checksum;
-
-	return 0x64DE70;
-}
-#endif
 
 template<typename T>
 void WriteLog(const T* it, int idx, DWORD checksum, FILE * F) {
@@ -59,7 +25,7 @@ template<>
 void WriteLog(const AbstractClass* it, int idx, DWORD checksum, FILE * F) {
 	WriteLog<void>(it, idx, checksum, F);
 	auto abs = it->WhatAmI();
-	fprintf(F, "; Abs: %u (%s)", abs, AbstractClass::GetClassName(abs));
+	fprintf(F, "; Abs: %u (%s)", abs, AbstractClass::GetRTTIName(abs));
 }
 
 template<>
@@ -101,13 +67,13 @@ void WriteLog(const TechnoClass* it, int idx, DWORD checksum, FILE * F) {
 	int targetIndex = -1;
 	CoordStruct targetCrd = {-1, -1, -1};
 	if(auto pTarget = it->Target) {
-		targetID = AbstractClass::GetClassName(pTarget->WhatAmI());
+		targetID = AbstractClass::GetRTTIName(pTarget->WhatAmI());
 		targetIndex = pTarget->GetArrayIndex();
 		targetCrd = pTarget->GetCoords();
 	}
 
 	fprintf(F, "; Facing: %d; Facing2: %d; Target: %s (%d; %d,%d)",
-		it->Facing.current().value8(), it->TurretFacing.current().value8(), targetID, targetIndex, targetCrd.X, targetCrd.Y);
+		it->PrimaryFacing.Current().GetFacing<8>(), it->SecondaryFacing.Current().GetFacing<8>(), targetID, targetIndex, targetCrd.X, targetCrd.Y);
 }
 
 template<>
@@ -118,7 +84,7 @@ void WriteLog(const FootClass* it, int idx, DWORD checksum, FILE * F) {
 	int destIndex = -1;
 	CoordStruct destCrd = {-1, -1, -1};
 	if(auto pDest = it->Destination) {
-		destID = AbstractClass::GetClassName(pDest->WhatAmI());
+		destID = AbstractClass::GetRTTIName(pDest->WhatAmI());
 		destIndex = pDest->GetArrayIndex();
 		destCrd = pDest->GetCoords();
 	}
@@ -167,8 +133,8 @@ void WriteLog(const HouseClass* it, int idx, DWORD checksum, FILE * F) {
 	WriteLog<void>(it, idx, checksum, F);
 
 	fprintf(F, "; CurrentPlayer: %u; ColorScheme: %s; ID: %d; HouseType: %s; Edge: %d; StartingAllies: %u; Startspot: %d,%d; Visionary: %d; MapIsClear: %u; Money: %d",
-		it->CurrentPlayer, ColorScheme::Array->GetItem(it->ColorSchemeIndex)->ID,
-		it->ArrayIndex, HouseTypeClass::Array->GetItem(it->Type->ArrayIndex)->Name,
+		it->IsHumanPlayer, ColorScheme::Array.GetItem(it->ColorSchemeIndex)->ID,
+		it->ArrayIndex, HouseTypeClass::Array.GetItem(it->Type->ArrayIndex)->Name,
 		it->Edge, it->StartingAllies, it->StartingCell.X, it->StartingCell.Y, it->Visionary,
 		it->MapIsClear, it->Available_Money());
 }
@@ -183,17 +149,9 @@ void WriteLogLine(const T* it, int idx, DWORD checksum, FILE * F) {
 template<typename T>
 void LogItem(const T* it, int idx, FILE * F) {
 	if(it->WhatAmI() != AnimClass::AbsID || it->Fetch_ID() != -2) {
-		DWORD Checksum(0);
-#ifdef MAKE_GAME_SLOWER_FOR_NO_REASON
-		if(auto ExtData = AbstractExt::ExtMap.Find(it)) {
-			Checksum = ExtData->LastChecksum;
-		}
-#else
 		SafeChecksummer Ch;
-		it->CalculateChecksum(Ch);
-		Checksum = Ch.Intermediate();
-#endif
-		WriteLogLine(it, idx, Checksum, F);
+		it->ComputeCRC(Ch);
+		WriteLogLine(it, idx, Ch.Intermediate(), F);
 	}
 }
 
@@ -215,8 +173,8 @@ void VectorLogger(const DynamicVectorClass<T> *Array, FILE * F, const char * Lab
 template<typename T>
 void HouseLogger(const DynamicVectorClass<T> *Array, FILE * F, const char * Label = nullptr) {
 	if(Array) {
-		for(auto j = 0; j < HouseClass::Array->Count; ++j) {
-			auto pHouse = HouseClass::Array->GetItem(j);
+		for(auto j = 0; j < HouseClass::Array.Count; ++j) {
+			auto pHouse = HouseClass::Array.GetItem(j);
 			fprintf(F, "-------------------- %s (%d) %s -------------------\n", pHouse->Type->Name, j, Label ? Label : "");
 
 			for(auto i = 0; i < Array->Count; ++i) {
@@ -232,7 +190,7 @@ void HouseLogger(const DynamicVectorClass<T> *Array, FILE * F, const char * Labe
 	}
 }
 
-bool LogFrame(const char * LogFilename, NetworkEvent *OffendingEvent = nullptr) {
+bool LogFrame(const char * LogFilename, EventClass *OffendingEvent = nullptr) {
 	FILE* LogFile = nullptr;
 	if(!fopen_s(&LogFile, LogFilename, "wt") && LogFile) {
 		std::setvbuf(LogFile, nullptr, _IOFBF, 1024 * 1024); // 1024 kb buffer - should be sufficient for whole log
@@ -240,7 +198,7 @@ bool LogFrame(const char * LogFilename, NetworkEvent *OffendingEvent = nullptr) 
 		fprintf(LogFile, "Ares synchronization log (version " VERSION_STR ")\n");
 
 		for(auto ixF = 0; ixF < 0x100; ++ixF) {
-			fprintf(LogFile, "CRC[%02X] = %08X\n", ixF, Networking::LatestFramesCRC[ixF]);
+			fprintf(LogFile, "CRC[%02X] = %08X\n", ixF, EventClass::LatestFramesCRC[ixF]);
 		}
 
 		fprintf(LogFile, "My Random Number: %08X\n", ScenarioClass::Instance->Random.Random());
@@ -248,49 +206,49 @@ bool LogFrame(const char * LogFilename, NetworkEvent *OffendingEvent = nullptr) 
 		fprintf(LogFile, "Average FPS: %d\n", Game::F2I(FPSCounter::GetAverageFrameRate()));
 		fprintf(LogFile, "Max MaxAhead: %d\n", *reinterpret_cast<int*>(0xA8B568));
 		fprintf(LogFile, "Latency setting: %d\n", *reinterpret_cast<int*>(0xA8DB9C));
-		fprintf(LogFile, "Game speed setting: %d\n", GameOptionsClass::Instance->GameSpeed);
+		fprintf(LogFile, "Game speed setting: %d\n", GameOptionsClass::Instance.GameSpeed);
 		fprintf(LogFile, "FrameSendRate: %d\n", *reinterpret_cast<int*>(0xA8B554));
 		
 		if(OffendingEvent) {
 			fprintf(LogFile, "\nOffending event:\n");
-			fprintf(LogFile, "Type:         %X\n", OffendingEvent->Kind);
-			fprintf(LogFile, "Frame:        %X\n", OffendingEvent->Timestamp);
+			fprintf(LogFile, "Type:         %X\n", static_cast<unsigned>(OffendingEvent->Type));
+			fprintf(LogFile, "Frame:        %X\n", OffendingEvent->Frame);
 			fprintf(LogFile, "ID:           %X\n", OffendingEvent->HouseIndex);
-			fprintf(LogFile, "CRC:          %X\n", OffendingEvent->Checksum);
-			fprintf(LogFile, "CommandCount: %hu\n", OffendingEvent->CommandCount);
-			fprintf(LogFile, "Delay:        %hhu\n", OffendingEvent->Delay);
+			fprintf(LogFile, "CRC:          %X\n", OffendingEvent->FrameInfo.CRC);
+			fprintf(LogFile, "CommandCount: %hu\n", OffendingEvent->FrameInfo.CommandCount);
+			fprintf(LogFile, "Delay:        %hhu\n", OffendingEvent->FrameInfo.Delay);
 			fprintf(LogFile, "\n\n");
 		}
 
 		fprintf(LogFile, "\nTypes\n");
-		HouseLogger(InfantryClass::Array, LogFile, "Infantry");
-		HouseLogger(UnitClass::Array, LogFile, "Units");
-		HouseLogger(AircraftClass::Array, LogFile, "Aircraft");
-		HouseLogger(BuildingClass::Array, LogFile, "Buildings");
+		HouseLogger(&InfantryClass::Array, LogFile, "Infantry");
+		HouseLogger(&UnitClass::Array, LogFile, "Units");
+		HouseLogger(&AircraftClass::Array, LogFile, "Aircraft");
+		HouseLogger(&BuildingClass::Array, LogFile, "Buildings");
 
 		fprintf(LogFile, "\nChecksums\n");
-		VectorLogger(HouseClass::Array, LogFile, "Houses");
-		VectorLogger(InfantryClass::Array, LogFile, "Infantry");
-		VectorLogger(UnitClass::Array, LogFile, "Units");
-		VectorLogger(AircraftClass::Array, LogFile, "Aircraft");
-		VectorLogger(BuildingClass::Array, LogFile, "Buildings");
+		VectorLogger(&HouseClass::Array, LogFile, "Houses");
+		VectorLogger(&InfantryClass::Array, LogFile, "Infantry");
+		VectorLogger(&UnitClass::Array, LogFile, "Units");
+		VectorLogger(&AircraftClass::Array, LogFile, "Aircraft");
+		VectorLogger(&BuildingClass::Array, LogFile, "Buildings");
 
 		fprintf(LogFile, "\n");
-		VectorLogger(ObjectClass::CurrentObjects, LogFile, "Current Objects");
-		VectorLogger(ObjectClass::Logics, LogFile, "Logics");
+		VectorLogger(&ObjectClass::CurrentObjects, LogFile, "Current Objects");
+		VectorLogger(&LogicClass::Instance, LogFile, "Logics");
 
 		fprintf(LogFile, "\nChecksums for Map Layers\n");
 		for(auto ixL = 0; ixL < 5; ++ixL) {
 			fprintf(LogFile, "Checksums for Layer %d\n", ixL);
-			VectorLogger(&(ObjectClass::ObjectsInLayers[ixL]), LogFile);
+			VectorLogger(&MapClass::ObjectsInLayers[ixL], LogFile);
 		}
 
 		fprintf(LogFile, "\nChecksums for Logics\n");
-		VectorLogger(ObjectClass::Logics, LogFile);
+		VectorLogger(&LogicClass::Instance, LogFile);
 		
 		fprintf(LogFile, "\nChecksums for Abstracts\n");
-		VectorLogger(AbstractClass::Array0, LogFile, "Abstracts");
-		VectorLogger(AbstractTypeClass::Array, LogFile, "AbstractTypes");
+		VectorLogger(&AbstractClass::Array, LogFile, "Abstracts");
+		VectorLogger(&AbstractTypeClass::Array, LogFile, "AbstractTypes");
 
 		fclose(LogFile);
 		return true;
@@ -300,25 +258,25 @@ bool LogFrame(const char * LogFilename, NetworkEvent *OffendingEvent = nullptr) 
 	}
 }
 
-DEFINE_HOOK(64DEA0, Multiplay_LogToSYNC_NOMPDEBUG, 0)
+DEFINE_HOOK(0x64DEA0, Multiplay_LogToSYNC_NOMPDEBUG, 0x0)
 {
-	GET(NetworkEvent *, OffendingEvent, ECX);
+	GET(EventClass *, OffendingEvent, ECX);
 	
 	char LogFilename[0x40];
-	_snprintf_s(LogFilename, _TRUNCATE, "SYNC%01d.TXT", HouseClass::Player->ArrayIndex);
+	_snprintf_s(LogFilename, _TRUNCATE, "SYNC%01d.TXT", HouseClass::CurrentPlayer->ArrayIndex);
 
 	LogFrame(LogFilename, OffendingEvent);
 
 	return 0x64DF3D;
 }
 
-DEFINE_HOOK(6516F0, Multiplay_LogToSync_MPDEBUG, 6)
+DEFINE_HOOK(0x6516F0, Multiplay_LogToSync_MPDEBUG, 0x6)
 {
 	GET(int, SlotNumber, ECX);
-	GET(NetworkEvent *, OffendingEvent, EDX);
+	GET(EventClass *, OffendingEvent, EDX);
 	
 	char LogFilename[0x40];
-	_snprintf_s(LogFilename, _TRUNCATE, "SYNC%01d_%03d.TXT", HouseClass::Player->ArrayIndex, SlotNumber);
+	_snprintf_s(LogFilename, _TRUNCATE, "SYNC%01d_%03d.TXT", HouseClass::CurrentPlayer->ArrayIndex, SlotNumber);
 
 	LogFrame(LogFilename, OffendingEvent);
 
@@ -328,7 +286,7 @@ DEFINE_HOOK(6516F0, Multiplay_LogToSync_MPDEBUG, 6)
 // replace the original checksummer functions with own implementations that do
 // not exhibit the out of array bounds writes.
 
-DEFINE_HOOK(4A1C10, Checksummer_Add_BYTE, 5)
+DEFINE_HOOK(0x4A1C10, Checksummer_Add_BYTE, 0x5)
 {
 	GET(Checksummer*, pThis, ECX);
 	REF_STACK(const BYTE, value, STACK_OFFS(0x0, -0x4));
@@ -338,7 +296,7 @@ DEFINE_HOOK(4A1C10, Checksummer_Add_BYTE, 5)
 	return 0x4A1C8E;
 }
 
-DEFINE_HOOK(4A1CA0, Checksummer_Add_bool, 5)
+DEFINE_HOOK(0x4A1CA0, Checksummer_Add_bool, 0x5)
 {
 	GET(Checksummer*, pThis, ECX);
 	REF_STACK(const bool, value, STACK_OFFS(0x0, -0x4));
@@ -348,7 +306,7 @@ DEFINE_HOOK(4A1CA0, Checksummer_Add_bool, 5)
 	return 0x4A1D23;
 }
 
-DEFINE_HOOK(4A1D30, Checksummer_Add_WORD, 5)
+DEFINE_HOOK(0x4A1D30, Checksummer_Add_WORD, 0x5)
 {
 	GET(Checksummer*, pThis, ECX);
 	REF_STACK(const WORD, value, STACK_OFFS(0x0, -0x4));
@@ -358,7 +316,7 @@ DEFINE_HOOK(4A1D30, Checksummer_Add_WORD, 5)
 	return 0x4A1D46;
 }
 
-DEFINE_HOOK(4A1D50, Checksummer_Add_DWORD, 8)
+DEFINE_HOOK(0x4A1D50, Checksummer_Add_DWORD, 0x8)
 {
 	GET(Checksummer*, pThis, ECX);
 	REF_STACK(const DWORD, value, STACK_OFFS(0x0, -0x4));
@@ -368,7 +326,7 @@ DEFINE_HOOK(4A1D50, Checksummer_Add_DWORD, 8)
 	return 0x4A1D64;
 }
 
-DEFINE_HOOK(4A1D70, Checksummer_Add_float, 8)
+DEFINE_HOOK(0x4A1D70, Checksummer_Add_float, 0x8)
 {
 	GET(Checksummer*, pThis, ECX);
 	REF_STACK(const float, value, STACK_OFFS(0x0, -0x4));
@@ -378,7 +336,7 @@ DEFINE_HOOK(4A1D70, Checksummer_Add_float, 8)
 	return 0x4A1D84;
 }
 
-DEFINE_HOOK(4A1D90, Checksummer_Add_double, 8)
+DEFINE_HOOK(0x4A1D90, Checksummer_Add_double, 0x8)
 {
 	GET(Checksummer*, pThis, ECX);
 	REF_STACK(const double, value, STACK_OFFS(0x0, -0x4));
@@ -388,7 +346,7 @@ DEFINE_HOOK(4A1D90, Checksummer_Add_double, 8)
 	return 0x4A1DAC;
 }
 
-DEFINE_HOOK(4A1DE0, Checksummer_Add_Buffer, 6)
+DEFINE_HOOK(0x4A1DE0, Checksummer_Add_Buffer, 0x6)
 {
 	GET(Checksummer*, pThis, ECX);
 	GET_STACK(const void*, data, STACK_OFFS(0x0, -0x4));
@@ -398,4 +356,48 @@ DEFINE_HOOK(4A1DE0, Checksummer_Add_Buffer, 6)
 
 	R->EAX(pThis->GetValue());
 	return 0x4A1FA6;
+}
+
+struct ChecksumSet
+{
+	int Rules;
+	int Art;
+	int AI;
+};
+
+// the checksums the join dialog recorded for the session, with the local ones
+// as fallback
+static ChecksumSet CalculateChecksums()
+{
+	auto const address = (SessionClass::Instance.GameMode == GameMode::LAN)
+		? 0xAC026Cu : 0xB77E00u;
+
+	auto ret = *reinterpret_cast<ChecksumSet const*>(address);
+
+	if(!ret.Rules) {
+		ret.Rules = reinterpret_cast<int(__cdecl*)()>(0x679D90)();
+	}
+	if(!ret.Art) {
+		ret.Art = reinterpret_cast<int(__cdecl*)()>(0x679EC0)();
+	}
+	if(!ret.AI) {
+		ret.AI = reinterpret_cast<int(__cdecl*)()>(0x679ED0)();
+	}
+
+	return ret;
+}
+
+DEFINE_HOOK(0x52E9AA, Frontend_WndProc_Checksum, 0x5)
+{
+	auto const mode = SessionClass::Instance.GameMode;
+
+	if(mode == GameMode::LAN || mode == GameMode::Internet) {
+		auto const sums = CalculateChecksums();
+
+		Debug::Log("Rules checksum: %08X\n", sums.Rules);
+		Debug::Log("Art checksum: %08X\n", sums.Art);
+		Debug::Log("AI checksum: %08X\n", sums.AI);
+	}
+
+	return 0;
 }

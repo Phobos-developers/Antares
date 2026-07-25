@@ -4,37 +4,13 @@
 
 #include "VersionHelpers.h"
 
-bool Ares::GlobalControls::Initialized = 0;
-bool Ares::GlobalControls::AllowParallelAIQueues = 1;
-
-bool Ares::GlobalControls::DebugKeysEnabled = true;
-
+// [GlobalControls] itself moved into RulesExt::ExtData in 3.0p1, where it is
+// parsed and streamed with everything else; the shipped RulesClass_Addition
+// (0x1002D4B0) calls RulesExt::LoadFromINIFile and nothing more. Only the
+// Ares.ini graphics config is left here.
 byte Ares::GlobalControls::GFX_DX_Force = 0;
 
 CCINIClass *Ares::GlobalControls::INI = nullptr;
-
-bool Ares::GlobalControls::AllowBypassBuildLimit[3] = {false, false, false};
-
-void Ares::GlobalControls::Load(CCINIClass *pINI) {
-	Initialized = 1;
-	AllowParallelAIQueues = pINI->ReadBool("GlobalControls", "AllowParallelAIQueues", AllowParallelAIQueues);
-
-	if(pINI->ReadString("GlobalControls", "AllowBypassBuildLimit", "", Ares::readBuffer)) {
-		bool temp[3] = {};
-		int read = Parser<bool, 3>::Parse(Ares::readBuffer, temp);
-
-		for(int i=0; i<read; ++i) {
-			int diffIdx = 2 - i; // remapping so that HouseClass::AIDifficulty can be used as an index
-			AllowBypassBuildLimit[diffIdx] = temp[i];
-		}
-	}
-
-	// used by the keyboard commands
-	if(pINI == CCINIClass::INI_Rules) {
-		DebugKeysEnabled = true;
-	}
-	DebugKeysEnabled = pINI->ReadBool("GlobalControls", "DebugKeysEnabled", DebugKeysEnabled);
-}
 
 void Ares::GlobalControls::LoadConfig() {
 	if(INI->ReadString("Graphics.Advanced", "DirectX.Force", Ares::readDefval, Ares::readBuffer)) {
@@ -49,7 +25,7 @@ void Ares::GlobalControls::LoadConfig() {
 	}
 }
 
-DEFINE_HOOK(6BC0CD, _LoadRA2MD, 5)
+DEFINE_HOOK(0x6BC0CD, LoadRA2MD, 0x5)
 {
 	Ares::GlobalControls::INI = Ares::OpenConfig("Ares.ini");
 	Ares::GlobalControls::LoadConfig();

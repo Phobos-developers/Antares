@@ -18,7 +18,6 @@ class SWTypeExt;
 
 struct TargetingData {
 	TargetingData(SWTypeExt::ExtData* pTypeExt, HouseClass* pOwner) noexcept;
-	~TargetingData() noexcept;
 
 	struct LaunchSite
 	{
@@ -49,7 +48,7 @@ class NewSWType
 	static std::vector<std::unique_ptr<NewSWType>> Array;
 
 	static void Register(std::unique_ptr<NewSWType> pType) {
-		pType->SetTypeIndex(static_cast<int>(Array.size()));
+		pType->TypeIndex = static_cast<int>(Array.size());
 		Array.emplace_back(std::move(pType));
 	}
 
@@ -58,25 +57,25 @@ class NewSWType
 public:
 	virtual ~NewSWType() = default;
 
-	std::unique_ptr<const TargetingData> GetTargetingData(SWTypeExt::ExtData* pSWType, HouseClass* pOwner) const;
+	TargetingData GetTargetingData(SWTypeExt::ExtData* pSWType, HouseClass* pOwner) const;
 
-	bool CanFireAt(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, const CellStruct& cell, bool manual) const;
+	bool CanFireAt(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, CellStruct cell, bool manual) const;
 
-	virtual bool CanFireAt(TargetingData const& data, CellStruct const& cell, bool manual) const;
+	virtual bool CanFireAt(TargetingData const& data, CellStruct cell, bool manual) const;
 
 	virtual bool AbortFire(SuperClass* pSW, bool IsPlayer) {
 		return false;
 	}
 
-	virtual bool Activate(SuperClass* pSW, const CellStruct &Coords, bool IsPlayer) = 0;
+	virtual bool Activate(SuperClass* pSW, CellStruct Coords, bool IsPlayer) = 0;
 
 	virtual void Deactivate(SuperClass* pSW, CellStruct cell, bool isPlayer) {
 	}
 
-	virtual void Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW) {
+	virtual void Initialize(SWTypeExt::ExtData *pData) {
 	}
 
-	virtual void LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI) {
+	virtual void LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI) {
 	}
 
 	virtual WarheadTypeClass* GetWarhead(const SWTypeExt::ExtData* pData) const {
@@ -116,29 +115,15 @@ public:
 	}
 
 protected:
-	virtual void SetTypeIndex(int const index) {
-		this->TypeIndex = index;
-	}
-
 	virtual bool IsLaunchSite(SWTypeExt::ExtData *pSWType, BuildingClass* pBuilding) const;
 
 	virtual std::pair<double, double> GetLaunchSiteRange(SWTypeExt::ExtData* pSWType, BuildingClass* pBuilding = nullptr) const;
 
-	bool HasLaunchSite(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, const CellStruct &Coords) const;
-
-	bool IsLaunchSiteEligible(SWTypeExt::ExtData* pSWType, const CellStruct &Coords, BuildingClass* pBuilding, bool ignoreRange) const;
+	bool IsLaunchSiteEligible(SWTypeExt::ExtData* pSWType, CellStruct Coords, BuildingClass* pBuilding, bool ignoreRange) const;
 
 	virtual bool IsDesignator(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, TechnoClass* pTechno) const;
 
-	bool HasDesignator(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, const CellStruct &Coords) const;
-
-	bool IsDesignatorEligible(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, const CellStruct &Coords, TechnoClass* pTechno) const;
-
 	virtual bool IsInhibitor(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, TechnoClass* pTechno) const;
-
-	bool HasInhibitor(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, const CellStruct &Coords) const;
-
-	bool IsInhibitorEligible(SWTypeExt::ExtData* pSWType, HouseClass* pOwner, const CellStruct &Coords, TechnoClass* pTechno) const;
 
 public:
 	// static methods
@@ -196,7 +181,7 @@ public:
 
 	virtual SWStateMachineIdentifier GetIdentifier() const = 0;
 
-	virtual bool Load(AresStreamReader &Stm, bool RegisterForChange);
+	virtual bool Load(AresStreamReader &Stm);
 
 	virtual bool Save(AresStreamWriter &Stm) const;
 
@@ -218,7 +203,7 @@ public:
 	static bool SaveGlobals(AresStreamWriter& Stm);
 
 protected:
-	TimerStruct Clock;
+	CDTimerClass Clock;
 	SuperClass* Super;
 	NewSWType* Type;
 	CellStruct Coords;
@@ -283,7 +268,7 @@ public:
 		return SWStateMachineIdentifier::ChronoWarp;
 	}
 
-	virtual bool Load(AresStreamReader &Stm, bool RegisterForChange) override;
+	virtual bool Load(AresStreamReader &Stm) override;
 
 	virtual bool Save(AresStreamWriter &Stm) const override;
 
@@ -319,12 +304,23 @@ public:
 		return SWStateMachineIdentifier::PsychicDominator;
 	}
 
-	virtual bool Load(AresStreamReader &Stm, bool RegisterForChange) override;
+	virtual bool Load(AresStreamReader &Stm) override;
 
 	virtual bool Save(AresStreamWriter &Stm) const override;
 
 protected:
 	int Deferment;
+};
+
+template <>
+struct Savegame::AresStreamObject<SWStateMachine> {
+	bool ReadFromStream(AresStreamReader &Stm, SWStateMachine &Value, bool RegisterForChange) const {
+		return Value.Load(Stm);
+	}
+
+	bool WriteToStream(AresStreamWriter &Stm, const SWStateMachine &Value) const {
+		return Value.Save(Stm);
+	}
 };
 
 template <>

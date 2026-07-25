@@ -244,7 +244,9 @@ private:
 };
 
 // pcx filename storage with optional automatic loading
-class AresPCXFile {
+// 4-byte aligned: a 32-char name plus three flags would otherwise pack to 35,
+// and several ExtData layouts place the next member at a multiple of four.
+class alignas(4) AresPCXFile {
 	static const size_t Capacity = 0x20;
 public:
 	explicit AresPCXFile(bool autoResolve = true) : filename(), resolve(autoResolve), checked(false), exists(false) {
@@ -274,15 +276,15 @@ public:
 	}
 
 	BSurface* GetSurface(BytePalette* pPalette = nullptr) const {
-		return this->Exists() ? PCX::Instance->GetSurface(this->filename, pPalette) : nullptr;
+		return this->Exists() ? PCX::Instance.GetSurface(this->filename, pPalette) : nullptr;
 	}
 
 	bool Exists() const {
 		if(!this->checked) {
 			this->checked = true;
 			if(this->filename) {
-				auto pPCX = PCX::Instance;
-				this->exists = (pPCX->GetSurface(this->filename) || pPCX->LoadFile(this->filename));
+				auto& pcx = PCX::Instance;
+				this->exists = (pcx.GetSurface(this->filename) || pcx.LoadFile(this->filename));
 			}
 		}
 		return this->exists;

@@ -1,4 +1,5 @@
 #include "Body.h"
+#include "../Rules/Body.h"
 #include "../TechnoType/Body.h"
 #include "../../Ares.h"
 
@@ -7,12 +8,12 @@
 // =============================
 // multiqueue hooks
 
-DEFINE_HOOK(4502F4, BuildingClass_Update_Factory, 6)
+DEFINE_HOOK(0x4502F4, BuildingClass_Update_Factory, 0x6)
 {
 	GET(BuildingClass *, B, ESI);
 	HouseClass * H = B->Owner;
 
-	if(H->Production && !Ares::GlobalControls::AllowParallelAIQueues) {
+	if(H->Production && !RulesExt::Global()->AllowParallelAIQueues) {
 		HouseExt::ExtData *pData = HouseExt::ExtMap.Find(H);
 		BuildingClass **curFactory = nullptr;
 		switch(B->Type->Factory) {
@@ -44,7 +45,7 @@ DEFINE_HOOK(4502F4, BuildingClass_Update_Factory, 6)
 	return 0;
 }
 
-DEFINE_HOOK(4CA07A, FactoryClass_AbandonProduction, 8)
+DEFINE_HOOK(0x4CA07A, FactoryClass_AbandonProduction, 0x8)
 {
 	GET(FactoryClass *, F, ESI);
 	HouseClass * H = F->Owner;
@@ -71,7 +72,7 @@ DEFINE_HOOK(4CA07A, FactoryClass_AbandonProduction, 8)
 	return 0;
 }
 
-DEFINE_HOOK(444119, BuildingClass_KickOutUnit_UnitType, 6)
+DEFINE_HOOK(0x444119, BuildingClass_KickOutUnit_UnitType, 0x6)
 {
 	GET(UnitClass *, U, EDI);
 
@@ -86,7 +87,7 @@ DEFINE_HOOK(444119, BuildingClass_KickOutUnit_UnitType, 6)
 }
 
 
-DEFINE_HOOK(444131, BuildingClass_KickOutUnit_InfantryType, 6)
+DEFINE_HOOK(0x444131, BuildingClass_KickOutUnit_InfantryType, 0x6)
 {
 	GET(HouseClass  *, H, EAX);
 
@@ -94,7 +95,7 @@ DEFINE_HOOK(444131, BuildingClass_KickOutUnit_InfantryType, 6)
 	return 0;
 }
 
-DEFINE_HOOK(44531F, BuildingClass_KickOutUnit_BuildingType, A)
+DEFINE_HOOK(0x44531F, BuildingClass_KickOutUnit_BuildingType, 0xA)
 {
 	GET(HouseClass  *, H, EAX);
 
@@ -102,7 +103,7 @@ DEFINE_HOOK(44531F, BuildingClass_KickOutUnit_BuildingType, A)
 	return 0;
 }
 
-DEFINE_HOOK(443CCA, BuildingClass_KickOutUnit_AircraftType, A)
+DEFINE_HOOK(0x443CCA, BuildingClass_KickOutUnit_AircraftType, 0xA)
 {
 	GET(HouseClass  *, H, EDX);
 
@@ -111,7 +112,7 @@ DEFINE_HOOK(443CCA, BuildingClass_KickOutUnit_AircraftType, A)
 }
 
 // complete replacement
-DEFINE_HOOK(50B370, HouseClass_ShouldDisableCameo, 5)
+DEFINE_HOOK(0x50B370, HouseClass_ShouldDisableCameo, 0x5)
 {
 	GET(HouseClass const* const, pThis, ECX);
 	GET_STACK(TechnoTypeClass const* const, pType, 0x4);
@@ -168,11 +169,31 @@ DEFINE_HOOK(50B370, HouseClass_ShouldDisableCameo, 5)
 		if(HouseExt::BuildLimitRemaining(pThis, pType) - queued <= 0) {
 			ret = true;
 		} else {
-			auto const state = HouseExt::HasFactory(pThis, pType, true);
-			ret = (state != HouseExt::FactoryState::Available);
+			auto const state = HouseExt::HasFactory(
+				pThis, pType, true, true, false, true).State;
+			ret = (state < HouseExt::FactoryState::Available);
 		}
 	}
 
 	R->EAX(ret);
 	return 0x50B669;
+}
+
+// complete replacement: the factory that would produce this type for this
+// house, if there is a usable one at all.
+DEFINE_HOOK(0x5F7900, ObjectTypeClass_FindFactory, 0x5)
+{
+	GET(TechnoTypeClass const* const, pThis, ECX);
+	GET_STACK(bool const, allowOccupied, 0x4);
+	GET_STACK(bool const, requirePower, 0x8);
+	GET_STACK(bool const, requireCanBuild, 0xC);
+	GET_STACK(HouseClass const* const, pHouse, 0x10);
+
+	auto const found = HouseExt::HasFactory(
+		pHouse, pThis, allowOccupied, requirePower, requireCanBuild, false);
+
+	R->EAX(found.State >= HouseExt::FactoryState::Available
+		? found.Factory : nullptr);
+
+	return 0x5F7A89;
 }

@@ -27,32 +27,21 @@ class TechnoExt
 public:
 	using base_type = TechnoClass;
 
-	class ExtData final : public Extension<TechnoClass>
+	class ExtData final : public Extension<TechnoClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x55555555;
+
 		// weapon slots fsblargh
 		BYTE idxSlot_Wave;
 		BYTE idxSlot_Beam;
 		BYTE idxSlot_Warp;
 		BYTE idxSlot_Parasite;
 
-		bool Survivors_Done;
-
-		TimerStruct CloakSkipTimer;
-		SHPStruct * Insignia_Image;
-
 		BuildingClass *GarrisonedIn; // when infantry garrisons a building, we need a fast way to find said building when damage forwarding kills it
 
 		AnimClass *EMPSparkleAnim;
 		Mission EMPLastMission;
-
-		bool ShadowDrawnManually;
-
-		bool DriverKilled;
-
-		int HijackerHealth;
-		HouseClass* HijackerHouse;
-		float HijackerVeterancy;
 
 		// 305 Radar Jammers
 		std::unique_ptr<JammerClass> RadarJam;
@@ -62,11 +51,32 @@ public:
 
 		//#1573, #1623, #255 Stat-modifiers/ongoing animations
 		std::vector<AttachEffectClass> AttachedEffects;
-		bool AttachEffects_RecreateAnims;
 
 		//stuff for #1623
-		bool AttachedTechnoEffect_isset;
 		int AttachedTechnoEffect_Delay;
+		// RecreateAnims is +0x30 and isset is +0x31, not the other way round:
+		// AttachEffectClass::Update writes the value 2 to +0x31 (0x10059C8A),
+		// which only isset ever takes, while +0x30 is written 0 and 1 only.
+		bool AttachEffects_RecreateAnims;
+		BYTE AttachedTechnoEffect_isset; // 0 = not applied, 1 = applied, 2 = the type has no effect to apply
+
+		TemporalClass * MyOriginalTemporal;
+
+		BuildingLightClass* Spotlight;
+
+		EBolt * MyBolt;
+
+		HouseTypeClass* OriginalHouseType;
+
+		CDTimerClass CloakSkipTimer;
+		CDTimerClass DisableWeaponTimer;
+		CDTimerClass SelfHealCombatTimer;
+
+		int HijackerHealth;
+		HouseClass* HijackerHouse;
+		float HijackerVeterancy;
+
+		double AttachEffects_ROFMultiplier;
 
 		//crate fields
 		double Crate_FirepowerMultiplier;
@@ -74,76 +84,89 @@ public:
 		double Crate_SpeedMultiplier;
 		bool Crate_Cloakable;
 
-		TemporalClass * MyOriginalTemporal;
-
-		EBolt * MyBolt;
-
-		HouseTypeClass* OriginalHouseType;
-
-		BuildingLightClass* Spotlight;
-
 		OptionalStruct<bool, true> AltOccupation; // if the unit marks cell occupation flags, this is set to whether it uses the "high" occupation members
 
+		bool Survivors_Done;
+
+		bool DriverKilled;
+
+		bool AlwaysOperated; // this type can never lose its operator, so stop asking
+
 		bool PayloadCreated;
+
+		bool SuppressLossMessage;
 
 		SuperClass* SuperWeapon; // the super weapon somehow attached to this (not provided by this)
 		AbstractClass* SuperTarget; // the attached super weapon's target (if any)
 
-		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass>(OwnerObject),
+		int TechnoValue; // credits waiting to be shown as a flying string
+		int TechnoValue_NextDisplayFrame;
+
+		bool TakeVehicleMode; // the team script wants this one to hijack rather than garrison
+
+		ExtData(TechnoClass* OwnerObject) : Extension<TechnoClass, ExtData>(OwnerObject),
 			idxSlot_Wave(0),
 			idxSlot_Beam(0),
 			idxSlot_Warp(0),
 			idxSlot_Parasite(0),
-			Survivors_Done(0),
-			Insignia_Image(nullptr),
 			GarrisonedIn(nullptr),
+			EMPSparkleAnim(nullptr),
+			EMPLastMission(Mission::None),
+			RadarJam(nullptr),
+			PoweredUnit(nullptr),
+			AttachedTechnoEffect_Delay(0x7FFFFFFF),
+			AttachEffects_RecreateAnims(false),
+			AttachedTechnoEffect_isset(0),
+			MyOriginalTemporal(nullptr),
+			Spotlight(nullptr),
+			MyBolt(nullptr),
+			OriginalHouseType(nullptr),
 			HijackerHealth(-1),
 			HijackerHouse(nullptr),
 			HijackerVeterancy(0.0f),
-			DriverKilled(false),
-			EMPSparkleAnim(nullptr),
-			EMPLastMission(Mission::None),
-			ShadowDrawnManually(false),
-			RadarJam(nullptr),
-			PoweredUnit(nullptr),
-			MyOriginalTemporal(nullptr),
-			MyBolt(nullptr),
-			Spotlight(nullptr),
-			AltOccupation(),
-			PayloadCreated(false),
-			SuperWeapon(nullptr),
-			SuperTarget(nullptr),
-			OriginalHouseType(nullptr),
-			AttachEffects_RecreateAnims(false),
-			AttachedTechnoEffect_isset(false),
-			AttachedTechnoEffect_Delay(0),
+			AttachEffects_ROFMultiplier(1.0),
 			Crate_FirepowerMultiplier(1.0),
 			Crate_ArmorMultiplier(1.0),
 			Crate_SpeedMultiplier(1.0),
-			Crate_Cloakable(false)
+			Crate_Cloakable(false),
+			AltOccupation(),
+			Survivors_Done(false),
+			DriverKilled(false),
+			AlwaysOperated(false),
+			PayloadCreated(false),
+			SuppressLossMessage(false),
+			SuperWeapon(nullptr),
+			SuperTarget(nullptr),
+			TechnoValue(0),
+			TechnoValue_NextDisplayFrame(0),
+			TakeVehicleMode(false)
 		{ }
 
-		virtual ~ExtData() {
+		~ExtData() {
 			this->SetSpotlight(nullptr);
 		}
 
 		// when any pointer in the game expires, this is called - be sure to tell everyone we own to invalidate it
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 			AnnounceInvalidPointer(this->GarrisonedIn, ptr);
 			this->InvalidateAttachEffectPointer(ptr);
 			AnnounceInvalidPointer(this->MyOriginalTemporal, ptr);
 			AnnounceInvalidPointer(this->Spotlight, ptr);
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
-		bool IsOperated() const;
+		bool IsOperated();
 		bool IsPowered() const;
 
-		AresAction GetActionHijack(TechnoClass* pTarget) const;
-		bool PerformActionHijack(TechnoClass* pTarget) const;
+		AresAction GetActionHijack(TechnoClass* pTarget);
+		bool PerformActionHijack(TechnoClass* pTarget);
+		bool PerformHijackOnArea();
+
+		bool IsDriverKillable(double belowPercent) const;
+		bool ApplyKillDriver(HouseClass* pNewOwner, TechnoClass* pKiller, bool removeVeterancy);
 
 		unsigned int AlphaFrame(const SHPStruct* Image) const;
 
@@ -152,8 +175,6 @@ public:
 		UnitTypeClass* GetUnitType() const;
 
 		bool IsDeactivated() const;
-
-		Action GetDeactivatedAction(ObjectClass* pHovered = nullptr) const;
 
 		void InvalidateAttachEffectPointer(void *ptr);
 
@@ -166,6 +187,9 @@ public:
 		bool CanSelfCloakNow() const;
 
 		void SetSpotlight(BuildingLightClass* pSpotlight);
+
+		void CalculateBounty(TechnoClass* pAttacker);
+		void DisplayValue(bool force);
 
 		bool AcquireHunterSeekerTarget() const;
 
@@ -180,12 +204,12 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<TechnoExt> {
+	class ExtContainer final : public Container<TechnoExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
 
-		virtual bool InvalidateExtDataIgnorable(void* const ptr) const override {
+		bool InvalidateExtDataIgnorable(void* const ptr) const {
 			auto const abs = static_cast<AbstractClass*>(ptr)->WhatAmI();
 			switch(abs) {
 			case AbstractType::Building:
@@ -201,18 +225,23 @@ public:
 			}
 		}
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override;
+		void InvalidatePointer(void *ptr, bool bRemoved);
 	};
 
 	static ExtContainer ExtMap;
 	static bool LoadGlobals(AresStreamReader& Stm);
 	static bool SaveGlobals(AresStreamWriter& Stm);
 
-	static AresMap<ObjectClass*, AlphaShapeClass*> AlphaExt;
+	static AresMap<ObjectClass*, AlphaShapeClass*> Alpha;
 
 	static BuildingLightClass * ActiveBuildingLight;
 
-	static bool NeedsRegap;
+	// 4 bytes wide in the stream, not a bool
+	static int NeedsRegap;
+
+	// set when the unit's shadow was drawn ahead of the unit itself, so the
+	// engine's own shadow pass can be skipped for it
+	static bool DrawnShadowManually;
 
 	static void SpawnSurvivors(FootClass *pThis, TechnoClass *pKiller, bool Select, bool IgnoreDefenses);
 	static bool EjectSurvivor(FootClass *Survivor, CoordStruct loc, bool Select);
@@ -225,6 +254,8 @@ public:
 	static void StopDraining(TechnoClass *Drainer, TechnoClass *Drainee);
 
 	static bool CreateWithDroppod(FootClass *Object, const CoordStruct& XYZ);
+
+	static bool UpdateType(TechnoClass* pThis, TechnoTypeClass* pToType);
 
 	static void TransferIvanBomb(TechnoClass *From, TechnoClass *To);
 	static void TransferAttachedEffects(TechnoClass *From, TechnoClass *To);
@@ -240,11 +271,32 @@ public:
 
 	static bool SpawnVisceroid(CoordStruct &crd, ObjectTypeClass* pType, int chance, bool ignoreTibDeathToVisc);
 
-	static void DecreaseAmmo(
+	static int DecreaseAmmo(
 		TechnoClass* pThis, WeaponTypeClass const* pWeapon = nullptr);
+
+	static MouseCursorType GetCursor(TechnoClass* pThis, int idxWeapon, bool outOfRange);
+
+	static Action GetBombOverObject(TechnoClass* pThis, ObjectClass* pTarget);
+
+	static BuildingClass* IsInWarfactory(TechnoClass* pThis, bool checkNaval);
+
+	static bool IsWarpable(TechnoClass* pThis);
+
+	static int GetWarpPerStep(TemporalClass* pThis, int helpers);
 /*
 	static int SelectWeaponAgainst(TechnoClass *pThis, TechnoClass *pTarget);
 	static bool EvalWeaponAgainst(TechnoClass *pThis, TechnoClass *pTarget, WeaponTypeClass* W);
 	static float EvalVersesAgainst(TechnoClass *pThis, TechnoClass *pTarget, WeaponTypeClass* W);
 */
+};
+
+// A MassAction participant in its own right, not part of TechnoExt's: it clears
+// separately, and it owns the FIRST block of the savegame globals stream. Its
+// position in the MassAction list is therefore savegame-visible.
+class AlphaExt
+{
+public:
+	static void Clear();
+	static bool LoadGlobals(AresStreamReader& Stm);
+	static bool SaveGlobals(AresStreamWriter& Stm);
 };

@@ -7,6 +7,7 @@
 
 //include <YRPP.h>
 #include <Helpers/Macro.h>
+#include <Unsorted.h>   // the Game class; upstream moved F2I/RaiseError and friends here
 
 #include "Misc/Debug.h"
 
@@ -76,6 +77,9 @@ public:
 
 	static bool bOutputMissingStrings;
 
+	// -AFFINITY:<mask>; 0 means "leave the process affinity alone"
+	static DWORD_PTR ProcessAffinityMask;
+
 	static int TrackIndex;
 
 	static PVOID pExceptionHandler;
@@ -109,8 +113,6 @@ public:
 	static void __stdcall ExeRun();
 	static void __stdcall ExeTerminate();
 
-	static void __stdcall PostGameInit();
-
 	static void __stdcall RegisterCommands();
 
 	//General functions
@@ -123,17 +125,7 @@ public:
 
 		static void LoadConfig();
 
-		static void Load(CCINIClass*);
-		static void LoadFromRules(CCINIClass*);
-
-		static bool Initialized;
-		static bool AllowParallelAIQueues;
-
-		static bool DebugKeysEnabled;
-
 		static byte GFX_DX_Force;
-
-		static bool AllowBypassBuildLimit[3];
 
 		class SurfaceConfig {
 		public:

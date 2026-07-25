@@ -1,4 +1,5 @@
 #include "Body.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include "../Building/Body.h"
 #include "../HouseType/Body.h"
 #include "../Rules/Body.h"
@@ -22,7 +23,7 @@
 // =============================
 // other hooks
 
-DEFINE_HOOK(4F7870, HouseClass_CanBuild, 7)
+DEFINE_HOOK(0x4F7870, HouseClass_CanBuild, 0x7)
 {
 	// int (TechnoTypeClass *item, bool BuildLimitOnly, bool includeQueued)
 	/* return
@@ -41,7 +42,7 @@ DEFINE_HOOK(4F7870, HouseClass_CanBuild, 7)
 }
 
 
-DEFINE_HOOK(505360, HouseClass_PrerequisitesForTechnoTypeAreListed, 5)
+DEFINE_HOOK(0x505360, HouseClass_PrerequisitesForTechnoTypeAreListed, 0x5)
 {
 	//GET(HouseClass *, pHouse, ECX);
 
@@ -63,11 +64,11 @@ DEFINE_HOOK(505360, HouseClass_PrerequisitesForTechnoTypeAreListed, 5)
  * An exception was added for parasites - they will count as eligible even when in limbo...
  */
 
-DEFINE_HOOK(4F8EBD, HouseClass_Update_HasBeenDefeated, 0)
+DEFINE_HOOK(0x4F8EBD, HouseClass_Update_HasBeenDefeated, 0x0)
 {
 	GET(HouseClass*, pThis, ESI);
 
-	if(pThis->OwnedBuildings) {
+	if(HouseExt::ExtMap.Find(pThis)->KeepAliveCount) {
 		return 0x4F8F87;
 	}
 
@@ -81,31 +82,31 @@ DEFINE_HOOK(4F8EBD, HouseClass_Update_HasBeenDefeated, 0)
 		return pFoot->ParasiteImUsing != nullptr;
 	};
 
-	if(GameModeOptionsClass::Instance->ShortGame) {
+	if(GameModeOptionsClass::Instance.ShortGame) {
 		for(auto pBaseUnit : RulesClass::Instance->BaseUnit) {
 			if(pThis->OwnedUnitTypes[pBaseUnit->ArrayIndex]) {
 				return 0x4F8F87;
 			}
 		}
 	} else {
-		if(pThis->OwnedUnitTypes1.Total) {
-			for(auto pTechno :*UnitClass::Array) {
+		if(pThis->ActiveUnitTypes.Total) {
+			for(auto pTechno :UnitClass::Array) {
 				if(Eligible(pTechno)) {
 					return 0x4F8F87;
 				}
 			}
 		}
 
-		if(pThis->OwnedInfantryTypes1.Total) {
-			for(auto pTechno : *InfantryClass::Array) {
+		if(pThis->ActiveInfantryTypes.Total) {
+			for(auto pTechno : InfantryClass::Array) {
 				if(Eligible(pTechno)) {
 					return 0x4F8F87;
 				}
 			}
 		}
 
-		if(pThis->OwnedAircraftTypes1.Total) {
-			for(auto pTechno : *AircraftClass::Array) {
+		if(pThis->ActiveAircraftTypes.Total) {
+			for(auto pTechno : AircraftClass::Array) {
 				if(Eligible(pTechno)) {
 					return 0x4F8F87;
 				}
@@ -119,18 +120,20 @@ DEFINE_HOOK(4F8EBD, HouseClass_Update_HasBeenDefeated, 0)
 	return 0x4F8F87;
 }
 
-DEFINE_HOOK(4F645F, HouseClass_CTOR_FixSideIndices, 5)
+DEFINE_HOOK(0x4F645F, HouseClass_CTOR_FixSideIndices, 0x5)
 {
 	GET(HouseClass *, pHouse, EBP);
 	if(HouseTypeClass * pCountry = pHouse->Type) {
-		if(strcmp(pCountry->ID, "Neutral") && strcmp(pCountry->ID, "Special")) {
+		// case-insensitive: shipped goes through gamemd 0x7CDA90, which YRpp
+		// declares as CRT::strcmpi
+		if(_strcmpi(pCountry->ID, "Neutral") && _strcmpi(pCountry->ID, "Special")) {
 			pHouse->SideIndex = pCountry->SideIndex;
 		}
 	}
 	return 0x4F6490;
 }
 
-DEFINE_HOOK(500CC5, HouseClass_InitFromINI_FixBufferLimits, 6)
+DEFINE_HOOK(0x500CC5, HouseClass_InitFromINI_FixBufferLimits, 0x6)
 {
 	GET(HouseClass *, H, EBX);
 
@@ -152,7 +155,7 @@ DEFINE_HOOK(500CC5, HouseClass_InitFromINI_FixBufferLimits, 6)
 	return 0x500D0D;
 }
 
-DEFINE_HOOK(4F62FF, HouseClass_CTOR_FixNameOverflow, 6)
+DEFINE_HOOK(0x4F62FF, HouseClass_CTOR_FixNameOverflow, 0x6)
 {
 	GET(HouseClass *, H, EBP);
 	GET_STACK(HouseTypeClass *, Country, 0x48);
@@ -164,7 +167,7 @@ DEFINE_HOOK(4F62FF, HouseClass_CTOR_FixNameOverflow, 6)
 
 // this is checked right before the TeamClass is instantiated -
 // it does not mean the AI will abandon this team if another team wants BuildLimit'ed units at the same time
-DEFINE_HOOK(50965E, HouseClass_CanInstantiateTeam, 5)
+DEFINE_HOOK(0x50965E, HouseClass_CanInstantiateTeam, 0x5)
 {
 	GET(DWORD, ptrTask, EAX);
 	GET(DWORD, ptrOffset, ECX);
@@ -176,7 +179,7 @@ DEFINE_HOOK(50965E, HouseClass_CanInstantiateTeam, 5)
 	enum { BuildLimitAllows = 0x5096BD, TryToRecruit = 0x509671, NoWay = 0x5096F1} CanBuild = NoWay;
 	if(TechnoTypeClass * Type = ptrEntry->Type) {
 		if(Type->FindFactory(true, true, false, Owner)) {
-			if(Ares::GlobalControls::AllowBypassBuildLimit[Owner->GetAIDifficultyIndex()]) {
+			if(RulesExt::Global()->AllowBypassBuildLimit[Owner->GetAIDifficultyIndex()]) {
 				CanBuild = BuildLimitAllows;
 			} else {
 				int remainLimit = HouseExt::BuildLimitRemaining(Owner, Type);
@@ -193,7 +196,7 @@ DEFINE_HOOK(50965E, HouseClass_CanInstantiateTeam, 5)
 	return CanBuild;
 }
 
-DEFINE_HOOK(508EBC, HouseClass_Radar_Update_CheckEligible, 6)
+DEFINE_HOOK(0x508EBC, HouseClass_Radar_Update_CheckEligible, 0x6)
 {
 	enum {Eligible = 0, Jammed = 0x508F08};
 	GET(BuildingClass *, Radar, EAX);
@@ -206,7 +209,7 @@ DEFINE_HOOK(508EBC, HouseClass_Radar_Update_CheckEligible, 6)
 	;
 }
 
-DEFINE_HOOK(508F91, HouseClass_SpySat_Update_CheckEligible, 6)
+DEFINE_HOOK(0x508F91, HouseClass_SpySat_Update_CheckEligible, 0x6)
 {
 	enum {Eligible = 0, Jammed = 0x508FF6};
 	GET(BuildingClass *, SpySat, ECX);
@@ -219,7 +222,7 @@ DEFINE_HOOK(508F91, HouseClass_SpySat_Update_CheckEligible, 6)
 	;
 }
 
-DEFINE_HOOK(4F8B08, HouseClass_Update_DamageDelay, 6)
+DEFINE_HOOK(0x4F8B08, HouseClass_Update_DamageDelay, 0x6)
 {
 	GET(HouseClass* const, pThis, ESI);
 
@@ -260,18 +263,18 @@ DEFINE_HOOK(4F8B08, HouseClass_Update_DamageDelay, 6)
 	}
 
 	// recreate the replaced instructions
-	return pThis->IsPlayer() ? 0x4F8B14u : 0x4F8DB1u;
+	return pThis->IsCurrentPlayer() ? 0x4F8B14u : 0x4F8DB1u;
 }
 
 // play this annoying message every now and then
-DEFINE_HOOK(4F8C23, HouseClass_Update_SilosNeededEVA, 5)
+DEFINE_HOOK(0x4F8C23, HouseClass_Update_SilosNeededEVA, 0x5)
 {
 	GET(HouseClass* const, pThis, ESI);
 
 	VoxClass::Play("EVA_SilosNeeded");
 
 	if(const CSFText& Message = RulesExt::Global()->MessageSilosNeeded) {
-		MessageListClass::Instance->PrintMessage(Message,
+		MessageListClass::Instance.PrintMessage(Message,
 			RulesClass::Instance->MessageDelay,	pThis->ColorSchemeIndex);
 	}
 
@@ -279,15 +282,20 @@ DEFINE_HOOK(4F8C23, HouseClass_Update_SilosNeededEVA, 5)
 }
 
 // restored from TS
-DEFINE_HOOK(4F9610, HouseClass_GiveTiberium_Storage, A)
+DEFINE_HOOK(0x4F9610, HouseClass_GiveTiberium_Storage, 0xA)
 {
 	GET(HouseClass* const, pThis, ECX);
 	GET_STACK(float, amount, 0x4);
 	GET_STACK(int const, idxType, 0x8);
 
-	pThis->SiloMoney += Game::F2I(amount * 5.0);
+	// Upstream calls this slot PointTotal ("running score"); the pinned YRpp and
+	// the Ares IDB both call it SiloMoney. Same offset either way -- it sits
+	// directly after RadarVisibleTo in both trees -- and shipped
+	// HouseClass_GiveTiberium_Storage (Ares.dll 0x10024DDE) writes exactly this
+	// `+= 5.0 * amount`. Only the label is in dispute.
+	pThis->PointTotal += Game::F2I(amount * 5.0);
 
-	if(SessionClass::Instance->GameMode == GameMode::Campaign || pThis->CurrentPlayer) {
+	if(SessionClass::Instance.GameMode == GameMode::Campaign || pThis->IsHumanPlayer) {
 		// don't change, old values are needed for silo update
 		const auto lastStorage = static_cast<int>(pThis->OwnedTiberium.GetTotalAmount());
 		const auto lastTotalStorage = pThis->TotalStorage;
@@ -324,7 +332,7 @@ DEFINE_HOOK(4F9610, HouseClass_GiveTiberium_Storage, A)
 		pThis->UpdateAllSilos(lastStorage, lastTotalStorage);
 	} else {
 		// just add the money. this is the only original YR logic
-		auto const pTib = TiberiumClass::Array->GetItem(idxType);
+		auto const pTib = TiberiumClass::Array.GetItem(idxType);
 		pThis->Balance += Game::F2I(amount * pTib->Value * pThis->Type->IncomeMult);
 	}
 
@@ -333,7 +341,7 @@ DEFINE_HOOK(4F9610, HouseClass_GiveTiberium_Storage, A)
 
 // spread tiberium on building destruction. replaces the
 // original code, made faster and spilling is now optional.
-DEFINE_HOOK(441B30, BuildingClass_Destroy_Refinery, 6)
+DEFINE_HOOK(0x441B30, BuildingClass_Destroy_Refinery, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	auto const pExt = TechnoTypeExt::ExtMap.Find(pThis->Type);
@@ -344,7 +352,7 @@ DEFINE_HOOK(441B30, BuildingClass_Destroy_Refinery, 6)
 	// remove the tiberium contained in this structure from the house's owned
 	// tiberium. original code does this one bail at a time, we do bulk.
 	if(store.GetTotalAmount() >= 1.0) {
-		for(auto i = 0u; i < OwnedTiberiumStruct::Size; ++i) {
+		for(auto i = 0u; i < 4u; ++i) {
 			auto const amount = std::ceil(store.GetAmount(i));
 			if(amount > 0.0) {
 				store.RemoveAmount(amount, i);
@@ -356,7 +364,7 @@ DEFINE_HOOK(441B30, BuildingClass_Destroy_Refinery, 6)
 						auto const dist = ScenarioClass::Instance->Random.RandomRanged(256, 768);
 						auto const crd = MapClass::GetRandomCoordsNear(pThis->Location, dist, true);
 
-						auto const pCell = MapClass::Instance->GetCellAt(crd);
+						auto const pCell = MapClass::Instance.GetCellAt(crd);
 						pCell->IncreaseTiberium(i, 1);
 					}
 				}
@@ -367,7 +375,7 @@ DEFINE_HOOK(441B30, BuildingClass_Destroy_Refinery, 6)
 	return 0x441C0C;
 }
 
-DEFINE_HOOK(73E4A2, UnitClass_Mi_Unload_Storage, 6)
+DEFINE_HOOK(0x73E4A2, UnitClass_Mi_Unload_Storage, 0x6)
 {
 	// because a value gets pushed to the stack in an inconvenient
 	// location, we do our stuff and then mess with the stack so
@@ -384,11 +392,11 @@ DEFINE_HOOK(73E4A2, UnitClass_Mi_Unload_Storage, 6)
 	return 0;
 }
 
-DEFINE_HOOK(522D75, InfantryClass_Slave_UnloadAt_Storage, 6)
+DEFINE_HOOK(0x522D75, InfantryClass_Slave_UnloadAt_Storage, 0x6)
 {
 	GET(TechnoClass* const, pBld, EAX);
 	GET(int const, idxTiberium, ESI);
-	GET(OwnedTiberiumStruct* const, pTiberium, EBP);
+	GET(StorageClass* const, pTiberium, EBP);
 
 	// replaces the inner loop and stores
 	// one tiberium type at a time
@@ -407,7 +415,7 @@ DEFINE_HOOK(522D75, InfantryClass_Slave_UnloadAt_Storage, 6)
 }
 
 // drain affecting only the drained power plant
-DEFINE_HOOK(508D32, HouseClass_UpdatePower_LocalDrain1, 5)
+DEFINE_HOOK(0x508D32, HouseClass_UpdatePower_LocalDrain1, 0x5)
 {
 	GET(HouseClass*, pThis, ESI);
 	GET(BuildingClass*, pBld, EDI);
@@ -449,7 +457,7 @@ DEFINE_HOOK(508D32, HouseClass_UpdatePower_LocalDrain1, 5)
 }
 
 // sanitize the power output
-DEFINE_HOOK(508D4A, HouseClass_UpdatePower_LocalDrain2, 6)
+DEFINE_HOOK(0x508D4A, HouseClass_UpdatePower_LocalDrain2, 0x6)
 {
 	GET(HouseClass*, pThis, ESI);
 	if(pThis->PowerOutput < 0) {
@@ -458,13 +466,13 @@ DEFINE_HOOK(508D4A, HouseClass_UpdatePower_LocalDrain2, 6)
 	return 0;
 }
 
-DEFINE_HOOK(4FC731, HouseClass_DestroyAll_ReturnStructures, 7)
+DEFINE_HOOK(0x4FC731, HouseClass_DestroyAll_ReturnStructures, 0x7)
 {
 	GET_STACK(HouseClass*, pThis, STACK_OFFS(0x18, 0x8));
 	GET(TechnoClass*, pTechno, ESI);
 
 	// do not return structures in campaigns
-	if(SessionClass::Instance->GameMode == GameMode::Campaign) {
+	if(SessionClass::Instance.GameMode == GameMode::Campaign) {
 		return 0;
 	}
 
@@ -513,7 +521,7 @@ DEFINE_HOOK(4FC731, HouseClass_DestroyAll_ReturnStructures, 7)
 	return 0;
 }
 
-DEFINE_HOOK(4F8440, HouseClass_Update_TogglePower, 5)
+DEFINE_HOOK(0x4F8440, HouseClass_Update_TogglePower, 0x5)
 {
 	GET(HouseClass* const, pThis, ECX);
 	auto const pExt = HouseExt::ExtMap.Find(pThis);

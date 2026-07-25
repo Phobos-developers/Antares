@@ -26,7 +26,7 @@ class BuildingTypeExt
 public:
 	using base_type = BuildingTypeClass;
 
-	static const eFoundation CustomFoundation = static_cast<eFoundation>(0x7F);
+	static const Foundation CustomFoundation = static_cast<Foundation>(0x7F);
 	static const CellStruct FoundationEndMarker;
 
 	class cPrismForwarding {
@@ -43,7 +43,6 @@ public:
 		Nullable<int> MaxNetworkSize;				//max number of towers that can be in the network
 		Nullable<int> SupportModifier; 				//Per-building PrismSupportModifier
 		Valueable<signed int> DamageAdd; 					//amount of flat damage to add to the firing beam (before multiplier)
-		Nullable<int> MyHeight;						//Per-building PrismSupportHeight
 		Valueable<signed int> Intensity;						//amount to adjust beam thickness by when supported
 		Valueable<int> ChargeDelay;					//the amount to delay start of charging per backward chain
 		Valueable<bool> ToAllies;						//can this tower support allies' towers or not
@@ -68,10 +67,6 @@ public:
 			return this->SupportModifier.Get(RulesClass::Instance->PrismSupportModifier);
 		}
 
-		int GetMyHeight() const {
-			return this->MyHeight.Get(RulesClass::Instance->PrismSupportHeight);
-		}
-
 		bool CanAttack() const {
 			return this->Enabled == EnabledState::Yes || this->Enabled == EnabledState::Attack;
 		}
@@ -92,7 +87,6 @@ public:
 			MaxNetworkSize(),
 			SupportModifier(),
 			DamageAdd(0),
-			MyHeight(),
 			Intensity(-2),
 			ChargeDelay(1),
 			ToAllies(false),
@@ -102,9 +96,11 @@ public:
 		{ }
 	};
 
-	class ExtData final : public Extension<BuildingTypeClass>
+	class ExtData final : public Extension<BuildingTypeClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x11111111;
+
 		// solid
 		Valueable<int> Solid_Height;
 		Valueable<int> Solid_Level;
@@ -113,7 +109,6 @@ public:
 		bool IsCustom;
 		int CustomWidth;
 		int CustomHeight;
-		int OutlineLength;
 		std::vector<CellStruct> CustomData;
 		std::vector<CellStruct> OutlineData;
 
@@ -128,6 +123,8 @@ public:
 
 		Valueable<bool> IsPassable;
 
+		Valueable<bool> Fake;
+
 		// lightning rod
 		Valueable<double> LightningRod_Modifier;
 
@@ -137,10 +134,10 @@ public:
 		Valueable<double> UCDamageMultiplier; 				//!< How many percent of normal damage are applied if an occupant is hit when a bullet passes through. 0.0 = 0%, 1.0 = 100%; Defaults to 1.0.
 		Valueable<bool> BunkerRaidable; 					//!< Can this BuildingType be occupied by hostile forces despite being owned by a player, if empty?
 		signed int IsTrench; 					//!< Enables moving between segments - saves ID of a kind of trench. \sa trenchKinds
-		Valueable<BuildingTypeClass*> RubbleIntact; 		//!< What BuildingType to turn into when reconstructed. (This is the normal building, set on rubble.)
-		Valueable<BuildingTypeClass*> RubbleDestroyed;	//!< What BuildingType to turn into when destroyed. (This is the rubble, set on normal buildings.)
 		static std::vector<std::string> trenchKinds; //!< Vector of strings associating known trench names with IsTrench IDs. \sa IsTrench
 
+		Valueable<BuildingTypeClass*> RubbleIntact; 		//!< What BuildingType to turn into when reconstructed. (This is the normal building, set on rubble.)
+		Valueable<BuildingTypeClass*> RubbleDestroyed;	//!< What BuildingType to turn into when destroyed. (This is the rubble, set on normal buildings.)
 		Valueable<AnimTypeClass*> RubbleDestroyedAnim;
 		Valueable<AnimTypeClass*> RubbleIntactAnim;
 		Valueable<OwnerHouseKind> RubbleDestroyedOwner;
@@ -163,11 +160,19 @@ public:
 		Valueable<bool> RevealRadar;
 		Valueable<bool> RevealRadarPersist;
 		Valueable<bool> GainVeterancy;
+		Valueable<bool> InfantryVeterancy;
+		Valueable<bool> VehicleVeterancy;
+		Valueable<bool> NavalVeterancy;
+		Valueable<bool> AircraftVeterancy;
+		Valueable<bool> BuildingVeterancy;
 		Valueable<bool> UnReverseEngineer;
-		Valueable<int> StolenTechIndex;
+		Valueable<bool> SuperWeaponPermanent;
+		Valueable<SuperWeaponTypeClass*> SpySuperWeapon;
+		DWORD StolenTechIndex; //!< One bit per tech index, all of them granted at once.
 		Valueable<int> StolenMoneyAmount;
-		Valueable<int> StolenMoneyPercentage;
+		Valueable<float> StolenMoneyPercentage;
 		Valueable<int> PowerOutageDuration;
+		Valueable<int> SabotageDelay;
 
 		// #218 Specific Occupiers
 		ValueableVector<InfantryTypeClass *> AllowedOccupiers;
@@ -189,7 +194,7 @@ public:
 		NullableIdx<VocClass> GateUpSound;
 
 		// academy
-		mutable OptionalStruct<bool> Academy;
+		bool Academy;
 		ValueableVector<TechnoTypeClass*> AcademyWhitelist;
 		ValueableVector<TechnoTypeClass*> AcademyBlacklist;
 		Valueable<double> AcademyInfantry;
@@ -215,20 +220,39 @@ public:
 		ValueableVector<int> AIExtraCounts;
 
 		Nullable<double> BuildupTime;
+		Nullable<double> SellTime;
+		int SellFrames; //!< Cached sell animation frame duration, derived from SellTime.
 
-		ExtData(BuildingTypeClass* OwnerObject) : Extension<BuildingTypeClass>(OwnerObject),
+		Nullable<bool> MassSelectable;
+		Valueable<bool> ProduceCashDisplay;
+		Nullable<bool> UnitSell;
+		Nullable<bool> EngineerRepairable;
+		Nullable<bool> AIInnerBase;
+		Nullable<bool> AIBaseNormal;
+
+		NullableIdx<VocClass> SlamSound;
+
+		Valueable<MouseCursorType> Cursor_Spy;
+
+		int Tunnel; //!< Index into the [TunnelTypes] registry, -1 for none.
+
+		Valueable<Point2D> DockUnloadCell;
+		Valueable<int> DockUnloadFacing;
+
+		ExtData(BuildingTypeClass* OwnerObject) : Extension<BuildingTypeClass, ExtData>(OwnerObject),
 			Solid_Height(0),
 			Solid_Level(1),
 			IsCustom(false),
 			CustomWidth(0),
 			CustomHeight(0),
-			OutlineLength(0),
 			CustomData(),
 			OutlineData(),
 			FoundationRadarShape(),
 			Secret_RecalcOnCapture(false),
 			Firewall_Is(false),
 			IsPassable(false),
+			Fake(false),
+			LightningRod_Modifier(1.0),
 			UCPassThrough(0.0),
 			UCFatalRate(0.0),
 			UCDamageMultiplier(1.0),
@@ -244,9 +268,6 @@ public:
 			RubbleIntactStrength(-1),
 			RubbleDestroyedRemove(false),
 			RubbleIntactRemove(false),
-			LightningRod_Modifier(1.0),
-			GateDownSound(),
-			GateUpSound(),
 			InfiltrateCustom(false),
 			RevealProduction(false),
 			ResetSW(false),
@@ -254,31 +275,54 @@ public:
 			RevealRadar(false),
 			RevealRadarPersist(false),
 			GainVeterancy(false),
+			InfantryVeterancy(false),
+			VehicleVeterancy(false),
+			NavalVeterancy(false),
+			AircraftVeterancy(false),
+			BuildingVeterancy(false),
 			UnReverseEngineer(false),
-			StolenTechIndex(-1),
+			SuperWeaponPermanent(false),
+			SpySuperWeapon(nullptr),
+			StolenTechIndex(0),
 			StolenMoneyAmount(0),
-			StolenMoneyPercentage(0),
+			StolenMoneyPercentage(0.0f),
 			PowerOutageDuration(0),
+			SabotageDelay(0),
 			AllowedOccupiers(),
 			Returnable(),
 			PrismForwarding(),
 			ReverseEngineersVictims(false),
 			CloningFacility(false),
-			Factory_ExplicitOnly(false)
+			Factory_ExplicitOnly(false),
+			GateDownSound(),
+			GateUpSound(),
+			Academy(false),
+			SellFrames(0),
+			MassSelectable(),
+			ProduceCashDisplay(false),
+			UnitSell(),
+			EngineerRepairable(),
+			AIInnerBase(),
+			AIBaseNormal(),
+			SlamSound(),
+			Cursor_Spy(MouseCursorType::Enter),
+			Tunnel(-1),
+			DockUnloadCell(Point2D{3, 1}),
+			DockUnloadFacing(8)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void Initialize() override;
-		virtual void CompleteInitialization();
+		void LoadFromINIFile(CCINIClass* pINI);
+		void Initialize(CCINIClass* pINI);
+		void CompleteInitialization();
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		bool IsLinkable();
 
@@ -298,12 +342,12 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<BuildingTypeExt> {
+	class ExtContainer final : public Container<BuildingTypeExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
 
-		virtual bool Load(BuildingTypeClass* pThis, IStream* pStm) override;
+		bool Load(BuildingTypeClass* pThis, IStream* pStm);
 	};
 
 	static ExtContainer ExtMap;

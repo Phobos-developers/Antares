@@ -25,11 +25,11 @@ bool AresTrajectoryHelper::IsWallHit(
 	CellClass const* const pTarget, HouseClass const* const pOwner)
 {
 	if(pCheck != pTarget && pCheck->OverlayTypeIndex != -1) {
-		if(OverlayTypeClass::Array->Items[pCheck->OverlayTypeIndex]->Wall) {
+		if(OverlayTypeClass::Array.Items[pCheck->OverlayTypeIndex]->Wall) {
 			if(pSource->Level <= pTarget->Level) {
 				auto const& index = pCheck->WallOwnerIndex;
 				return !RulesClass::Instance->AlliedWallTransparency
-					|| !HouseClass::Array->Items[index]->IsAlliedWith(pOwner);
+					|| !HouseClass::Array.Items[index]->IsAlliedWith(pOwner);
 			}
 		}
 	}
@@ -41,7 +41,7 @@ bool AresTrajectoryHelper::IsBuildingHit(
 	AbstractClass const* const pSource, AbstractClass const* const pTarget,
 	CoordStruct const& crdCur, HouseClass const* const pOwner)
 {
-	auto const pCellBullet = MapClass::Instance->GetCellAt(crdCur);
+	auto const pCellBullet = MapClass::Instance.GetCellAt(crdCur);
 
 	if(auto const pBld = pCellBullet->GetBuilding()) {
 		// source building and target buildings are always traversable.
@@ -71,7 +71,7 @@ bool AresTrajectoryHelper::IsBuildingHit(
 				solidHeight = pBldType->Height;
 			}
 
-			auto const floor = MapClass::Instance->GetCellFloorHeight(crdCur);
+			auto const floor = MapClass::Instance.GetCellFloorHeight(crdCur);
 			return crdCur.Z <= floor + solidHeight * 256;
 		}
 	}
@@ -95,7 +95,7 @@ CellClass* AresTrajectoryHelper::GetObstacle(
 	HouseClass const* const pOwner)
 {
 	auto const cellCur = CellClass::Coord2Cell(crdCur);
-	auto const pCellCur = MapClass::Instance->GetCellAt(cellCur);
+	auto const pCellCur = MapClass::Instance.GetCellAt(cellCur);
 
 	auto const IsCliffHit = [=]() {
 		return pType->SubjectToCliffs
@@ -108,7 +108,7 @@ CellClass* AresTrajectoryHelper::GetObstacle(
 	};
 
 	auto const IsBuildingHit = [=]() {
-		return pTypeExt->SubjectToSolid
+		return pTypeExt->SubjectToBuildings
 			&& AresTrajectoryHelper::IsBuildingHit(pSource, pTarget, crdCur, pOwner);
 	};
 
@@ -126,10 +126,10 @@ CellClass* AresTrajectoryHelper::FindFirstObstacle(
 {
 	if(AresTrajectoryHelper::SubjectToAnything(pType, pTypeExt)) {
 		auto const cellTarget = CellClass::Coord2Cell(crdTarget);
-		auto const pCellTarget = MapClass::Instance->GetCellAt(cellTarget);
+		auto const pCellTarget = MapClass::Instance.GetCellAt(cellTarget);
 
 		auto const cellSrc = CellClass::Coord2Cell(crdSrc);
-		auto const pCellSrc = MapClass::Instance->GetCellAt(cellSrc);
+		auto const pCellSrc = MapClass::Instance.GetCellAt(cellSrc);
 
 		auto const delta = AbsoluteDifference(cellSrc - cellTarget);
 		auto const maxDelta = static_cast<size_t>(std::max(delta.X, delta.Y));
@@ -146,7 +146,7 @@ CellClass* AresTrajectoryHelper::FindFirstObstacle(
 				return pCell;
 			}
 
-			pCellCur = MapClass::Instance->GetCellAt(crdCur);
+			pCellCur = MapClass::Instance.GetCellAt(crdCur);
 			crdCur += step;
 		}
 	}
@@ -176,7 +176,7 @@ CellClass* AresTrajectoryHelper::FindFirstImpenetrableObstacle(
 				auto const pBldTypeExt = BuildingTypeExt::ExtMap.Find(pBld->Type);
 
 				// penetrable if warhead level is at least equal to building level
-				if(pProjectileExt->Solid_Level >= pBldTypeExt->Solid_Level) {
+				if(pProjectileExt->SolidLevel >= pBldTypeExt->Solid_Level) {
 					return nullptr;
 				}
 			}
@@ -188,7 +188,7 @@ CellClass* AresTrajectoryHelper::FindFirstImpenetrableObstacle(
 	return nullptr;
 }
 
-DEFINE_HOOK(4CC360, TrajectoryHelper_GetObstacle, 5)
+DEFINE_HOOK(0x4CC360, TrajectoryHelper_GetObstacle, 0x5)
 {
 	GET(CellClass* const, pCellSource, ECX);
 	GET(CellClass* const, pCellTarget, EDX);
@@ -207,7 +207,7 @@ DEFINE_HOOK(4CC360, TrajectoryHelper_GetObstacle, 5)
 	return 0x4CC671;
 }
 
-DEFINE_HOOK(4CC100, TrajectoryHelper_FindFirstObstacle, 7)
+DEFINE_HOOK(0x4CC100, TrajectoryHelper_FindFirstObstacle, 0x7)
 {
 	GET(CoordStruct const* const, pSource, ECX);
 	GET(CoordStruct const* const, pTarget, EDX);
@@ -223,7 +223,7 @@ DEFINE_HOOK(4CC100, TrajectoryHelper_FindFirstObstacle, 7)
 	return 0x4CC30B;
 }
 
-DEFINE_HOOK(4CC310, TrajectoryHelper_FindFirstImpenetrableObstacle, 5)
+DEFINE_HOOK(0x4CC310, TrajectoryHelper_FindFirstImpenetrableObstacle, 0x5)
 {
 	GET(CoordStruct const* const, pSource, ECX);
 	GET(CoordStruct const* const, pTarget, EDX);

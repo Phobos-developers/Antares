@@ -3,6 +3,7 @@
 #include "../Ext/Techno/Body.h"
 #include "../Ext/TechnoType/Body.h"
 #include "../Ext/BuildingType/Body.h"
+#include "../Ext/Rules/Body.h"
 #include "../Utilities/Helpers.Alex.h"
 #include <set>
 
@@ -198,10 +199,10 @@ bool EMPulse::isEMPImmune(TechnoClass * Target, HouseClass * SourceHouse) {
 	}
 
 	// this may be immune because of veteran and elite abilities.
-	if(Target->Veterancy.IsElite() && (pData->EliteAbilityEMPIMMUNE || pData->VeteranAbilityEMPIMMUNE)) {
+	if(Target->Veterancy.IsElite() && (pData->EliteAbilities[AresAbility::EMPImmune] || pData->VeteranAbilities[AresAbility::EMPImmune])) {
 		EMP_Log("[isEMPImmune] \"%s\" is immune because it is elite.\n", Target->get_ID());
 		return true;
-	} else if(Target->Veterancy.IsVeteran() && pData->VeteranAbilityEMPIMMUNE) {
+	} else if(Target->Veterancy.IsVeteran() && pData->VeteranAbilities[AresAbility::EMPImmune]) {
 		EMP_Log("[isEMPImmune] \"%s\" is immune because it is veteran.\n", Target->get_ID());
 		return true;
 	}
@@ -248,7 +249,7 @@ bool EMPulse::isCurrentlyEMPImmune(TechnoClass * Target, HouseClass * SourceHous
 	}
 
 	if(Target->WhatAmI() == AbstractType::Unit) {
-		if(BuildingClass* pBld = MapClass::Instance->GetCellAt(Target->Location)->GetBuilding()) {
+		if(BuildingClass* pBld = MapClass::Instance.GetCellAt(Target->Location)->GetBuilding()) {
 			if(pBld->Type->WeaponsFactory) {
 				if(pBld->IsUnderEMP() || pBld == Target->GetNthLink(0)) {
 					EMP_Log("[isCurrentlyEMPImmune] %s should not be disabled. Still in war factory: %s\n", Target->get_ID(), pBld->get_ID());
@@ -527,7 +528,7 @@ void EMPulse::announceAttack(TechnoClass* Techno) {
 	AttackEvents Event = AttackEvents::None;
 
 	// find out what event is the most appropriate.
-	if(Techno && Techno->Owner == HouseClass::Player) {
+	if(Techno && Techno->Owner == HouseClass::CurrentPlayer) {
 		if(auto pBuilding = abstract_cast<BuildingClass*>(Techno)) {
 			if(pBuilding->Type->ResourceGatherer) {
 				// slave miner, for example
@@ -549,7 +550,7 @@ void EMPulse::announceAttack(TechnoClass* Techno) {
 			VoxClass::Play("EVA_OreMinerUnderAttack", -1, -1);
 		break;
 	case AttackEvents::Base:
-		HouseClass::Player->BuildingUnderAttack(abstract_cast<BuildingClass*>(Techno));
+		HouseClass::CurrentPlayer->BuildingUnderAttack(abstract_cast<BuildingClass*>(Techno));
 		break;
 	case AttackEvents::None:
 	default:
@@ -651,7 +652,7 @@ bool EMPulse::enableEMPEffect(
 	// deactivate and sparkle
 	if(!pVictim->Deactivated && IsDeactivationAdvisable(pVictim)) {
 		auto const selected = pVictim->IsSelected;
-		auto const pFocus = pVictim->Focus;
+		auto const pFocus = pVictim->ArchiveTarget;
 
 		pVictim->Deactivate();
 
@@ -663,7 +664,7 @@ bool EMPulse::enableEMPEffect(
 		}
 
 		if(abs == AbstractType::Building) {
-			pVictim->Focus = pFocus;
+			pVictim->ArchiveTarget = pFocus;
 		}
 	}
 
@@ -719,10 +720,10 @@ void EMPulse::DisableEMPEffect(TechnoClass* const pVictim) {
 	}
 
 	if(hasPower && pVictim->Deactivated) {
-		auto const pFocus = pVictim->Focus;
+		auto const pFocus = pVictim->ArchiveTarget;
 		pVictim->Reactivate();
 		if(abs == AbstractType::Building) {
-			pVictim->Focus = pFocus;
+			pVictim->ArchiveTarget = pFocus;
 		}
 	}
 
@@ -738,6 +739,12 @@ void EMPulse::DisableEMPEffect(TechnoClass* const pVictim) {
 
 	// get harvesters back to work and ai units to hunt
 	if(auto const pFoot = abstract_cast<FootClass*>(pVictim)) {
+		// a unit whose driver was shot out does not recover, it just sits there
+		if(TechnoExt::ExtMap.Find(pVictim)->DriverKilled) {
+			pFoot->QueueMission(Mission::Harmless, true);
+			return;
+		}
+
 		auto hasMission = false;
 		if(abs == AbstractType::Unit) {
 			auto const pUnit = static_cast<UnitClass*>(pVictim);
@@ -752,8 +759,9 @@ void EMPulse::DisableEMPEffect(TechnoClass* const pVictim) {
 			}
 		}
 
-		if(!hasMission && !pFoot->Owner->ControlledByHuman()) {
-			pFoot->QueueMission(Mission::Hunt, false);
+		if(!hasMission && !pFoot->Owner->IsControlledByHuman()) {
+			auto const pRules = RulesExt::Global();
+			pFoot->QueueMission(pRules->EMPAIRecoverMission.Get(Mission::Hunt), false);
 		}
 	}
 }
@@ -774,9 +782,11 @@ bool EMPulse::EnableEMPEffect2(TechnoClass* const pVictim) {
 		pBuilding->DisableStuff();
 		updateRadarBlackout(pBuilding);
 	} else if(abs == AbstractType::Aircraft) {
-		// crash flying aircraft
+		// crash flying aircraft, unless a magnetron is already handling it
 		auto const pAircraft = static_cast<AircraftClass*>(pVictim);
-		if(pAircraft->GetHeight() > 0) {
+		if(pAircraft->GetHeight() > 0
+			&& !pAircraft->IsLetGoByLocomotor && !pAircraft->IsAttackedByLocomotor)
+		{
 			return true;
 		}
 	}
@@ -792,6 +802,11 @@ bool EMPulse::EnableEMPEffect2(TechnoClass* const pVictim) {
 			pVictim->TemporalImUsing->LetGo();
 		}
 
+		// drop whatever this thing is holding up with its magnetron
+		if(pVictim->LocomotorTarget) {
+			pVictim->ReleaseLocomotor(true);
+		}
+
 		// remove the unit from its team
 		if(auto const pFoot = abstract_cast<FootClass*>(pVictim)) {
 			if(pFoot->BelongsToATeam()) {
@@ -800,7 +815,7 @@ bool EMPulse::EnableEMPEffect2(TechnoClass* const pVictim) {
 		}
 
 		auto const selected = pVictim->IsSelected;
-		auto const pFocus = pVictim->Focus;
+		auto const pFocus = pVictim->ArchiveTarget;
 
 		pVictim->Deactivate();
 
@@ -812,7 +827,7 @@ bool EMPulse::EnableEMPEffect2(TechnoClass* const pVictim) {
 		}
 
 		if(abs == AbstractType::Building) {
-			pVictim->Focus = pFocus;
+			pVictim->ArchiveTarget = pFocus;
 		}
 
 		if(abstract_cast<FootClass*>(pVictim)) {
@@ -857,10 +872,10 @@ void EMPulse::DisableEMPEffect2(TechnoClass* const pVictim) {
 	}
 
 	if(hasPower && pVictim->Deactivated) {
-		auto const pFocus = pVictim->Focus;
+		auto const pFocus = pVictim->ArchiveTarget;
 		pVictim->Reactivate();
 		if(abs == AbstractType::Building) {
-			pVictim->Focus = pFocus;
+			pVictim->ArchiveTarget = pFocus;
 		}
 
 		// allow to spawn units again.
@@ -885,7 +900,7 @@ void EMPulse::DisableEMPEffect2(TechnoClass* const pVictim) {
 				}
 			}
 
-			if(!hasMission && !pFoot->Owner->ControlledByHuman()) {
+			if(!hasMission && !pFoot->Owner->IsControlledByHuman()) {
 				pFoot->QueueMission(Mission::Hunt, false);
 			}
 		}

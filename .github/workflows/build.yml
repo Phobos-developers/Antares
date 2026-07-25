@@ -1,49 +1,42 @@
 name: Automatic Build
 
-on: [push, pull_request]
+# The name above and this file's path are referenced by README.md's nightly.link
+# URL and status badge. Renaming either breaks those links.
+
+on:
+  # Push builds cover master only. Without the branch filter, pushing a branch
+  # that already has a pull request open runs this workflow twice: once for the
+  # push and once for the pull_request.
+  push:
+    branches: [master]
+  pull_request:
 
 env:
   # Path to the solution file relative to the root of the project.
   SOLUTION_FILE_PATH: .
 
-  # Configuration type to build.
-  # You can convert this to a build matrix if you need coverage of multiple configuration types.
-  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
-  # config: Debug
-
 jobs:
   build:
-    runs-on: windows-latest
+    # Antares.vcxproj targets the v142 toolset, which ships with the windows-2022
+    # image but is not guaranteed on windows-latest. If this image is retired,
+    # either install v142 explicitly here or retarget the project.
+    runs-on: windows-2022
 
     strategy:
+      # Report both configurations rather than cancelling the second when the
+      # first fails: a break in one often is not a break in the other.
+      fail-fast: false
       matrix:
         config: [Debug, Release]
 
     steps:
-    - uses: actions/checkout@v2
-
-    - name: Checkout submodules
-      run: git submodule update --init --recursive
-
-    - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1
-
-    - name: Restore NuGet packages
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
-
-    - uses: ammaraskar/msvc-problem-matcher@master
-    - name: Build
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      # Add additional options to the MSBuild command line here (like platform or verbosity level).
-      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{matrix.config}} ${{env.SOLUTION_FILE_PATH}}
-
-    - name: Upload Artifact
-      if: ${{success()}}
-      uses: actions/upload-artifact@v2
+    - uses: actions/checkout@v7
       with:
-        name: compiled-dll-${{github.sha}}
-        path: |
-          ${{env.SOLUTION_FILE_PATH}}/${{matrix.config}}/Antares.dll
-          ${{env.SOLUTION_FILE_PATH}}/${{matrix.config}}/IntDir/Antares.pdb
+        # YRpp is a submodule and the build does not work without it.
+        submodules: recursive
+
+    - name: Build Antares
+      uses: ./.github/actions/build-antares  # Build steps are reused
+      with:
+        sln-path: ${{env.SOLUTION_FILE_PATH}}
+        build-config: ${{matrix.config}}

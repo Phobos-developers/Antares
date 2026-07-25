@@ -8,6 +8,9 @@
 
 #include <TEventClass.h>
 
+class HouseClass;
+class ObjectClass;
+class SuperClass;
 class TechnoTypeClass;
 
 class TEventExt
@@ -15,37 +18,40 @@ class TEventExt
 public:
 	using base_type = TEventClass;
 
-	class ExtData final : public Extension<TEventClass>
+	// what SuperNearWaypoint is sprung with
+	struct SuperTarget {
+		SuperClass* Super;
+		CellStruct Cell;
+	};
+
+	class ExtData final : public Extension<TEventClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x61616161;
+
 		OptionalStruct<TechnoTypeClass*> TechnoType;
 
-		ExtData(TEventClass* OwnerObject) : Extension<TEventClass>(OwnerObject),
+		ExtData(TEventClass* OwnerObject) : Extension<TEventClass, ExtData>(OwnerObject),
 			TechnoType()
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		// support
 		TechnoTypeClass* GetTechnoType();
 
 		// handling events
-		bool TechTypeExists();
-		bool TechTypeDoesNotExist();
-
-	private:
-		template <typename T>
-		void Serialize(T& Stm);
+		bool TechTypeExists(int count, HouseClass* pOwner);
 	};
 
-	class ExtContainer final : public Container<TEventExt> {
+	class ExtContainer final : public Container<TEventExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
@@ -53,6 +59,13 @@ public:
 
 	static ExtContainer ExtMap;
 
-	static bool HasOccured(TEventClass* pEvent, bool* ret);
+	static bool HasOccured(
+		TEventClass* pEvent, TriggerEvent eventType, HouseClass* pOwner,
+		ObjectClass* pAttachedTo, void* pSource, bool* ret);
+
+	static bool GetAttachFlags(TriggerEvent eventKind, int* ret);
+	static bool GetPersistable(TriggerEvent eventKind, bool* ret);
+	static bool GetSaveMode(TriggerEvent eventKind, int* ret);
+
 	static HouseClass* ResolveHouseParam(int param, HouseClass* pOwnerHouse = nullptr);
 };

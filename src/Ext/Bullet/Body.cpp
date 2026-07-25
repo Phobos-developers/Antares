@@ -1,4 +1,5 @@
 #include <InfantryClass.h>
+#include <ParticleSystemClass.h>
 #include <ScenarioClass.h>
 
 #include "Body.h"
@@ -8,7 +9,6 @@
 
 #include "../../Misc/SavegameDef.h"
 
-template<> const DWORD Extension<BulletClass>::Canary = 0x2A2A2A2A;
 BulletExt::ExtContainer BulletExt::ExtMap;
 
 // #663: PassThrough; #667: SubjectToTrenches
@@ -29,6 +29,25 @@ BulletExt::ExtContainer BulletExt::ExtMap;
 	\date 02.12.09+
 
 */
+void BulletExt::ExtData::CreateAttachedParticleSys() {
+	if(this->AttachedSystem) {
+		return;
+	}
+
+	auto const pThis = this->OwnerObject();
+
+	auto const pSystemType = BulletTypeExt::ExtMap.Find(pThis->Type)->AttachedSystem.Get();
+	if(!pSystemType) {
+		return;
+	}
+
+	auto const pOwner = pThis->Owner;
+	auto const pHouse = pOwner ? pOwner->Owner : nullptr;
+
+	this->AttachedSystem = GameCreate<ParticleSystemClass>(pSystemType, pThis->Location,
+		pOwner, reinterpret_cast<TechnoClass*>(pThis), CoordStruct::Empty, pHouse);
+}
+
 bool BulletExt::ExtData::DamageOccupants() {
 	auto const pThis = this->OwnerObject();
 
@@ -116,16 +135,17 @@ bool BulletExt::ExtData::DamageOccupants() {
 template <typename T>
 void BulletExt::ExtData::Serialize(T& Stm) {
 	Stm
-		.Process(this->NukeSW);
+		.Process(this->NukeSW)
+		.Process(this->AttachedSystem);
 }
 
 void BulletExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<BulletClass>::LoadFromStream(Stm);
+	Extension<BulletClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void BulletExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<BulletClass>::SaveToStream(Stm);
+	Extension<BulletClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -140,7 +160,7 @@ BulletExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(4664BA, BulletClass_CTOR, 5)
+DEFINE_HOOK(0x4664BA, BulletClass_CTOR, 0x5)
 {
 	GET(BulletClass*, pItem, ESI);
 
@@ -148,7 +168,7 @@ DEFINE_HOOK(4664BA, BulletClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(4665E9, BulletClass_DTOR, A)
+DEFINE_HOOK(0x4665E9, BulletClass_DTOR, 0xA)
 {
 	GET(BulletClass*, pItem, ESI);
 
@@ -156,8 +176,8 @@ DEFINE_HOOK(4665E9, BulletClass_DTOR, A)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(46AFB0, BulletClass_SaveLoad_Prefix, 8)
-DEFINE_HOOK(46AE70, BulletClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x46AFB0, BulletClass_SaveLoad_Prefix, 0x8)
+DEFINE_HOOK(0x46AE70, BulletClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(BulletClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -167,15 +187,19 @@ DEFINE_HOOK(46AE70, BulletClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(46AF97, BulletClass_Load_Suffix, 7)
-DEFINE_HOOK(46AF9E, BulletClass_Load_Suffix, 7)
+DEFINE_HOOK_AGAIN(0x46AF97, BulletClass_Load_Suffix, 0x7)
+DEFINE_HOOK(0x46AF9E, BulletClass_Load_Suffix, 0x7)
 {
 	BulletExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(46AFC4, BulletClass_Save_Suffix, 3)
+DEFINE_HOOK(0x46AFC4, BulletClass_Save_Suffix, 0x3)
 {
 	BulletExt::ExtMap.SaveStatic();
 	return 0;
 }
+
+static_assert(sizeof(BulletExt::ExtData) == 0x40, "BulletExt::ExtData must match the 3.0p1 layout");
+static_assert(offsetof(BulletExt::ExtData, NukeSW) == 0x08, "BulletExt::ExtData layout slipped");
+static_assert(offsetof(BulletExt::ExtData, AttachedSystem) == 0x0C, "BulletExt::ExtData layout slipped");

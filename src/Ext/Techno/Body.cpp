@@ -1,14 +1,20 @@
 #include "Body.h"
+#include "../../Utilities/AresEnums.h"
 #include "../BuildingType/Body.h"
+#include "../HouseType/Body.h"
 #include "../Rules/Body.h"
 #include "../TechnoType/Body.h"
 #include "../WeaponType/Body.h"
+#include "../../Misc/FlyingStrings.h"
 #include "../../Misc/SWTypes.h"
 #include "../../Misc/PoweredUnitClass.h"
 #include "../../Utilities/TemplateDef.h"
 
+#include <AircraftClass.h>
 #include <AnimClass.h>
 #include <BombClass.h>
+#include <BuildingLightClass.h>
+#include <CaptureManagerClass.h>
 #include <CellSpread.h>
 #include <Conversions.h>
 #include <HouseClass.h>
@@ -20,14 +26,20 @@
 #include <LocomotionClass.h>
 #include <SlaveManagerClass.h>
 #include <SpawnManagerClass.h>
+#include <TagClass.h>
+#include <TeamClass.h>
+#include <TemporalClass.h>
 #include <TiberiumClass.h>
+#include <UnitClass.h>
 
+#include <algorithm>
 #include <utility>
 
-template<> const DWORD Extension<TechnoClass>::Canary = 0x55555555;
 TechnoExt::ExtContainer TechnoExt::ExtMap;
 
-bool TechnoExt::NeedsRegap = false;
+int TechnoExt::NeedsRegap = 0;
+
+bool TechnoExt::DrawnShadowManually = false;
 
 void TechnoExt::SpawnSurvivors(FootClass* const pThis, TechnoClass* const pKiller, const bool Select, const bool IgnoreDefenses)
 {
@@ -57,10 +69,10 @@ void TechnoExt::SpawnSurvivors(FootClass* const pThis, TechnoClass* const pKille
 			} else {
 				// the hijacker will now be controlled instead of the unit
 				if(auto const pController = pThis->MindControlledBy) {
-					++Unsorted::IKnowWhatImDoing; // disables sound effects
+					++Unsorted::ScenarioInit; // disables sound effects
 					pController->CaptureManager->FreeUnit(pThis);
 					pController->CaptureManager->CaptureUnit(pHijacker); // does the immunetopsionics check for us
-					--Unsorted::IKnowWhatImDoing;
+					--Unsorted::ScenarioInit;
 					pHijacker->QueueMission(Mission::Guard, true); // override the fate the AI decided upon
 				}
 
@@ -110,7 +122,7 @@ void TechnoExt::SpawnSurvivors(FootClass* const pThis, TechnoClass* const pKille
 			if(passengerChance > 0) {
 				trySpawn = ScenarioClass::Instance->Random.RandomRanged(1, 100) <= passengerChance;
 			} else if(passengerChance == -1 && pThis->WhatAmI() == UnitClass::AbsID) {
-				Move occupation = pPassenger->IsCellOccupied(pThis->GetCell(), -1, -1, nullptr, true);
+				Move occupation = pPassenger->IsCellOccupied(pThis->GetCell(), FacingType::None, -1, nullptr, true);
 				trySpawn = (occupation == Move::OK || occupation == Move::MovingBlock);
 			}
 			if(trySpawn && EjectRandomly(pPassenger, location, 128, Select)) {
@@ -131,7 +143,7 @@ void TechnoExt::SpawnSurvivors(FootClass* const pThis, TechnoClass* const pKille
 */
 bool TechnoExt::EjectSurvivor(FootClass *Survivor, CoordStruct loc, bool Select)
 {
-	CellClass* pCell = MapClass::Instance->TryGetCellAt(loc);
+	CellClass* pCell = MapClass::Instance.TryGetCellAt(loc);
 
 	if(!pCell) {
 		return false;
@@ -143,14 +155,17 @@ bool TechnoExt::EjectSurvivor(FootClass *Survivor, CoordStruct loc, bool Select)
 	bool chuted = (loc.Z - floorZ > 2 * Unsorted::LevelHeight);
 	if(chuted) {
 		// HouseClass::CreateParadrop does this when building passengers for a paradrop... it might be a wise thing to mimic!
-		Survivor->Remove();
+		Survivor->Limbo();
 
 		if(!Survivor->SpawnParachuted(loc)) {
 			return false;
 		}
 	} else {
 		loc.Z = floorZ;
-		if(!Survivor->Put(loc, ScenarioClass::Instance->Random.RandomRanged(0, 7))) {
+		// Unlimbo takes a 256-direction facing, so the random eight-way pick has to
+		// be scaled into that space. Shipped (0x100452A6) does it as `shl eax, 0Dh;
+		// movzx eax, ax; shr eax, 8`, which is this shift.
+		if(!Survivor->Unlimbo(loc, static_cast<DirType>(ScenarioClass::Instance->Random.RandomRanged(0, 7) << 5))) {
 			return false;
 		}
 	}
@@ -167,7 +182,7 @@ bool TechnoExt::EjectSurvivor(FootClass *Survivor, CoordStruct loc, bool Select)
 		}
 	} else {
 		Survivor->Scatter(CoordStruct::Empty, true, false);
-		Survivor->QueueMission(Survivor->Owner->ControlledByHuman() ? Mission::Guard : Mission::Hunt, 0);
+		Survivor->QueueMission(Survivor->Owner->IsControlledByHuman() ? Mission::Guard : Mission::Hunt, 0);
 	}
 
 	Survivor->ShouldEnterOccupiable = false;
@@ -225,7 +240,7 @@ CoordStruct TechnoExt::GetPutLocation(CoordStruct current, int distance) {
 	current.X += tmpCoords.X * distance;
 	current.Y += tmpCoords.Y * distance;
 
-	auto tmpCell = MapClass::Instance->GetCellAt(current);
+	auto tmpCell = MapClass::Instance.GetCellAt(current);
 	auto target = tmpCell->FindInfantrySubposition(current, false, false, false);
 
 	target.Z = current.Z;
@@ -290,20 +305,20 @@ bool TechnoExt::SpawnVisceroid(CoordStruct &crd, ObjectTypeClass* pType, int cha
 	bool ret = false;
 	// create a small visceroid if available and the cell is free
 	if(ignoreTibDeathToVisc || ScenarioClass::Instance->TiberiumDeathToVisceroid) {
-		auto pCell = MapClass::Instance->GetCellAt(crd);
+		auto pCell = MapClass::Instance.GetCellAt(crd);
 		int rnd = ScenarioClass::Instance->Random.RandomRanged(0, 99);
 		if(!(pCell->OccupationFlags & 0x20) && rnd < chance && pType) {
 			if(auto pHouse = HouseClass::FindNeutral()) {
 				if(auto pVisc = pType->CreateObject(pHouse)) {
-					++Unsorted::IKnowWhatImDoing;
+					++Unsorted::ScenarioInit;
 					ret = true;
-					if(!pVisc->Put(crd, 0)) {
+					if(!pVisc->Unlimbo(crd, DirType::North)) {
 						// opposed to TS, we clean up, though
 						// the mutex should make it happen.
 						pVisc->UnInit();
 						ret = false;
 					}
-					--Unsorted::IKnowWhatImDoing;
+					--Unsorted::ScenarioInit;
 				}
 			}
 		}
@@ -311,7 +326,7 @@ bool TechnoExt::SpawnVisceroid(CoordStruct &crd, ObjectTypeClass* pType, int cha
 	return ret;
 }
 
-void TechnoExt::DecreaseAmmo(
+int TechnoExt::DecreaseAmmo(
 	TechnoClass* const pThis, WeaponTypeClass const* const pWeapon)
 {
 	int count = 1;
@@ -319,15 +334,17 @@ void TechnoExt::DecreaseAmmo(
 		count = pExt->Ammo;
 	}
 
-	while(count-- > 0) {
+	for(auto i = count; i > 0; --i) {
 		pThis->DecreaseAmmo();
 	}
+
+	return count;
 }
 
 unsigned int TechnoExt::ExtData::AlphaFrame(const SHPStruct* Image) const {
 	int countFrames = Conversions::Int2Highest(Image->Frames);
-	DirStruct Facing = this->OwnerObject()->Facing.current();
-	return (static_cast<DirStruct::unsigned_type>(Facing.value()) >> (16 - countFrames));
+	DirStruct Facing = this->OwnerObject()->PrimaryFacing.Current();
+	return (Facing.Raw >> (16 - countFrames));
 }
 
 bool TechnoExt::ExtData::DrawVisualFX() const {
@@ -359,15 +376,15 @@ bool TechnoExt::ExtData::AcquireHunterSeekerTarget() const {
 			canPrefer = !pSWExt->HunterSeeker_RandomOnly;
 		}
 
-		auto const isHumanControlled = pOwner->ControlledByHuman();
-		auto const mode = SessionClass::Instance->GameMode;
+		auto const isHumanControlled = pOwner->IsControlledByHuman();
+		auto const mode = SessionClass::Instance.GameMode;
 
 		// the AI in multiplayer games only attacks its favourite enemy
-		auto const pFavouriteEnemy = HouseClass::Array->GetItemOrDefault(pOwner->EnemyHouseIndex);
+		auto const pFavouriteEnemy = HouseClass::Array.GetItemOrDefault(pOwner->EnemyHouseIndex);
 		auto const favouriteEnemyOnly = (mode != GameMode::Campaign
 			&& pFavouriteEnemy && !isHumanControlled);
 
-		for(auto const& i : *TechnoClass::Array) {
+		for(auto const& i : TechnoClass::Array) {
 
 			// is the house ok?
 			if(favouriteEnemyOnly) {
@@ -456,14 +473,19 @@ UnitTypeClass* TechnoExt::ExtData::GetUnitType() const {
 	\author Renegade
 	\date 27.04.10
 */
-bool TechnoExt::ExtData::IsOperated() const {
+bool TechnoExt::ExtData::IsOperated() {
 	auto pThis = this->OwnerObject();
 	auto pExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
 
-	if(auto pOperator = pExt->Operator) {
+	if(!pExt->Operator.empty()) {
 		// loop & condition come from D
 		for(NextObject object(pThis->Passengers.GetFirstPassenger()); object; ++object) {
-			if(object->GetType() == pOperator) {
+			auto const pType = object->GetType();
+			auto const isOperator = [pType](InfantryTypeClass* const pOperator) {
+				return pOperator == pType;
+			};
+
+			if(std::any_of(pExt->Operator.begin(), pExt->Operator.end(), isOperator)) {
 				// takes a specific operator and someone is present AND that someone is the operator, therefore it is operated
 				return true;
 			}
@@ -477,6 +499,10 @@ bool TechnoExt::ExtData::IsOperated() const {
 		/* Isn't even set as an Operator-using object, therefore we are returning TRUE,
 		 since, logically, if it doesn't need operators, it can be/is operated, no matter if there are passengers or not.
 		 (Also, if we didn't do this, Reactivate() would fail for for non-Operator-units, for example.) */
+
+		// latch it: this answer can only change when the type does, and
+		// TechnoExt::UpdateType clears the flag again.
+		this->AlwaysOperated = true;
 		return true;
 	}
 }
@@ -511,12 +537,12 @@ bool TechnoExt::ExtData::IsPowered() const {
 }
 
 /*
- * Object should NOT be placed on the map (->Remove() it or don't Put in the first place)
+ * Object should NOT be placed on the map (->Limbo() it or don't Put in the first place)
  * otherwise Bad Things (TM) will happen. Again.
  */
 bool TechnoExt::CreateWithDroppod(FootClass *Object, const CoordStruct& XYZ) {
-	auto MyCell = MapClass::Instance->GetCellAt(XYZ);
-	if(Object->IsCellOccupied(MyCell, -1, -1, nullptr, false) != Move::OK) {
+	auto MyCell = MapClass::Instance.GetCellAt(XYZ);
+	if(Object->IsCellOccupied(MyCell, FacingType::None, -1, nullptr, false) != Move::OK) {
 //		Debug::Log("Cell occupied... poof!\n");
 		return false;
 	} else {
@@ -527,7 +553,7 @@ bool TechnoExt::CreateWithDroppod(FootClass *Object, const CoordStruct& XYZ) {
 		Object->SetLocation(xyz);
 		Object->SetDestination(MyCell, 1);
 		Object->Locomotor->Move_To(XYZ);
-		Object->Facing.set(DirStruct());
+		Object->PrimaryFacing.SetCurrent(DirStruct());
 		if(!Object->InLimbo) {
 			Object->See(0, 0);
 			Object->QueueMission(Mission::Guard, 0);
@@ -551,6 +577,109 @@ void TechnoExt::Destroy(TechnoClass* pTechno, TechnoClass* pKiller, HouseClass* 
 
 	int health = pTechno->Health;
 	pTechno->ReceiveDamage(&health, 0, pWarhead, pKiller, true, false, pKillerHouse);
+}
+
+// swaps the type of an infantry, vehicle or aircraft in place, keeping its
+// health ratio and reapplying everything the type contributes.
+bool TechnoExt::UpdateType(TechnoClass* const pThis, TechnoTypeClass* const pToType)
+{
+	TechnoTypeClass** ppType = nullptr;
+	auto wanted = AbstractType::None;
+
+	switch(pThis->WhatAmI()) {
+	case AbstractType::Infantry:
+		ppType = reinterpret_cast<TechnoTypeClass**>(&static_cast<InfantryClass*>(pThis)->Type);
+		wanted = AbstractType::InfantryType;
+		break;
+	case AbstractType::Unit:
+		ppType = reinterpret_cast<TechnoTypeClass**>(&static_cast<UnitClass*>(pThis)->Type);
+		wanted = AbstractType::UnitType;
+		break;
+	case AbstractType::Aircraft:
+		ppType = reinterpret_cast<TechnoTypeClass**>(&static_cast<AircraftClass*>(pThis)->Type);
+		wanted = AbstractType::AircraftType;
+		break;
+	default:
+		break;
+	}
+
+	if(pToType->WhatAmI() != wanted) {
+		return false;
+	}
+
+	if(auto const pTemporal = pThis->TemporalImUsing) {
+		if(pTemporal->Target) {
+			pTemporal->Detach();
+		}
+	}
+
+	auto const pOwner = pThis->Owner;
+	if(!pThis->InLimbo) {
+		pOwner->RegisterLoss(pThis, false);
+	}
+	pOwner->RemoveTracking(pThis);
+
+	auto const pFromType = *ppType;
+	auto const ratio = pThis->Health / static_cast<double>(pThis->GetTechnoType()->Strength);
+
+	*ppType = pToType;
+	pThis->SetHealthPercentage(ratio);
+	pThis->EstimatedHealth = pThis->Health;
+
+	pOwner->AddTracking(pThis);
+	if(!pThis->InLimbo) {
+		pOwner->RegisterGain(pThis, true);
+	}
+	pOwner->RecheckTechTree = true;
+
+	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+	pExt->AlwaysOperated = false;
+
+	// the effect the old type granted goes away with it
+	pExt->AttachedTechnoEffect_isset = 0;
+	auto& effects = pExt->AttachedEffects;
+	auto const it = std::find_if(effects.begin(), effects.end(),
+		[pFromType](AttachEffectClass const& item) {
+			return item.Type->Owner == pFromType;
+		});
+	if(it != effects.end()) {
+		effects.erase(it);
+	}
+
+	pExt->RecalculateStats();
+
+	if(pToType->Ammo < pThis->Ammo) {
+		pThis->Ammo = pToType->Ammo;
+	}
+
+	auto const pToTypeExt = TechnoTypeExt::ExtMap.Find(pToType);
+	pExt->SetSpotlight(nullptr);
+	if(pToTypeExt->Is_Spotlighted) {
+		pExt->SetSpotlight(GameCreate<BuildingLightClass>(pThis));
+	}
+
+	pThis->PrimaryFacing.SetROT(static_cast<short>(pToType->ROT));
+	pThis->SecondaryFacing.SetROT(
+		static_cast<short>(pToTypeExt->TurretROT.Get(pToType->ROT)));
+
+	auto const pFoot = static_cast<FootClass*>(pThis);
+
+	if(pToType->Locomotor != pFromType->Locomotor) {
+		auto pLoco = LocomotionClass::CreateInstance(pToType->Locomotor);
+		pLoco->Link_To_Object(pThis);
+		pFoot->Locomotor = std::move(pLoco);
+	}
+
+	// a jumpjet that has to land before it can deploy is told to go
+	// nowhere, which makes it descend
+	if(pToType->BalloonHover && pToType->DeployToLand
+		&& pToType->Locomotor == LocomotionClass::CLSIDs::Jumpjet
+		&& pFromType->Locomotor != LocomotionClass::CLSIDs::Jumpjet)
+	{
+		pFoot->Locomotor->Move_To(pThis->GetCoords());
+	}
+
+	return true;
 }
 
 void TechnoExt::TransferIvanBomb(TechnoClass *From, TechnoClass *To) {
@@ -599,6 +728,7 @@ void TechnoExt::ExtData::RecalculateStats() {
 	auto Firepower = this->Crate_FirepowerMultiplier;
 	auto Armor = this->Crate_ArmorMultiplier;
 	auto Speed = this->Crate_SpeedMultiplier; //if there's hooks for crate-stuff, they could be the base for this
+	auto ROF = 1.0;
 	auto Cloak = TechnoExt::CanICloakByDefault(pThis) || this->Crate_Cloakable;
 
 	//Debug::Log("[AttachEffect]Recalculating stats of %s...\n", pThis->get_ID());
@@ -608,11 +738,13 @@ void TechnoExt::ExtData::RecalculateStats() {
 		Firepower *= pType->FirepowerMultiplier;
 		Speed *= pType->SpeedMultiplier;
 		Armor *= pType->ArmorMultiplier;
+		ROF *= pType->ROFMultiplier;
 		Cloak |= pType->Cloakable;
 	}
 
 	pThis->FirepowerMultiplier = Firepower;
 	pThis->ArmorMultiplier = Armor;
+	this->AttachEffects_ROFMultiplier = ROF;
 
 	pThis->Cloakable = Cloak;
 
@@ -628,6 +760,11 @@ int TechnoExt::ExtData::GetSelfHealAmount() const
 	auto const pThis = this->OwnerObject();
 	auto const pType = pThis->GetTechnoType();
 
+	// no self-healing while the unit is still considered to be in combat
+	if(this->SelfHealCombatTimer.InProgress()) {
+		return 0;
+	}
+
 	if(pType->SelfHealing || pThis->HasAbility(Ability::SelfHeal)) {
 		auto const pExt = TechnoTypeExt::ExtMap.Find(pType);
 
@@ -640,10 +777,10 @@ int TechnoExt::ExtData::GetSelfHealAmount() const
 
 			auto const percent = pExt->SelfHealing_Max.Get(pThis);
 			auto const maxHealth = Math::clamp(
-				static_cast<int>(percent * strength), 1, strength);
+				static_cast<int>(percent * strength) + 1, 1, strength);
 
 			auto const health = pThis->Health;
-			if(health < maxHealth) {
+			if(health && health < maxHealth) {
 				auto const amount = pExt->SelfHealing_Amount.Get(pThis);
 				return Math::clamp(amount, 0, maxHealth - health);
 			}
@@ -712,7 +849,7 @@ void TechnoExt::ExtData::CreateInitialPayload()
 					auto const pCell = pThis->GetCell();
 					pThis->UpdateThreatInCell(pCell);
 				} else {
-					pPayload->Remove();
+					pPayload->Limbo();
 
 					if(pBldType->InfantryAbsorb) {
 						pPayload->Absorbed = true;
@@ -736,7 +873,7 @@ void TechnoExt::ExtData::CreateInitialPayload()
 			} else {
 				auto const pPayload = static_cast<FootClass*>(pObject);
 				pPayload->SetLocation(pThis->Location);
-				pPayload->Remove();
+				pPayload->Limbo();
 
 				if(pType->OpenTopped) {
 					pThis->EnteredOpenTopped(pPayload);
@@ -775,20 +912,6 @@ bool TechnoExt::ExtData::IsDeactivated() const {
 	return this->OwnerObject()->Deactivated;
 }
 
-Action TechnoExt::ExtData::GetDeactivatedAction(ObjectClass *Hovered) const {
-	if(!Hovered) {
-		return Action::None;
-	}
-	if(auto tHovered = generic_cast<TechnoClass *>(Hovered)) {
-		if(this->OwnerObject()->Owner->IsAlliedWith(tHovered)) {
-			if(tHovered->IsSelectable()) {
-				return Action::Select;
-			}
-		}
-	}
-	return Action::None;
-}
-
 void TechnoExt::ExtData::InvalidateAttachEffectPointer(void *ptr) {
 	for(auto& Item : this->AttachedEffects) {
 		Item.InvalidatePointer(ptr);
@@ -811,14 +934,14 @@ void TechnoExt::DetachSpecificSpawnee(TechnoClass *Spawnee, HouseClass *NewSpawn
 	const auto& SpawnNodes = Spawnee->SpawnOwner->SpawnManager->SpawnedNodes;
 
 	//find the specific spawnee in the node
-	for(auto SpawnNode : SpawnNodes) {
+	for(auto SpawnControl : SpawnNodes) {
 
-		if(Spawnee == SpawnNode->Unit) {
+		if(Spawnee == SpawnControl->Unit) {
 
-			SpawnNode->Unit = nullptr;
+			SpawnControl->Unit = nullptr;
 			Spawnee->SpawnOwner = nullptr;
 
-			SpawnNode->Status = SpawnNodeStatus::Dead;
+			SpawnControl->Status = SpawnNodeStatus::Dead;
 
 			Spawnee->SetOwningHouse(NewSpawneeOwner);
 		}
@@ -856,7 +979,7 @@ void TechnoExt::FreeSpecificSlave(TechnoClass *Slave, HouseClass *Affector){
 
 // If available, creates an InfantryClass instance and removes the hijacker from the victim.
 InfantryClass* TechnoExt::RecoverHijacker(FootClass* const pThis) {
-	auto const pType = InfantryTypeClass::Array->GetItemOrDefault(
+	auto const pType = InfantryTypeClass::Array.GetItemOrDefault(
 		pThis->HijackerInfantryType);
 
 	if(pType) {
@@ -880,7 +1003,7 @@ InfantryClass* TechnoExt::RecoverHijacker(FootClass* const pThis) {
 
 // this isn't called VehicleThief action, because it also includes other logic
 // related to infantry getting into an vehicle like CanDrive.
-AresAction TechnoExt::ExtData::GetActionHijack(TechnoClass* const pTarget) const {
+AresAction TechnoExt::ExtData::GetActionHijack(TechnoClass* const pTarget) {
 	const auto pThis = abstract_cast<const InfantryClass*>(this->OwnerObject());
 	if(!pThis || !pTarget || !pThis->IsAlive || !pTarget->IsAlive) {
 		return AresAction::None;
@@ -956,7 +1079,7 @@ AresAction TechnoExt::ExtData::GetActionHijack(TechnoClass* const pTarget) const
 }
 
 // perform the most appropriate hijack action
-bool TechnoExt::ExtData::PerformActionHijack(TechnoClass* const pTarget) const {
+bool TechnoExt::ExtData::PerformActionHijack(TechnoClass* const pTarget) {
 	// was the hijacker lost in the process?
 	bool ret = false;
 
@@ -990,7 +1113,7 @@ bool TechnoExt::ExtData::PerformActionHijack(TechnoClass* const pTarget) const {
 		bool asPassenger = false;
 		if(action == AresAction::Drive) {
 			const auto pDestTypeExt = TechnoTypeExt::ExtMap.Find(pTarget->GetTechnoType());
-			if(pDestTypeExt->Operator || pDestTypeExt->IsAPromiscuousWhoreAndLetsAnyoneRideIt) {
+			if(!pDestTypeExt->Operator.empty() || pDestTypeExt->IsAPromiscuousWhoreAndLetsAnyoneRideIt) {
 				asPassenger = true;
 			}
 		}
@@ -1021,9 +1144,9 @@ bool TechnoExt::ExtData::PerformActionHijack(TechnoClass* const pTarget) const {
 		// too, and attach to the new target. #762
 		const auto controller = pThis->MindControlledBy;
 		if(controller) {
-			++Unsorted::IKnowWhatImDoing;
+			++Unsorted::ScenarioInit;
 			controller->CaptureManager->FreeUnit(pThis);
-			--Unsorted::IKnowWhatImDoing;
+			--Unsorted::ScenarioInit;
 		}
 
 		// let's make a steal
@@ -1045,9 +1168,9 @@ bool TechnoExt::ExtData::PerformActionHijack(TechnoClass* const pTarget) const {
 
 		// hook up the original mind-controller with the target #762
 		if(controller) {
-			++Unsorted::IKnowWhatImDoing;
+			++Unsorted::ScenarioInit;
 			controller->CaptureManager->CaptureUnit(pTarget);
-			--Unsorted::IKnowWhatImDoing;
+			--Unsorted::ScenarioInit;
 		}
 
 		// reboot the slave manager
@@ -1073,6 +1196,240 @@ bool TechnoExt::ExtData::PerformActionHijack(TechnoClass* const pTarget) const {
 	return ret;
 }
 
+// looks for the nearest object this one could hijack or drive and heads for it
+bool TechnoExt::ExtData::PerformHijackOnArea()
+{
+	auto const pThis = abstract_cast<InfantryClass*>(this->OwnerObject());
+	if(!pThis) {
+		return false;
+	}
+
+	auto const pType = pThis->Type;
+	auto const pTypeExt = TechnoTypeExt::ExtMap.Find(pType);
+	if(!pType->VehicleThief && !pTypeExt->CanDrive) {
+		return false;
+	}
+
+	TechnoClass* pTarget = nullptr;
+	auto best = std::numeric_limits<double>::max();
+	auto bestID = -1;
+
+	for(auto const pFoot : FootClass::Array) {
+		auto const delta = pThis->Location - pFoot->Location;
+		auto const distance = static_cast<double>(delta.X) * delta.X
+			+ static_cast<double>(delta.Y) * delta.Y
+			+ static_cast<double>(delta.Z) * delta.Z;
+
+		auto const closer = distance < best
+			|| (distance == best && pFoot->UniqueID < bestID);
+
+		if(closer && this->GetActionHijack(pFoot) != AresAction::None) {
+			pTarget = pFoot;
+			best = distance;
+			bestID = pFoot->UniqueID;
+		}
+	}
+
+	auto const found = pTarget != nullptr;
+	pThis->ShouldGarrisonStructure = found;
+	this->TakeVehicleMode = found;
+
+	if(found && (pThis->Target != pTarget || pThis->CurrentMission != Mission::Enter)) {
+		pThis->SetDestination(pTarget, true);
+		pThis->QueueMission(Mission::Enter, true);
+	}
+
+	return found;
+}
+
+// whether this object's driver can be shot out of it at all, and whether it
+// is hurt badly enough for that to happen now
+bool TechnoExt::ExtData::IsDriverKillable(double const belowPercent) const
+{
+	auto const pThis = this->OwnerObject();
+
+	// target must be Vehicle or Aircraft
+	auto const abs = pThis->WhatAmI();
+	if(abs != AbstractType::Unit && abs != AbstractType::Aircraft) {
+		return false;
+	}
+
+	// if this aircraft is expected to dock to anything, don't allow killing its pilot
+	// (reason being: the game thinks you lost the aircraft that just turned, and assumes you have free aircraft space,
+	// allowing you to build more aircraft, for the docking spot that is still occupied by the previous plane.)
+	if(abs == AbstractType::Aircraft) {
+		auto const pAircraftType = static_cast<AircraftClass*>(pThis)->Type;
+		if(pAircraftType->AirportBound || pAircraftType->Dock.Count) {
+			return false;
+		}
+	}
+
+	// don't penetrate the Iron Curtain // typedef IronCurtain ChastityBelt
+	if(pThis->BeingWarpedOut || pThis->IsIronCurtained()) {
+		return false;
+	}
+
+	// a vehicle that has not left the factory that built it yet
+	if(TechnoExt::IsInWarfactory(pThis, true)) {
+		return false;
+	}
+
+	// not a living being
+	auto const pType = pThis->GetTechnoType();
+	if(pType->Natural || pType->Organic) {
+		return false;
+	}
+
+	auto const pTypeExt = TechnoTypeExt::ExtMap.Find(pType);
+
+	// the promotion ability protects the driver outright
+	if(pTypeExt->HasAbility(AresAbility::ProtectedDriver, pThis->Veterancy)) {
+		return false;
+	}
+
+	// because these tags kinda have negative meaning, less means better.
+	// if the driver is protected, he can by default only be killed if
+	// health is below 0.0, while 1.0 means always killable.
+	auto const maxKillHealth = Math::min(
+		pTypeExt->ProtectedDriver_MinHealth.Get(
+			pTypeExt->ProtectedDriver ? 0.0 : 1.0),
+		belowPercent);
+
+	return pThis->GetHealthPercentage() <= maxKillHealth;
+}
+
+// hands this object over to another house without its crew
+bool TechnoExt::ExtData::ApplyKillDriver(
+	HouseClass* const pNewOwner, TechnoClass* const pKiller,
+	bool const removeVeterancy)
+{
+	auto const pTarget = abstract_cast<FootClass*>(this->OwnerObject());
+	if(!pTarget) {
+		return false;
+	}
+
+	auto const passive = pNewOwner->Type->MultiplayPassive;
+	this->DriverKilled = passive;
+
+	// exit if owner would not change
+	if(pTarget->Owner == pNewOwner) {
+		return false;
+	}
+
+	auto const pTargetTypeExt = TechnoTypeExt::ExtMap.Find(pTarget->GetTechnoType());
+
+	if(pTarget->Passengers.GetFirstPassenger()) {
+		// If this vehicle uses Operator=, we have to take care of actual "physical" drivers, rather than theoretical ones
+		if(pTargetTypeExt->IsAPromiscuousWhoreAndLetsAnyoneRideIt) {
+			// kill first passenger
+			auto const pPassenger = pTarget->RemoveFirstPassenger();
+			pPassenger->RegisterDestruction(pKiller);
+			pPassenger->UnInit();
+
+		} else if(!pTargetTypeExt->Operator.empty()) {
+			// find the driver cowardly hiding among the passengers, then kill him
+			for(NextObject passenger(pTarget->Passengers.GetFirstPassenger()); passenger; ++passenger) {
+				auto const pPassenger = static_cast<FootClass*>(*passenger);
+				auto const pType = pPassenger->GetTechnoType();
+				auto const isOperator = [pType](InfantryTypeClass* const pOperatorType) {
+					return pOperatorType == pType;
+				};
+
+				if(std::any_of(pTargetTypeExt->Operator.begin(), pTargetTypeExt->Operator.end(), isOperator)) {
+					pTarget->RemovePassenger(pPassenger);
+					pPassenger->RegisterDestruction(pKiller);
+					pPassenger->UnInit();
+					break;
+				}
+			}
+		}
+
+		// if passengers remain in the vehicle, operator-using or not, they should leave
+		if(pTarget->Passengers.GetFirstPassenger()) {
+			TechnoExt::EjectPassengers(pTarget, -1);
+		}
+	}
+
+	// remove the hijacker
+	pTarget->HijackerInfantryType = -1;
+
+	if(removeVeterancy) {
+		pTarget->Veterancy.Veterancy = 0.0f;
+	}
+
+	// If this unit is driving under influence, we have to free it first
+	if(auto const pController = pTarget->MindControlledBy) {
+		if(auto const pCaptureManager = pController->CaptureManager) {
+			pCaptureManager->FreeUnit(pTarget);
+		}
+	}
+	pTarget->MindControlledByAUnit = false;
+	pTarget->MindControlledByHouse = nullptr;
+
+	// remove the mind-control ring anim
+	if(pTarget->MindControlRingAnim) {
+		pTarget->MindControlRingAnim->UnInit();
+		pTarget->MindControlRingAnim = nullptr;
+	}
+
+	// If this unit mind controls stuff, we should free the controllees, since they still belong to the previous owner
+	if(pTarget->CaptureManager) {
+		pTarget->CaptureManager->FreeAll();
+	}
+
+	// This unit will be freed of its duties
+	if(pTarget->BelongsToATeam()) {
+		pTarget->Team->LiberateMember(pTarget);
+	}
+
+	// If this unit spawns stuff, we should kill the spawns, since they still belong to the previous owner
+	if(auto const pSpawnManager = pTarget->SpawnManager) {
+		pSpawnManager->KillNodes();
+		pSpawnManager->ResetTarget();
+	}
+
+	// If this unit enslaves stuff, we should free the slaves, since they still belong to the previous owner
+	// <DCoder> SlaveManagerClass::Killed() sets the manager's Owner to NULL
+	// <Renegade> okay, does Killed() also destroy the slave manager, or just unlink it from the unit?
+	// <DCoder> unlink
+	// <Renegade> so on principle, I could just re-link it?
+	// <DCoder> yes you can
+	if(auto const pSlaveManager = pTarget->SlaveManager) {
+		pSlaveManager->Killed(pKiller);
+		pSlaveManager->ZeroOutSlaves();
+		pSlaveManager->Owner = pTarget;
+		if(passive) {
+			pSlaveManager->SuspendWork();
+		} else {
+			pSlaveManager->ResumeWork();
+		}
+	}
+
+	// Hand over to a different house
+	pTarget->SetOwningHouse(pNewOwner, true);
+
+	if(passive) {
+		pTarget->QueueMission(Mission::Harmless, true);
+	}
+
+	pTarget->SetTarget(nullptr);
+	pTarget->SetDestination(nullptr, false);
+
+	if(auto const pTag = pTarget->AttachedTag) {
+		pTag->RaiseEvent(AresTriggerEvent::DriverKilled_ByHouse,
+			pTarget, CellStruct::Empty, false, pKiller);
+	}
+
+	if(pTarget->IsAlive) {
+		if(auto const pTag = pTarget->AttachedTag) {
+			pTag->RaiseEvent(AresTriggerEvent::DriverKiller,
+				pTarget, CellStruct::Empty, false, nullptr);
+		}
+	}
+
+	return true;
+}
+
 // Processes an amount of tiberium of a specific type.
 /*!
 	This function calculates the value of tiberium and also
@@ -1090,7 +1447,7 @@ void TechnoExt::ExtData::RefineTiberium(float const amount, int const idxType) {
 
 	// get the number of applicable purifiers
 	auto purifiers = pHouse->NumOrePurifiers;
-	if(!pHouse->CurrentPlayer && SessionClass::Instance->GameMode != GameMode::Campaign) {
+	if(!pHouse->IsHumanPlayer && SessionClass::Instance.GameMode != GameMode::Campaign) {
 		purifiers += RulesClass::Instance->AIVirtualPurifiers.GetItem(pHouse->GetAIDifficultyIndex());
 	}
 
@@ -1115,7 +1472,7 @@ void TechnoExt::ExtData::RefineTiberium(float const amount, int const idxType) {
 void TechnoExt::ExtData::DepositTiberium(float const amount, float const bonus, int const idxType) {
 	auto const pThis = this->OwnerObject();
 	auto const pHouse = pThis->GetOwningHouse();
-	auto const pTiberium = TiberiumClass::Array->GetItem(idxType);
+	auto const pTiberium = TiberiumClass::Array.GetItem(idxType);
 	auto value = 0;
 
 	// always put the purified money on the bank account. otherwise ore purifiers
@@ -1187,7 +1544,7 @@ bool TechnoExt::ExtData::IsCloakable(bool allowPassive) const
 
 		// search for cloak generators
 		CoordStruct crd = pThis->GetCoords();
-		CellClass* pCell = MapClass::Instance->GetCellAt(crd);
+		CellClass* pCell = MapClass::Instance.GetCellAt(crd);
 		return pCell->CloakGen_InclHouse(pThis->Owner->ArrayIndex);
 	}
 
@@ -1215,7 +1572,7 @@ bool TechnoExt::ExtData::CloakAllowed() const
 		return false;
 	}
 
-	if(pThis->DiskLaserTimer.InProgress()) {
+	if(pThis->RearmTimer.InProgress()) {
 		return false;
 	}
 
@@ -1321,6 +1678,111 @@ void TechnoExt::ExtData::SetSpotlight(BuildingLightClass* pSpotlight) {
 	}
 }
 
+// pays the killer for destroying this object, if its type collects bounties
+void TechnoExt::ExtData::CalculateBounty(TechnoClass* const pAttacker)
+{
+	auto const pThis = this->OwnerObject();
+	auto const pKillerHouse = pAttacker->Owner;
+	auto const pVictimHouse = pThis->Owner;
+
+	// no reward for killing your own and your friends'
+	if(pKillerHouse) {
+		if(pKillerHouse == pVictimHouse) {
+			return;
+		}
+
+		auto const index = pKillerHouse->ArrayIndex;
+		if(index == pVictimHouse->ArrayIndex) {
+			return;
+		}
+
+		if(index >= 0 && pVictimHouse->Allies.Contains(index)) {
+			return;
+		}
+	}
+
+	if(!HouseTypeExt::ExtMap.Find(pVictimHouse->Type)->GivesBounty) {
+		return;
+	}
+
+	// an empty list means no requirement at all
+	auto const& enablers = RulesExt::Global()->BountyEnablers;
+	if(!enablers.empty()) {
+		auto const owns = [pKillerHouse](BuildingTypeClass* const pType) {
+			return pKillerHouse->CountOwnedAndPresent(pType) > 0;
+		};
+
+		if(!std::any_of(enablers.begin(), enablers.end(), owns)) {
+			return;
+		}
+	}
+
+	auto const pVictimTypeExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
+	auto const bounty = pVictimTypeExt->Bounty_Value.Get(pThis);
+	if(!bounty) {
+		return;
+	}
+
+	auto const pKillerType = pAttacker->GetTechnoType();
+	auto const pKillerTypeExt = TechnoTypeExt::ExtMap.Find(pKillerType);
+
+	pKillerHouse->TransactMoney(bounty);
+
+	if(pKillerTypeExt->Bounty_Display.Get(RulesExt::Global()->BountyDisplay)) {
+		// a missile is not around long enough to show anything, so its
+		// carrier displays the amount instead
+		auto pRecipient = pAttacker;
+		if(pKillerType->MissileSpawn && pAttacker->SpawnOwner) {
+			pRecipient = pAttacker->SpawnOwner;
+		}
+
+		TechnoExt::ExtMap.Find(pRecipient)->TechnoValue += bounty;
+	}
+}
+
+// turns the accumulated credits into a flying string over this object
+void TechnoExt::ExtData::DisplayValue(bool const force)
+{
+	auto const value = this->TechnoValue;
+	if(!value) {
+		return;
+	}
+
+	if(!force && Unsorted::CurrentFrame < this->TechnoValue_NextDisplayFrame) {
+		return;
+	}
+
+	auto const delay = static_cast<int>(RulesExt::Global()->DisplayCreditsDelay * -900.0);
+	this->TechnoValue = 0;
+	this->TechnoValue_NextDisplayFrame = Unsorted::CurrentFrame - delay;
+
+	wchar_t text[32];
+	swprintf_s(text, L"%c$%d", value <= 0 ? L'-' : L'+', std::abs(value));
+
+	ColorStruct const red { 0xFF, 0x00, 0x00 };
+	ColorStruct const green { 0x00, 0xFF, 0x00 };
+	auto const color = static_cast<WORD>(Drawing::RGB_To_Int(value > 0 ? green : red));
+
+	auto const pThis = this->OwnerObject();
+	auto coords = pThis->GetCoords();
+
+	if(MapClass::Instance.IsLocationShrouded(coords)) {
+		return;
+	}
+
+	if(pThis->VisualCharacter(VARIANT_FALSE, HouseClass::CurrentPlayer) == VisualType::Hidden) {
+		return;
+	}
+
+	if(auto const pBuilding = specific_cast<BuildingClass*>(pThis)) {
+		coords.Z += 104 * pBuilding->Type->Height;
+	} else {
+		coords.Z += 256;
+	}
+
+	FlyingStrings::Add(text, coords, color, 5);
+}
+
 // =============================
 // load / save
 
@@ -1331,60 +1793,68 @@ void TechnoExt::ExtData::Serialize(T& Stm) {
 		.Process(this->idxSlot_Beam)
 		.Process(this->idxSlot_Warp)
 		.Process(this->idxSlot_Parasite)
-		.Process(this->Survivors_Done)
-		.Process(this->CloakSkipTimer)
-		.Process(this->Insignia_Image)
 		.Process(this->GarrisonedIn)
 		.Process(this->EMPSparkleAnim)
 		.Process(this->EMPLastMission)
-		.Process(this->ShadowDrawnManually)
-		.Process(this->DriverKilled)
-		.Process(this->HijackerHealth)
-		.Process(this->HijackerHouse)
-		.Process(this->HijackerVeterancy)
 		.Process(this->RadarJam)
 		.Process(this->PoweredUnit)
 		.Process(this->AttachedEffects)
+		.Process(this->AttachedTechnoEffect_Delay)
 		.Process(this->AttachEffects_RecreateAnims)
 		.Process(this->AttachedTechnoEffect_isset)
-		.Process(this->AttachedTechnoEffect_Delay)
+		.Process(this->MyOriginalTemporal)
+		.Process(this->Spotlight)
+		.Process(this->MyBolt)
+		.Process(this->OriginalHouseType)
+		.Process(this->CloakSkipTimer)
+		.Process(this->DisableWeaponTimer)
+		.Process(this->SelfHealCombatTimer)
+		.Process(this->HijackerHealth)
+		.Process(this->HijackerHouse)
+		.Process(this->HijackerVeterancy)
+		.Process(this->AttachEffects_ROFMultiplier)
 		.Process(this->Crate_FirepowerMultiplier)
 		.Process(this->Crate_ArmorMultiplier)
 		.Process(this->Crate_SpeedMultiplier)
 		.Process(this->Crate_Cloakable)
-		.Process(this->MyOriginalTemporal)
-		.Process(this->MyBolt)
-		.Process(this->OriginalHouseType)
-		.Process(this->Spotlight)
 		.Process(this->AltOccupation)
+		.Process(this->Survivors_Done)
+		.Process(this->DriverKilled)
+		.Process(this->AlwaysOperated)
 		.Process(this->PayloadCreated)
+		.Process(this->SuppressLossMessage)
 		.Process(this->SuperWeapon)
-		.Process(this->SuperTarget);
+		.Process(this->SuperTarget)
+		.Process(this->TechnoValue)
+		.Process(this->TechnoValue_NextDisplayFrame)
+		.Process(this->TakeVehicleMode);
 }
 
 void TechnoExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<TechnoClass>::LoadFromStream(Stm);
+	Extension<TechnoClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void TechnoExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<TechnoClass>::SaveToStream(Stm);
+	Extension<TechnoClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
+// TechnoExt::Alpha is deliberately not streamed: it is rebuilt from the objects it
+// tracks, and is cleared wholesale rather than saved.
 bool TechnoExt::LoadGlobals(AresStreamReader& Stm) {
 	return Stm
-		.Process(AlphaExt)
 		.Process(ActiveBuildingLight)
 		.Process(NeedsRegap)
+		.Process(DrawnShadowManually)
 		.Success();
 }
 
 bool TechnoExt::SaveGlobals(AresStreamWriter& Stm) {
 	return Stm
-		.Process(AlphaExt)
 		.Process(ActiveBuildingLight)
 		.Process(NeedsRegap)
+		.Process(DrawnShadowManually)
 		.Success();
 }
 
@@ -1403,7 +1873,7 @@ void TechnoExt::ExtContainer::InvalidatePointer(void* ptr, bool bRemoved) {
 // =============================
 // container hooks
 
-DEFINE_HOOK(6F3260, TechnoClass_CTOR, 5)
+DEFINE_HOOK(0x6F3260, TechnoClass_CTOR, 0x5)
 {
 	GET(TechnoClass*, pItem, ESI);
 
@@ -1411,7 +1881,7 @@ DEFINE_HOOK(6F3260, TechnoClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(6F4500, TechnoClass_DTOR, 5)
+DEFINE_HOOK(0x6F4500, TechnoClass_DTOR, 0x5)
 {
 	GET(TechnoClass*, pItem, ECX);
 
@@ -1420,8 +1890,23 @@ DEFINE_HOOK(6F4500, TechnoClass_DTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(70C250, TechnoClass_SaveLoad_Prefix, 8)
-DEFINE_HOOK(70BF50, TechnoClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK(0x710415, TechnoClass_AnimPointerExpired, 0x6)
+{
+	GET(TechnoClass*, pThis, ECX);
+	GET(AnimClass*, pAnim, EAX);
+
+	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+
+	AnnounceInvalidPointer(pExt->GarrisonedIn, pAnim);
+	AnnounceInvalidPointer(pExt->EMPSparkleAnim, pAnim);
+	pExt->InvalidateAttachEffectPointer(pAnim);
+	AnnounceInvalidPointer(pExt->Spotlight, pAnim);
+
+	return 0;
+}
+
+DEFINE_HOOK_AGAIN(0x70C250, TechnoClass_SaveLoad_Prefix, 0x8)
+DEFINE_HOOK(0x70BF50, TechnoClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(TechnoClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -1431,14 +1916,26 @@ DEFINE_HOOK(70BF50, TechnoClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(70C249, TechnoClass_Load_Suffix, 5)
+DEFINE_HOOK(0x70C249, TechnoClass_Load_Suffix, 0x5)
 {
 	TechnoExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(70C264, TechnoClass_Save_Suffix, 5)
+DEFINE_HOOK(0x70C264, TechnoClass_Save_Suffix, 0x5)
 {
 	TechnoExt::ExtMap.SaveStatic();
 	return 0;
 }
+
+static_assert(sizeof(TechnoExt::ExtData) == 0xC0, "TechnoExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the start, the attached effect block, the timers, the
+// doubles, the bool cluster and the last member.
+static_assert(offsetof(TechnoExt::ExtData, idxSlot_Wave) == 0x008, "TechnoExt::ExtData layout slipped");
+static_assert(offsetof(TechnoExt::ExtData, AttachedTechnoEffect_Delay) == 0x02C, "TechnoExt::ExtData layout slipped");
+static_assert(offsetof(TechnoExt::ExtData, CloakSkipTimer) == 0x044, "TechnoExt::ExtData layout slipped");
+static_assert(offsetof(TechnoExt::ExtData, AttachEffects_ROFMultiplier) == 0x078, "TechnoExt::ExtData layout slipped");
+static_assert(offsetof(TechnoExt::ExtData, AltOccupation) == 0x099, "TechnoExt::ExtData layout slipped");
+static_assert(offsetof(TechnoExt::ExtData, TakeVehicleMode) == 0x0B0, "TechnoExt::ExtData layout slipped");

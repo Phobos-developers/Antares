@@ -29,13 +29,3 @@ void TestScaffold::GameCastTest() {
 	}
 	Debug::Log("Finished g_c test\n");
 }
-
-
-DEFINE_HOOK(48CCC0, Main_Game, 8)
-{
-	if(Ares::bTestingRun) {
-//		TestScaffold::FloatToIntTest();
-		return 0x48CFCB;
-	}
-	return 0;
-}

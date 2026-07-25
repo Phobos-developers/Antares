@@ -6,8 +6,8 @@
 #include "../../Utilities/TemplateDef.h"
 
 #include <BulletClass.h>
+#include <ParticleSystemTypeClass.h>
 
-template<> const DWORD Extension<BulletTypeClass>::Canary = 0xF00DF00D;
 BulletTypeExt::ExtContainer BulletTypeExt::ExtMap;
 
 // =============================
@@ -19,9 +19,8 @@ void BulletTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	INI_EX exINI(pINI);
 
-	this->SubjectToSolid.Read(exINI, pThis->ID, "SubjectToBuildings");
-	this->Solid_Level.Read(exINI, pThis->ID, "SolidLevel");
-	this->SubjectToFirewall.Read(exINI, pThis->ID, "SubjectToFirewall");
+	this->SubjectToBuildings.Read(exINI, pThis->ID, "SubjectToBuildings");
+	this->SolidLevel.Read(exINI, pThis->ID, "SolidLevel");
 	this->Parachuted.Read(exINI, pThis->ID, "Parachuted");
 
 	this->SubjectToTrenches.Read(exINI, pThis->ID, "SubjectToTrenches");
@@ -31,12 +30,15 @@ void BulletTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->AirburstSpread.Read(exINI, pThis->ID, "AirburstSpread");
 	this->RetargetAccuracy.Read(exINI, pThis->ID, "RetargetAccuracy");
 	this->Splits.Read(exINI, pThis->ID, "Splits");
+	this->RetargetSelf.Read(exINI, pThis->ID, "RetargetSelf");
 	this->AroundTarget.Read(exINI, pThis->ID, "AroundTarget");
 
 	this->BallisticScatterMin.Read(exINI, pThis->ID, "BallisticScatter.Min");
 	this->BallisticScatterMax.Read(exINI, pThis->ID, "BallisticScatter.Max");
 
 	this->AnimLength.Read(exINI, pThis->ID, "AnimLength");
+
+	this->AttachedSystem.Read(exINI, pThis->ID, "AttachedSystem");
 }
 
 // get the custom palette of the animation this bullet type uses
@@ -86,28 +88,31 @@ BulletClass* BulletTypeExt::ExtData::CreateBullet(AbstractClass* pTarget, Techno
 template <typename T>
 void BulletTypeExt::ExtData::Serialize(T& Stm) {
 	Stm
-		.Process(this->SubjectToSolid)
-		.Process(this->Solid_Level)
-		.Process(this->SubjectToFirewall)
+		.Process(this->SubjectToBuildings)
+		.Process(this->SolidLevel)
 		.Process(this->Parachuted)
 		.Process(this->SubjectToTrenches)
-		.Process(this->ImageConvert)
 		.Process(this->Splits)
+		.Process(this->RetargetSelf)
 		.Process(this->RetargetAccuracy)
 		.Process(this->AirburstSpread)
 		.Process(this->AroundTarget)
 		.Process(this->BallisticScatterMin)
 		.Process(this->BallisticScatterMax)
-		.Process(this->AnimLength);
+		.Process(this->AnimLength)
+		.Process(this->AttachedSystem);
 }
 
 void BulletTypeExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<BulletTypeClass>::LoadFromStream(Stm);
+	Extension<BulletTypeClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
+
+	// the palette convert is not part of the stream, it is resolved again on demand
+	this->ImageConvert.clear();
 }
 
 void BulletTypeExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<BulletTypeClass>::SaveToStream(Stm);
+	Extension<BulletTypeClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -122,7 +127,7 @@ BulletTypeExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(46BDD9, BulletTypeClass_CTOR, 5)
+DEFINE_HOOK(0x46BDD9, BulletTypeClass_CTOR, 0x5)
 {
 	GET(BulletTypeClass*, pItem, EAX);
 
@@ -130,7 +135,7 @@ DEFINE_HOOK(46BDD9, BulletTypeClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(46C8B6, BulletTypeClass_SDDTOR, 6)
+DEFINE_HOOK(0x46C8B6, BulletTypeClass_SDDTOR, 0x6)
 {
 	GET(BulletTypeClass*, pItem, ESI);
 
@@ -138,8 +143,8 @@ DEFINE_HOOK(46C8B6, BulletTypeClass_SDDTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(46C730, BulletTypeClass_SaveLoad_Prefix, 8)
-DEFINE_HOOK(46C6A0, BulletTypeClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x46C730, BulletTypeClass_SaveLoad_Prefix, 0x8)
+DEFINE_HOOK(0x46C6A0, BulletTypeClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(BulletTypeClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -149,20 +154,20 @@ DEFINE_HOOK(46C6A0, BulletTypeClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(46C722, BulletTypeClass_Load_Suffix, 4)
+DEFINE_HOOK(0x46C722, BulletTypeClass_Load_Suffix, 0x4)
 {
 	BulletTypeExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(46C74A, BulletTypeClass_Save_Suffix, 3)
+DEFINE_HOOK(0x46C74A, BulletTypeClass_Save_Suffix, 0x3)
 {
 	BulletTypeExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(46C429, BulletTypeClass_LoadFromINI, A)
-DEFINE_HOOK(46C41C, BulletTypeClass_LoadFromINI, A)
+DEFINE_HOOK_AGAIN(0x46C429, BulletTypeClass_LoadFromINI, 0xA)
+DEFINE_HOOK(0x46C41C, BulletTypeClass_LoadFromINI, 0xA)
 {
 	GET(BulletTypeClass*, pItem, ESI);
 	GET_STACK(CCINIClass*, pINI, 0x90);
@@ -170,3 +175,13 @@ DEFINE_HOOK(46C41C, BulletTypeClass_LoadFromINI, A)
 	BulletTypeExt::ExtMap.LoadFromINI(pItem, pINI);
 	return 0;
 }
+
+static_assert(sizeof(BulletTypeExt::ExtData) == 0x80, "BulletTypeExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the start, the middle and the end of the block.
+static_assert(offsetof(BulletTypeExt::ExtData, SubjectToBuildings) == 0x08, "BulletTypeExt::ExtData layout slipped");
+static_assert(offsetof(BulletTypeExt::ExtData, ImageConvert) == 0x14, "BulletTypeExt::ExtData layout slipped");
+static_assert(offsetof(BulletTypeExt::ExtData, RetargetSelf) == 0x1D, "BulletTypeExt::ExtData layout slipped");
+static_assert(offsetof(BulletTypeExt::ExtData, AroundTarget) == 0x30, "BulletTypeExt::ExtData layout slipped");
+static_assert(offsetof(BulletTypeExt::ExtData, AttachedSystem) == 0x48, "BulletTypeExt::ExtData layout slipped");

@@ -9,7 +9,7 @@ bool SW_SpyPlane::HandlesType(SuperWeaponType type) const
 	return (type == SuperWeaponType::SpyPlane);
 }
 
-void SW_SpyPlane::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_SpyPlane::Initialize(SWTypeExt::ExtData *pData)
 {
 	// Defaults to Spy Plane values
 	pData->SpyPlane_TypeIndex = AircraftTypeClass::FindIndex("SPYP");
@@ -21,11 +21,13 @@ void SW_SpyPlane::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pS
 	pData->EVA_Ready = VoxClass::FindIndex("EVA_SpyPlaneReady");
 	
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::ParaDrop;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::SpyPlane);
+	pData->SW_Cursor = MouseCursorType::SpyPlane;
 }
 
-void SW_SpyPlane::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_SpyPlane::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -38,14 +40,14 @@ void SW_SpyPlane::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *p
 	pData->SpyPlane_Mission.Read(exINI, section, "SpyPlane.Mission");
 }
 
-bool SW_SpyPlane::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_SpyPlane::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	SuperWeaponTypeClass *pSW = pThis->Type;
 	SWTypeExt::ExtData *pData = SWTypeExt::ExtMap.Find(pSW);
 	
-	if(pThis->IsCharged) {
+	if(pThis->IsReady) {
 		// launch all at once
-		CellClass *pTarget = MapClass::Instance->GetCellAt(Coords);
+		CellClass *pTarget = MapClass::Instance.GetCellAt(Coords);
 		pThis->Owner->SendSpyPlanes(pData->SpyPlane_TypeIndex, pData->SpyPlane_Count,
 			pData->SpyPlane_Mission, pTarget, nullptr);
 	}

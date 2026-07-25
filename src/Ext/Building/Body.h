@@ -26,16 +26,16 @@ public:
 		DynamicVectorClass<cPrismForwarding*> Senders;		//the prism towers that are forwarding to this one
 		cPrismForwarding* SupportTarget;			//what tower am I sending to?
 		int PrismChargeDelay;					//current delay charge
-		double ModifierReserve;					//current modifier reservoir
 		int DamageReserve;					//current flat reservoir
+		double ModifierReserve;					//current modifier reservoir
 
 		// constructor
 		cPrismForwarding(BuildingExt::ExtData* pOwner) : Owner(pOwner),
 			Senders(),
 			SupportTarget(nullptr),
 			PrismChargeDelay(0),
-			ModifierReserve(0.0),
-			DamageReserve(0)
+			DamageReserve(0),
+			ModifierReserve(0.0)
 		{ }
 
 		~cPrismForwarding() {
@@ -62,19 +62,19 @@ public:
 	};
 
 
-	class ExtData final : public Extension<BuildingClass>
+	class ExtData final : public Extension<BuildingClass, ExtData>
 	{
 	private:
 
 	public:
+		static constexpr DWORD Canary = 0x87654321;
+
 		HouseClass* OwnerBeforeRaid; //!< Contains the house which owned this building prior to it being raided and turned over to the raiding party.
-		bool isCurrentlyRaided; //!< Whether this building is currently occupied by someone not the actual owner of the structure.
-		bool ignoreNextEVA; //!< This is used when returning raided buildings, to decide whether to play EVA announcements about building capture.
 
 		bool FreeUnits_Done; //!< Prevent free units and aircraft to be created multiple times. Set when the free units have been granted.
 		bool AboutToChronoshift; //!< This building is going to be shifted. It should not be attacked with temporal weapons now. Otherwise it would disappear.
+		bool SkipBaseNormal; //!< This building was delivered by a super weapon that does not want it counted as base normal.
 
-		bool InfiltratedBy(HouseClass *Enterer);
 		cPrismForwarding PrismForwarding;
 
 		AresMap<TechnoClass*, bool> RegisteredJammers; //!< Set of Radar Jammers which have registered themselves to be in range of this building. (Related to issue #305)
@@ -85,34 +85,42 @@ public:
 
 		bool TogglePower_HasPower;
 
-		TimerStruct CashUpgradeTimers[3];
+		CDTimerClass CashUpgradeTimers[3];
 
 		VectorClass<int> DockReloadTimers;
 
 	public:
-		ExtData(BuildingClass* OwnerObject) : Extension<BuildingClass>(OwnerObject),
+		ExtData(BuildingClass* OwnerObject) : Extension<BuildingClass, ExtData>(OwnerObject),
 			OwnerBeforeRaid(nullptr),
-			isCurrentlyRaided(false),
-			ignoreNextEVA(false),
-			PrismForwarding(this),
 			FreeUnits_Done(false),
 			AboutToChronoshift(false),
+			SkipBaseNormal(false),
+			PrismForwarding(this),
+			SensorArrayActiveCounter(0),
 			SecretLab_Placed(false),
-			TogglePower_HasPower(true),
-			SensorArrayActiveCounter(0)
+			TogglePower_HasPower(true)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void InvalidatePointer(void* ptr, bool bRemoved) override {
+		void InvalidatePointer(void* ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		bool InfiltratedBy(HouseClass *Enterer);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		//! Queues an oil-derrick payout for the flying-string cash ticker, if this
+		//! building's type opted in with ProduceCashDisplay.
+		void ProduceCashDisplay(int amount);
+
+		void LoadFromStream(AresStreamReader &Stm);
+
+		void SaveToStream(AresStreamWriter &Stm);
 
 		// related to Advanced Rubble
-		bool RubbleYell(bool beingRepaired = false); // This function triggers back and forth between rubble states.
+		//! Swaps one Advanced Rubble state for the other. \returns what was placed, or nullptr.
+		static BuildingClass* PlaceRubble(BuildingClass* pBuilding, bool remove,
+			BuildingTypeClass* pNewType, OwnerHouseKind owner, int strength,
+			AnimTypeClass* pAnimType);
 		void KickOutOfRubble();
 
 		// related to trench traversal
@@ -139,6 +147,8 @@ public:
 		void UpdateSensorArray();
 		void UpdateSecretLab();
 
+		bool IsBaseNormal() const; //!< Returns whether this building extends the base space of an AI player.
+
 		size_t GetSuperWeaponCount() const;
 		bool HasSuperWeapon() const;
 		bool HasSuperWeapon(int index, bool withUpgrades) const;
@@ -152,7 +162,7 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<BuildingExt> {
+	class ExtContainer final : public Container<BuildingExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
@@ -174,6 +184,8 @@ public:
 	static signed int GetImageFrameIndex(BuildingClass *pThis);
 
 	static void KickOutHospitalArmory(BuildingClass *pThis);
+
+	static void UpdateFactoryPlans(BuildingClass *pThis);
 
 	static CoordStruct GetCenterCoords(BuildingClass* pThis, bool includeBib = false);
 

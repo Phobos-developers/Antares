@@ -1,4 +1,5 @@
 #include "UnitDelivery.h"
+#include "../../Ext/Building/Body.h"
 #include "../../Ext/House/Body.h"
 #include "../../Ext/Techno/Body.h"
 #include "../../Utilities/TemplateDef.h"
@@ -9,13 +10,15 @@
 #include <HouseClass.h>
 #include <OverlayTypeClass.h>
 
-void SW_UnitDelivery::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_UnitDelivery::Initialize(SWTypeExt::ExtData *pData)
 {
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::ParaDrop;
 }
 
-void SW_UnitDelivery::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_UnitDelivery::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -24,11 +27,11 @@ void SW_UnitDelivery::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClas
 
 	INI_EX exINI(pINI);
 	pData->SW_Deliverables.Read(exINI, section, "Deliver.Types");
-	pData->SW_DeliverBuildups.Read(exINI, section, "Deliver.Buildups");
+	pData->SW_DeliverBaseNormal.Read(exINI, section, "Deliver.BaseNormal");
 	pData->SW_OwnerHouse.Read(exINI, section, "Deliver.Owner");
 }
 
-bool SW_UnitDelivery::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_UnitDelivery::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	SuperWeaponTypeClass *pSW = pThis->Type;
 	SWTypeExt::ExtData *pData = SWTypeExt::ExtMap.Find(pSW);
@@ -112,31 +115,37 @@ void UnitDeliveryStateMachine::PlaceUnits()
 		// find a place to put this
 		if(!anywhere) {
 			int a5 = -1; // usually MapClass::CanLocationBeReached call. see how far we can get without it
-			PlaceCoords = MapClass::Instance->Pathfinding_Find(PlaceCoords,
+			PlaceCoords = MapClass::Instance.NearByLocation(PlaceCoords,
 				SpeedType, a5, MovementZone, false, extentX, extentY, true,
 				false, false, false, CellStruct::Empty, false, buildable);
 		}
 
-		if(auto pCell = MapClass::Instance->TryGetCellAt(PlaceCoords)) {
+		if(auto pCell = MapClass::Instance.TryGetCellAt(PlaceCoords)) {
 			Item->OnBridge = pCell->ContainsBridge();
+
+			if(ItemBuilding && !pData->SW_DeliverBaseNormal) {
+				BuildingExt::ExtMap.Find(ItemBuilding)->SkipBaseNormal = true;
+			}
 
 			// set the appropriate mission
 			if(ItemBuilding && pData->SW_DeliverBuildups) {
 				ItemBuilding->QueueMission(Mission::Construction, false);
 			} else {
 				// only computer units can hunt
-				auto Guard = ItemBuilding || pOwner->ControlledByHuman();
+				auto Guard = ItemBuilding || pOwner->IsControlledByHuman();
 				auto Mission = Guard ? Mission::Guard : Mission::Hunt;
 				Item->QueueMission(Mission, false);
 			}
 
 			// place and set up
 			auto XYZ = pCell->GetCoordsWithBridge();
-			if(Item->Put(XYZ, (MapClass::GetCellIndex(pCell->MapCoords) & 7u))) {
+			// the cell index picks one of eight facings; the shift lifts it into the
+			// 256-direction space Unlimbo expects (shipped 0x10076D9C: and/shl 5)
+			if(Item->Unlimbo(XYZ, static_cast<DirType>((MapClass::GetCellIndex(pCell->MapCoords) & 7u) << 5))) {
 				if(ItemBuilding) {
 					if(pData->SW_DeliverBuildups) {
 						ItemBuilding->DiscoveredBy(this->Super->Owner);
-						ItemBuilding->unknown_bool_6DD = 1;
+						ItemBuilding->IsReadyToCommence = 1;
 					}
 				} else if(pType->BalloonHover || pType->JumpJet) {
 					Item->Scatter(CoordStruct::Empty, true, false);

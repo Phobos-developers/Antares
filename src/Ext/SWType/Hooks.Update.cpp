@@ -22,14 +22,30 @@ std::vector<SWStatus> GetSuperWeaponStatuses(HouseClass* pHouse) {
 	std::vector<SWStatus> Statuses(pHouse->Supers.Count, {false, false, false});
 
 	// look at every sane building this player owns, if it is not defeated already.
-	if(!pHouse->Defeated) {
+	if(!pHouse->Defeated && !pHouse->IsObserver()) {
+
+		// SW.AlwaysGranted super weapons do not need a building at all
+		for(auto i = 0; i < pHouse->Supers.Count; ++i) {
+			auto const pData = SWTypeExt::ExtMap.Find(pHouse->Supers[i]->Type);
+			if(pData->SW_AlwaysGranted && pData->IsAvailable(pHouse)) {
+				Statuses[i] = {true, true, true};
+			}
+		}
+
 		for(auto pBld : pHouse->Buildings) {
 			if(pBld->IsAlive && !pBld->InLimbo) {
 				TechnoExt::ExtData *pExt = TechnoExt::ExtMap.Find(pBld);
 
 				// the super weapon status update lambda.
-				auto UpdateStatus = [pBld, pExt, &Statuses](int idxSW) {
-					if(idxSW > -1) {
+				auto UpdateStatus = [pBld, pExt, pHouse, &Statuses](int idxSW) {
+					if(idxSW > -1 && !Statuses[idxSW].Charging) {
+						auto const pSuper = pHouse->Supers.GetItem(idxSW);
+						auto const pData = SWTypeExt::ExtMap.Find(pSuper->Type);
+
+						if(!pData->IsAvailable(pHouse)) {
+							return;
+						}
+
 						auto& status = Statuses[idxSW];
 						status.Available = true;
 
@@ -80,7 +96,7 @@ std::vector<SWStatus> GetSuperWeaponStatuses(HouseClass* pHouse) {
 			auto& status = Statuses[index];
 
 			// turn off super weapons that are disallowed.
-			if(SessionClass::Instance->GameMode != GameMode::Campaign && !Unsorted::SWAllowed) {
+			if(SessionClass::Instance.GameMode != GameMode::Campaign && !Unsorted::SWAllowed) {
 				if(pSuper->Type->DisableableFromShell) {
 					status.Available = false;
 				}
@@ -98,7 +114,7 @@ std::vector<SWStatus> GetSuperWeaponStatuses(HouseClass* pHouse) {
 	return Statuses;
 }
 
-DEFINE_HOOK(50AF10, HouseClass_UpdateSuperWeaponsOwned, 5)
+DEFINE_HOOK(0x50AF10, HouseClass_UpdateSuperWeaponsOwned, 0x5)
 {
 	GET(HouseClass *, pThis, ECX);
 
@@ -107,25 +123,25 @@ DEFINE_HOOK(50AF10, HouseClass_UpdateSuperWeaponsOwned, 5)
 	// now update every super weapon that is valid.
 	// if this weapon has not been granted there's no need to update
 	for(auto pSuper : pThis->Supers) {
-		if(pSuper->Granted) {
+		if(pSuper->IsPresent) {
 			auto pType = pSuper->Type;
 			auto index = pType->ArrayIndex;
 			auto& status = Statuses[index];
 
 			// is this a super weapon to be updated?
 			// sw is bound to a building and no single-shot => create goody otherwise
-			bool isCreateGoody = (!pSuper->CanHold || pSuper->OneTime);
+			bool isCreateGoody = (!pSuper->CanHold || pSuper->IsOneTime);
 			if(!isCreateGoody || pThis->Defeated) {
 
 				// shut down or power up super weapon and decide whether
 				// a sidebar tab update is needed.
 				bool update = false;
 				if(!status.Available || pThis->Defeated) {
-					update = (pSuper->Lose() && HouseClass::Player);
+					update = (pSuper->Lose() && HouseClass::CurrentPlayer);
 				} else if(status.Charging && !pSuper->IsPowered()) {
-					update = pSuper->IsOnHold && pSuper->SetOnHold(false);
+					update = pSuper->IsSuspended && pSuper->SetOnHold(false);
 				} else if(!status.Charging && !pSuper->IsPowered()) {
-					update = !pSuper->IsOnHold && pSuper->SetOnHold(true);
+					update = !pSuper->IsSuspended && pSuper->SetOnHold(true);
 				} else if(!status.PowerSourced) {
 					update = (pSuper->IsPowered() && pSuper->SetOnHold(true));
 				} else {
@@ -135,12 +151,12 @@ DEFINE_HOOK(50AF10, HouseClass_UpdateSuperWeaponsOwned, 5)
 				// update only if needed.
 				if(update) {
 					// only the human player can see the sidebar.
-					if(pThis->IsPlayer()) {
+					if(pThis->IsCurrentPlayer()) {
 						if(Unsorted::CurrentSWType == index) {
 							Unsorted::CurrentSWType = -1;
 						}
 						int idxTab = SidebarClass::GetObjectTabIdx(SuperClass::AbsID, index, 0);
-						MouseClass::Instance->RepaintSidebar(idxTab);
+						MouseClass::Instance.RepaintSidebar(idxTab);
 					}
 					pThis->RecheckTechTree = true;
 				}
@@ -151,7 +167,7 @@ DEFINE_HOOK(50AF10, HouseClass_UpdateSuperWeaponsOwned, 5)
 	return 0x50B1CA;
 }
 
-DEFINE_HOOK(50B1D0, HouseClass_UpdateSuperWeaponsUnavailable, 6)
+DEFINE_HOOK(0x50B1D0, HouseClass_UpdateSuperWeaponsUnavailable, 0x6)
 {
 	GET(HouseClass*, pThis, ECX);
 
@@ -160,20 +176,20 @@ DEFINE_HOOK(50B1D0, HouseClass_UpdateSuperWeaponsUnavailable, 6)
 
 		// update all super weapons not repeatedly available
 		for(auto pSuper : pThis->Supers) {
-			if(!pSuper->Granted || pSuper->OneTime) {
+			if(!pSuper->IsPresent || pSuper->IsOneTime) {
 				auto index = pSuper->Type->ArrayIndex;
 				auto& status = Statuses[index];
 
 				if(status.Available) {
-					pSuper->Grant(false, pThis->IsPlayer(), !status.PowerSourced);
+					pSuper->Grant(false, pThis->IsCurrentPlayer(), !status.PowerSourced);
 
-					if(pThis->IsPlayer()) {
+					if(pThis->IsCurrentPlayer()) {
 						// hide the cameo (only if this is an auto-firing SW)
 						auto pData = SWTypeExt::ExtMap.Find(pSuper->Type);
 						if(pData->SW_ShowCameo || !pData->SW_AutoFire) {
-							MouseClass::Instance->AddCameo(AbstractType::Special, index);
+							MouseClass::Instance.AddCameo(AbstractType::Special, index);
 							int idxTab = SidebarClass::GetObjectTabIdx(SuperClass::AbsID, index, 0);
-							MouseClass::Instance->RepaintSidebar(idxTab);
+							MouseClass::Instance.RepaintSidebar(idxTab);
 						}
 					}
 				}

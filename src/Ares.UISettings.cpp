@@ -4,7 +4,7 @@
 #include "Utilities/Constructs.h"
 
 #include <FileSystem.h>
-#include <Checksummer.h>
+#include "Utilities/Checksummer.h"
 #include <ColorScheme.h>
 #include <StringTable.h>
 
@@ -242,7 +242,7 @@ void Ares::UISettings::Load(CCINIClass *pINI) {
 	Initialized = true;
 }
 
-DEFINE_HOOK(5FACDF, _Options_LoadFromINI, 5)
+DEFINE_HOOK(0x5FACDF, Options_LoadFromINI, 0x5)
 {
 	// open the rules file
 	Debug::Log("--------- Loading Ares global settings -----------\n");

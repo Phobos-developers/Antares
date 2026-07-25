@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StringTable.h>
+
 #include "Commands.h"
 
 #include "../Misc/Debug.h"
@@ -15,25 +17,25 @@ public:
 	//CommandClass
 	virtual const char* GetName() const override
 	{
-		return "Dump Process Memory";
+		return "DumpMemory";
 	}
 
 	virtual const wchar_t* GetUIName() const override
 	{
-		return L"Dump Memory";
+		return StringTable::LoadString("TXT_DUMP_MEMORY");
 	}
 
 	virtual const wchar_t* GetUICategory() const override
 	{
-		return L"Development";
+		return StringTable::LoadString("TXT_DEVELOPMENT");
 	}
 
 	virtual const wchar_t* GetUIDescription() const override
 	{
-		return L"Dumps the current process's memory";
+		return StringTable::LoadString("TXT_DUMP_MEMORY_DESC");
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		Dialogs::TakeMouse();
 
@@ -41,7 +43,7 @@ public:
 		SetClassLong(Game::hWnd, GCL_HCURSOR, reinterpret_cast<LONG>(loadCursor));
 		SetCursor(loadCursor);
 
-		MessageListClass::Instance->PrintMessage(L"Dumping process memory...");
+		MessageListClass::Instance.PrintMessage(L"Dumping process memory...");
 
 		std::wstring filename = Debug::FullDump();
 
@@ -49,7 +51,7 @@ public:
 
 		filename = L"Process memory dumped to " + filename;
 
-		MessageListClass::Instance->PrintMessage(filename.c_str());
+		MessageListClass::Instance.PrintMessage(filename.c_str());
 
 		loadCursor = LoadCursor(nullptr, IDC_ARROW);
 		SetClassLong(Game::hWnd, GCL_HCURSOR, reinterpret_cast<LONG>(loadCursor));

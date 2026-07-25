@@ -15,36 +15,38 @@ class CampaignExt
 public:
 	using base_type = CampaignClass;
 
-	class ExtData final : public Extension<CampaignClass>
+	class ExtData final : public Extension<CampaignClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x22441133;
+
 		Valueable<bool> DebugOnly;
 		AresFixedString<0x20> HoverSound;
 		Valueable<CSFText> Summary;
 
-		ExtData(CampaignClass* OwnerObject) : Extension<CampaignClass>(OwnerObject),
+		ExtData(CampaignClass* OwnerObject) : Extension<CampaignClass, ExtData>(OwnerObject),
 			DebugOnly(false)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void Initialize() override;
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override { }
+		void LoadFromINIFile(CCINIClass* pINI);
+		void Initialize(CCINIClass* pINI);
+		void InvalidatePointer(void *ptr, bool bRemoved) { }
 
 		bool IsVisible() const {
 			return !this->DebugOnly || Ares::UISettings::ShowDebugCampaigns;
 		}
 	};
 
-	class ExtContainer final : public Container<CampaignExt> {
+	class ExtContainer final : public Container<CampaignExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
 	};
 
 	static ExtContainer ExtMap;
-	static DynamicVectorClass<CampaignExt::ExtData*> Array;
+	static DynamicVectorClass<CampaignClass*>* const Campaigns;
 
 	static int lastSelectedCampaign;
 

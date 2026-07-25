@@ -1,4 +1,6 @@
 #include "Body.h"
+#include <FPSCounter.h>
+#include "../../Utilities/DirMath.h"
 #include "../TechnoType/Body.h"
 
 #include <YRMath.h>
@@ -9,18 +11,16 @@
 BuildingLightClass * TechnoExt::ActiveBuildingLight = nullptr;
 
 // just in case
-DEFINE_HOOK(420F40, Spotlights_UpdateFoo, 6)
+DEFINE_HOOK(0x420F40, AlphaShapeClass_DrawAll_Details, 0x6)
 {
-	return Game::CurrentFrameRate >= Game::GetMinFrameRate() ? 0u : 0x421346u;
+	// upstream splits the pin's single FPSCounter class: the counters stay on
+	// FPSCounter, the thresholds move to Detail (MinFrameRate 0x829FF4,
+	// GetMinFrameRate 0x55AF60). Detail::ReduceEffects() is exactly
+	// `CurrentFrameRate < GetMinFrameRate()`, which is what this tested.
+	return !Detail::ReduceEffects() ? 0u : 0x421346u;
 }
 
-// bugfix #182: Spotlights cause an IE
-DEFINE_HOOK(5F5155, ObjectClass_Put, 6)
-{
-	return R->EAX() ? 0u : 0x5F5210u;
-}
-
-DEFINE_HOOK(6F6D0E, TechnoClass_Put_1, 7)
+DEFINE_HOOK(0x6F6D0E, TechnoClass_Put_1, 0x7)
 {
 	GET(TechnoClass *, T, ESI);
 	TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(T->GetTechnoType());
@@ -34,7 +34,7 @@ DEFINE_HOOK(6F6D0E, TechnoClass_Put_1, 7)
 	return 0;
 }
 
-DEFINE_HOOK(6F6F20, TechnoClass_Put_2, 6)
+DEFINE_HOOK(0x6F6F20, TechnoClass_Put_2, 0x6)
 {
 	GET(TechnoClass *, T, ESI);
 	TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(T->GetTechnoType());
@@ -48,12 +48,12 @@ DEFINE_HOOK(6F6F20, TechnoClass_Put_2, 6)
 	return 0;
 }
 
-DEFINE_HOOK(441163, BuildingClass_Put_DontSpawnSpotlight, 0)
+DEFINE_HOOK(0x441163, BuildingClass_Put_DontSpawnSpotlight, 0x0)
 {
 	return 0x441196;
 }
 
-DEFINE_HOOK(435820, BuildingLightClass_CTOR, 6)
+DEFINE_HOOK(0x435820, BuildingLightClass_CTOR, 0x6)
 {
 	GET_STACK(TechnoClass *, T, 0x4);
 	GET(BuildingLightClass *, BL, ECX);
@@ -64,7 +64,7 @@ DEFINE_HOOK(435820, BuildingLightClass_CTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK(4370C0, BuildingLightClass_SDDTOR, A)
+DEFINE_HOOK(0x4370C0, BuildingLightClass_SDDTOR, 0xA)
 {
 	GET(BuildingLightClass*, pThis, ECX);
 
@@ -77,48 +77,33 @@ DEFINE_HOOK(4370C0, BuildingLightClass_SDDTOR, A)
 	return 0;
 }
 
-DEFINE_HOOK(435C08, BuildingLightClass_Draw_ForceType, 5)
+DEFINE_HOOK(0x436A2D, BuildingLightClass_PointerGotInvalid_OwnerCloak, 0x6)
 {
-	return 0x435C16;
+	GET_STACK(bool const, removed, 0x10);
+
+	// a cloaking owner only drops its soft references. keep the spotlight
+	// attached so it reappears once the owner uncloaks.
+	return removed ? 0u : 0x436A33u;
 }
 
-DEFINE_HOOK(435C32, BuildingLightClass_Draw_PowerOnline, A)
-{
-	GET(TechnoClass* const, pTechno, EDI);
-
-	if(auto const pBld = abstract_cast<BuildingClass*>(pTechno)) {
-		if(!pBld->IsPowerOnline() || pBld->IsFogged) {
-			return 0x4361BC;
-		}
-	}
-
-	return 0x435C52;
-}
-
-DEFINE_HOOK(436459, BuildingLightClass_Update, 6)
+DEFINE_HOOK(0x436459, BuildingLightClass_Update, 0x6)
 {
 	GET(BuildingLightClass *, BL, EDI);
 	TechnoClass *Owner = BL->OwnerObject;
 	if(Owner && Owner->WhatAmI() != AbstractType::Building) {
 		TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(Owner->GetTechnoType());
 		CoordStruct Loc = Owner->Location;
-		DirStruct Facing;
-		switch(pTypeData->Spot_AttachedTo) {
-		case TechnoTypeExt::SpotlightAttachment::Barrel:
-			Facing = Owner->BarrelFacing.current();
-			break;
-		case TechnoTypeExt::SpotlightAttachment::Turret:
-			Facing = Owner->TurretFacing.current();
-			break;
-		case TechnoTypeExt::SpotlightAttachment::Body:
-		default:
-			Facing = Owner->Facing.current();
-		}
 
-		static const double Facing2Rad = (2 * 3.14) / 0xFFFF;
-		double Angle = Facing2Rad * static_cast<DirStruct::unsigned_type>(Facing.value());
-		Loc.Y -= static_cast<int>(pTypeData->Spot_Distance * Math::cos(Angle));
-		Loc.X += static_cast<int>(pTypeData->Spot_Distance * Math::sin(Angle));
+		// Turret and Barrel both take the turret's facing: the switch at
+		// 0x1004F8C1 sends AttachedTo 1 and 2 alike to TechnoClass+0x3A0 and
+		// never reads BarrelFacing (+0x370). Only Body uses Facing (+0x388).
+		auto const& facing =
+			(pTypeData->Spot_AttachedTo == TechnoTypeExt::SpotlightAttachment::Body)
+			? Owner->PrimaryFacing : Owner->SecondaryFacing;
+
+		auto const radians = AresDir::ToRadians(facing.Current());
+		Loc.X += static_cast<int>(Math::cos(radians) * pTypeData->Spot_Distance);
+		Loc.Y -= static_cast<int>(Math::sin(radians) * pTypeData->Spot_Distance);
 
 		BL->field_B8 = Loc;
 		BL->field_C4 = Loc;
@@ -132,39 +117,68 @@ DEFINE_HOOK(436459, BuildingLightClass_Update, 6)
 	return R->AL() ? 0x436461u : 0x4364C8u;
 }
 
-DEFINE_HOOK(435BE0, BuildingLightClass_Draw_Start, 6)
+DEFINE_HOOK(0x435BFA, BuildingLightClass_Draw_Start, 0x6)
 {
-	GET(BuildingLightClass *, BL, ECX);
-	TechnoExt::ActiveBuildingLight = BL;
-	return 0;
+	GET(BuildingLightClass* const, pThis, ESI);
+
+	TechnoExt::ActiveBuildingLight = pThis;
+
+	auto const pOwner = pThis->OwnerObject;
+
+	if(!pOwner
+		|| pOwner->CloakState >= CloakState::Cloaked
+		|| pOwner->Deactivated
+		|| pOwner->IsBeingWarpedOut()
+		|| pOwner->GetHeight() < -10)
+	{
+		return 0x4361BC;
+	}
+
+	if(auto const pBld = abstract_cast<BuildingClass*>(pOwner)) {
+		if(!pBld->IsPowerOnline() || pBld->IsFogged) {
+			return 0x4361BC;
+		}
+	}
+
+	return 0x435C52;
 }
 
-DEFINE_HOOK(436072, BuildingLightClass_Draw_430, 6)
+// Spotlight.StartHeight is the height of the topmost of the three points the
+// game builds the light cone from; the other two sit 30 and 180 below it, and
+// none may fall below the vanilla constant it replaces. All three sites add the
+// base register the stolen `lea` added -- the light is drawn relative to the
+// object, not at an absolute z.
+static int SpotlightHeight() {
+	auto const pOwner = TechnoExt::ActiveBuildingLight->OwnerObject;
+	return TechnoTypeExt::ExtMap.Find(pOwner->GetTechnoType())->Spot_Height;
+}
+
+// stolen: lea eax, [ebx+1AEh]
+DEFINE_HOOK(0x436072, BuildingLightClass_Draw_430, 0x6)
 {
-	TechnoClass *Owner = TechnoExt::ActiveBuildingLight->OwnerObject;
-	TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(Owner->GetTechnoType());
-	R->EAX((pTypeData ? pTypeData->Spot_Height : 250) + 180);
+	GET(int const, base, EBX);
+	R->EAX(base + Math::max(SpotlightHeight(), 0));
 	return 0x436078;
 }
 
-DEFINE_HOOK(4360D8, BuildingLightClass_Draw_400, 6)
+// stolen: lea ecx, [ebx+190h]
+DEFINE_HOOK(0x4360D8, BuildingLightClass_Draw_400, 0x6)
 {
-	TechnoClass *Owner = TechnoExt::ActiveBuildingLight->OwnerObject;
-	TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(Owner->GetTechnoType());
-	R->ECX((pTypeData ? pTypeData->Spot_Height : 250) + 150);
+	GET(int const, base, EBX);
+	R->ECX(base + Math::max(SpotlightHeight() - 30, 400));
 	return 0x4360DE;
 }
 
-DEFINE_HOOK(4360FF, BuildingLightClass_Draw_250, 6)
+// stolen: lea ecx, [edi+0FAh]
+DEFINE_HOOK(0x4360FF, BuildingLightClass_Draw_250, 0x6)
 {
-	TechnoClass *Owner = TechnoExt::ActiveBuildingLight->OwnerObject;
-	TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(Owner->GetTechnoType());
-	R->ECX(pTypeData ? pTypeData->Spot_Height : 250);
+	GET(int const, base, EDI);
+	R->ECX(base + Math::max(SpotlightHeight() - 180, 250));
 	TechnoExt::ActiveBuildingLight = nullptr;
 	return 0x436105;
 }
 
-DEFINE_HOOK(435CD3, SpotlightClass_CTOR, 6)
+DEFINE_HOOK(0x435CD3, BuildingLightClass_Draw_Spotlight, 0x6)
 {
 	GET_STACK(SpotlightClass *, Spot, 0x14);
 	GET(BuildingLightClass *, BL, ESI);
@@ -173,7 +187,7 @@ DEFINE_HOOK(435CD3, SpotlightClass_CTOR, 6)
 	TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(Owner->GetTechnoType());
 
 	SpotlightFlags Flags = SpotlightFlags::None;
-	if(pTypeData->Spot_Reverse) {
+	if(pTypeData->Spot_DisableColor) {
 		Flags |= SpotlightFlags::NoColor;
 	}
 	if(pTypeData->Spot_DisableR) {

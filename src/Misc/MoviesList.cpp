@@ -1,4 +1,6 @@
 #include "MoviesList.h"
+#include <OwnerDraw.h>   // WWControlMessage
+#include <Utilities/Macro.h>   // STACK_OFFS
 
 #include <CCFileClass.h>
 #include <CCINIClass.h>
@@ -77,7 +79,7 @@ void MoviesList::LoadListFromINI()
 	}
 
 	// load unlocked state
-	if(auto const pRA2MD = CCINIClass::INI_RA2MD) {
+	{ auto const pRA2MD = &CCINIClass::INI_RA2MD;
 		for(auto& item : this->Array) {
 			auto& value = item.Unlocked;
 			value = pRA2MD->ReadBool("UnlockedMovies", item.Filename, value);
@@ -87,7 +89,7 @@ void MoviesList::LoadListFromINI()
 
 void MoviesList::WriteToINI() const
 {
-	if(auto const pINI = CCINIClass::INI_RA2MD) {
+	{ auto const pINI = &CCINIClass::INI_RA2MD;
 		for(auto& item : this->Array) {
 			// only write if unlocked, to not reveal movie names
 			if(auto const value = item.Unlockable && item.Unlocked) {
@@ -102,7 +104,7 @@ void MoviesList::AddMovie(HWND const hWnd, MovieUnlockableInfo const& movie) con
 	if(movie.Filename && movie.Description) {
 		auto const pName = StringTable::LoadString(movie.Description);
 		auto const lparam = reinterpret_cast<LPARAM>(pName);
-		auto const res = SendMessage(hWnd, WW_LB_ADDITEM, 0, lparam);
+		auto const res = SendMessage(hWnd, WW_LB_ADDSTRINGW, 0, lparam);
 		if(res != -1) {
 			auto const index = static_cast<WPARAM>(res);
 			auto const data = reinterpret_cast<LPARAM>(&movie);
@@ -120,26 +122,26 @@ MoviesList::Item* MoviesList::FindMovie(const char* const pFilename)
 	return (it == this->Array.end()) ? nullptr : &*it;
 }
 
-DEFINE_HOOK(52C939, InitGame_MoviesList, 5)
+DEFINE_HOOK(0x52C939, InitGame_MoviesList, 0x5)
 {
 	MoviesList::Instance.LoadListFromINI();
 	return 0;
 }
 
-DEFINE_HOOK(5FBF80, GameOptionsClass_UnlockMovieIfNeeded_MoviesList, 5)
+DEFINE_HOOK(0x5FBF80, GameOptionsClass_UnlockMovieIfNeeded_MoviesList, 0x5)
 {
 	GET_STACK(char const* const, pMovieName, STACK_OFFS(0x0, -0x4));
 	MoviesList::Instance.Unlock(pMovieName);
 	return 0;
 }
 
-DEFINE_HOOK(5FAFFB, Options_SaveToINI_MoviesList, 6)
+DEFINE_HOOK(0x5FAFFB, Options_SaveToINI_MoviesList, 0x6)
 {
 	MoviesList::Instance.WriteToINI();
 	return 0;
 }
 
-DEFINE_HOOK(5FC000, GameOptionsClass_PopulateMovieList, 6)
+DEFINE_HOOK(0x5FC000, GameOptionsClass_PopulateMovieList, 0x6)
 {
 	//GET(GameOptionsClass* const, pThis, ECX);
 	GET_STACK(HWND const, hWnd, STACK_OFFS(0x0, -0x4));

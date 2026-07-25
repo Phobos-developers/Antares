@@ -9,7 +9,7 @@
 #include <SpecificStructures.h>
 
 /* #179 - New Upgrade System - promotions */
-A_FINE_HOOK(6FA0F0, TechnoClass_Update_TurnedVeteran, 6)
+A_FINE_HOOK(0x6FA0F0, TechnoClass_Update_TurnedVeteran, 0x6)
 {
 	GET(TechnoClass *, Unit, ESI);
 	bool apply_normal_logic = 1;
@@ -18,7 +18,7 @@ A_FINE_HOOK(6FA0F0, TechnoClass_Update_TurnedVeteran, 6)
 	return (apply_normal_logic) ? 0 : 0x6FA13E;
 }
 
-A_FINE_HOOK(6FA083, TechnoClass_Update_TurnedElite, 6)
+A_FINE_HOOK(0x6FA083, TechnoClass_Update_TurnedElite, 0x6)
 {
 	GET(TechnoClass *, Unit, ESI);
 	bool apply_normal_logic = 1;
@@ -29,7 +29,7 @@ A_FINE_HOOK(6FA083, TechnoClass_Update_TurnedElite, 6)
 
 /* #306 - infantry exits armory after being promoted */
 // note: a hook to say "can't enter armory" will come later
-A_FINE_HOOK(44BB3C, BuildingClass_Mi_Repair, 6)
+A_FINE_HOOK(0x44BB3C, BuildingClass_Mi_Repair, 0x6)
 {
 	GET(BuildingClass *, Armory, EBP);
 	GET(InfantryClass *, Soldier, ESI);
@@ -39,7 +39,7 @@ A_FINE_HOOK(44BB3C, BuildingClass_Mi_Repair, 6)
 /* #368 - vehicle enters a grinder */
 // passengers have already been paid for and erased, same for parasite
 // the unit itself has also been paid for
-A_FINE_HOOK(73A1BC, UnitClass_UpdatePosition, 7)
+A_FINE_HOOK(0x73A1BC, UnitClass_UpdatePosition, 0x7)
 {
 	GET(UnitClass *, Vehicle, EBP);
 	GET(BuildingClass *, Grinder, EBX);
@@ -48,7 +48,7 @@ A_FINE_HOOK(73A1BC, UnitClass_UpdatePosition, 7)
 
 /* #320 - objects are being instantiated (merge these into fixes for #183 in Bugfixes.cpp) */
 /* see also #277 */
-A_FINE_HOOK(442CE0, BuildingClass_Init_Veterancy, 6)
+A_FINE_HOOK(0x442CE0, BuildingClass_Init_Veterancy, 0x6)
 {
 	GET(BuildingClass *, Item, ESI);
 	bool apply_normal_logic = 1;
@@ -57,7 +57,7 @@ A_FINE_HOOK(442CE0, BuildingClass_Init_Veterancy, 6)
 	return (apply_normal_logic) ? 0 : 0x442D1B;
 }
 
-A_FINE_HOOK(413FA3, AircraftClass_Init_Veterancy, 5)
+A_FINE_HOOK(0x413FA3, AircraftClass_Init_Veterancy, 0x5)
 {
 	GET(AircraftClass *, Item, ESI);
 	bool apply_normal_logic = 1;
@@ -66,7 +66,7 @@ A_FINE_HOOK(413FA3, AircraftClass_Init_Veterancy, 5)
 	return (apply_normal_logic) ? 0 : 0x413FD2;
 }
 
-A_FINE_HOOK(517CF1, InfantryClass_Init, 5)
+A_FINE_HOOK(0x517CF1, InfantryClass_Init, 0x5)
 {
 	GET(InfantryClass *, Item, ESI);
 	bool apply_normal_logic = 1;
@@ -75,7 +75,7 @@ A_FINE_HOOK(517CF1, InfantryClass_Init, 5)
 	return (apply_normal_logic) ? 0 : 0x517D51;
 }
 
-A_FINE_HOOK(746831, UnitClass_Init, 5)
+A_FINE_HOOK(0x746831, UnitClass_Init, 0x5)
 {
 	GET(UnitClass *, Item, ESI);
 	bool apply_normal_logic = 1;
@@ -86,7 +86,7 @@ A_FINE_HOOK(746831, UnitClass_Init, 5)
 
 /* #283 - overpowerable cloak generators */
 // DO NOT USE YET - the ranges are only updated when building is placed/removed, needs updating on deploy as well
-A_FINE_HOOK(44E29D, BuildingClass_Unload, 6)
+A_FINE_HOOK(0x44E29D, BuildingClass_Unload, 0x6)
 {
 	GET(BuildingClass *, Item, EBP);
 
@@ -94,7 +94,7 @@ A_FINE_HOOK(44E29D, BuildingClass_Unload, 6)
 }
 
 // determining the maximum size of cloak buffers needed
-A_FINE_HOOK(46546C, AllocateCloakBuffer_ToTile, 7)
+A_FINE_HOOK(0x46546C, AllocateCloakBuffer_ToTile, 0x7)
 {
 	GET(BuildingTypeClass *, BType, EAX);
 	int radius = BType->CloakRadiusInCells; // max (normal radius, deployed radius)
@@ -103,7 +103,7 @@ A_FINE_HOOK(46546C, AllocateCloakBuffer_ToTile, 7)
 }
 
 // determining radius of indicator
-A_FINE_HOOK(45673E, BuildingClass_GetRangeOfRadial, 7)
+A_FINE_HOOK(0x45673E, BuildingClass_GetRangeOfRadial, 0x7)
 {
 	GET(BuildingClass *, Building, ESI);
 	int radius = Building->Type->CloakRadiusInCells; // max (normal radius, deployed radius)
@@ -116,7 +116,7 @@ A_FINE_HOOK(45673E, BuildingClass_GetRangeOfRadial, 7)
 // don't forget RegisteredAsPoweredUnitSource
 
 // structure with a PowersUnit= just came online
-A_FINE_HOOK(4549D1, BuildingClass_UpdatePowered_PowersUnit_Online, A)
+A_FINE_HOOK(0x4549D1, BuildingClass_UpdatePowered_PowersUnit_Online, 0xA)
 {
 	GET(BuildingClass *, Structure, ESI);
 	return 0x4549F8;
@@ -124,21 +124,21 @@ A_FINE_HOOK(4549D1, BuildingClass_UpdatePowered_PowersUnit_Online, A)
 
 // structure with a PowersUnit= just came offline
 
-A_FINE_HOOK(454B16, BuildingClass_UpdatePowered_PowersUnit_Offline, A)
+A_FINE_HOOK(0x454B16, BuildingClass_UpdatePowered_PowersUnit_Offline, 0xA)
 {
 	GET(BuildingClass *, Structure, ESI);
 	return 0x454B3D;
 }
 
 // structure with a PowersUnit= was destroyed
-A_FINE_HOOK(502645, HouseClass_RegisterTechnoLoss_PowersUnit, 6)
+A_FINE_HOOK(0x502645, HouseClass_RegisterTechnoLoss_PowersUnit, 0x6)
 {
 	GET(BuildingClass *, Structure, ESI);
 	return 0x50277B;
 }
 
 // do we have powered centers for this type?
-A_FINE_HOOK(50E1B0, HouseClass_HasPoweredCenters, 6)
+A_FINE_HOOK(0x50E1B0, HouseClass_HasPoweredCenters, 0x6)
 {
 	GET(HouseClass *, Owner, ECX);
 	GET_STACK(TechnoTypeClass *, Type, 0x4);
@@ -151,7 +151,7 @@ A_FINE_HOOK(50E1B0, HouseClass_HasPoweredCenters, 6)
 }
 
 /* #346 - Veterancy from MC */
-A_FINE_HOOK(702FFC, TechnoClass_RegisterDestruction, 6)
+A_FINE_HOOK(0x702FFC, TechnoClass_RegisterDestruction, 0x6)
 {
 	GET(TechnoClass *, Victim, ESI);
 	GET(TechnoClass *, Killer, EDI);
@@ -160,7 +160,7 @@ A_FINE_HOOK(702FFC, TechnoClass_RegisterDestruction, 6)
 }
 
 /* #347 - Power= tag on units */
-A_FINE_HOOK(508D4A, HouseClass_Update_Power, 6)
+A_FINE_HOOK(0x508D4A, HouseClass_Update_Power, 0x6)
 {
 	GET(HouseClass *, House, ESI);
 	// loop over UnitClass::Array , count Power values, House->PowerOutput += x; House->PowerDrain += y;
@@ -168,8 +168,8 @@ A_FINE_HOOK(508D4A, HouseClass_Update_Power, 6)
 }
 
 /* #407 - Flash RGB */
-	// if (has custom tint) currentTint |= Drawing::Color16bit(tint);
-A_FINE_HOOK(73C15F, UnitClass_DrawVXL_Tint, 7)
+	// if (has custom tint) currentTint |= Drawing::RGB_To_Int(tint);
+A_FINE_HOOK(0x73C15F, UnitClass_DrawVXL_Tint, 0x7)
 {
 	GET(UnitClass *, Item, EBP);
 	DWORD currentTint = R->get_ESI();
@@ -178,7 +178,7 @@ A_FINE_HOOK(73C15F, UnitClass_DrawVXL_Tint, 7)
 	return 0;
 }
 
-A_FINE_HOOK(43D52D, BuildingClass_Draw_Tint, 5)
+A_FINE_HOOK(0x43D52D, BuildingClass_Draw_Tint, 0x5)
 {
 	GET(BuildingClass *, Item, ESI);
 	DWORD currentTint = R->get_EDI();
@@ -188,7 +188,7 @@ A_FINE_HOOK(43D52D, BuildingClass_Draw_Tint, 5)
 }
 
 
-A_FINE_HOOK(5190C5, InfantryClass_Draw_Tint, 5)
+A_FINE_HOOK(0x5190C5, InfantryClass_Draw_Tint, 0x5)
 {
 	GET(InfantryClass *, Item, ESI);
 	DWORD currentTint = R->get_StackVar32(0x18);
@@ -198,7 +198,7 @@ A_FINE_HOOK(5190C5, InfantryClass_Draw_Tint, 5)
 }
 
 /* #468 - Deglobalize WarpIn/Out */
-A_FINE_HOOK(719439, TeleportLocomotionClass_ILocomotion_Update_1, 6)
+A_FINE_HOOK(0x719439, TeleportLocomotionClass_ILocomotion_Update_1, 0x6)
 {
 	GET(LocomotionClass *, Loco, ESI);
 	AnimTypeClass *Anim = NULL;
@@ -207,7 +207,7 @@ A_FINE_HOOK(719439, TeleportLocomotionClass_ILocomotion_Update_1, 6)
 	return 0x71943F;
 }
 
-A_FINE_HOOK(719788, TeleportLocomotionClass_ILocomotion_Update_2, 6)
+A_FINE_HOOK(0x719788, TeleportLocomotionClass_ILocomotion_Update_2, 0x6)
 {
 	GET(LocomotionClass *, Loco, ESI);
 	AnimTypeClass *Anim = NULL;
@@ -216,7 +216,7 @@ A_FINE_HOOK(719788, TeleportLocomotionClass_ILocomotion_Update_2, 6)
 	return 0x71978E;
 }
 
-A_FINE_HOOK(71986A, TeleportLocomotionClass_ILocomotion_Update_3, 6)
+A_FINE_HOOK(0x71986A, TeleportLocomotionClass_ILocomotion_Update_3, 0x6)
 {
 	GET(LocomotionClass *, Loco, ESI);
 	AnimTypeClass *Anim = NULL;
@@ -239,7 +239,7 @@ A_FINE_HOOK(71986A, TeleportLocomotionClass_ILocomotion_Update_3, 6)
 
 
 // for SHPs
-A_FINE_HOOK(5F907A, ObjectTypeClass_Load2DArt, 6)
+A_FINE_HOOK(0x5F907A, ObjectTypeClass_Load2DArt, 0x6)
 {
 	GET(ObjectTypeClass *, ObjType, EBP);
 
@@ -247,7 +247,7 @@ A_FINE_HOOK(5F907A, ObjectTypeClass_Load2DArt, 6)
 }
 
 
-A_FINE_HOOK(5F811E, ObjectTypeClass_Load3DArt, 6)
+A_FINE_HOOK(0x5F811E, ObjectTypeClass_Load3DArt, 0x6)
 {
 	GET(ObjectTypeClass *, ObjType, ESI);
 
@@ -255,7 +255,7 @@ A_FINE_HOOK(5F811E, ObjectTypeClass_Load3DArt, 6)
 }
 
 /* #594 - Custom IFV Names */
-A_FINE_HOOK(746BCB, UnitClass_GetUIName, 4)
+A_FINE_HOOK(0x746BCB, UnitClass_GetUIName, 0x4)
 {
 	GET(UnitClass *, Unit, ESI);
 	GET(InfantryClass *, Gunner, EDI);
@@ -274,7 +274,7 @@ A_FINE_HOOK(746BCB, UnitClass_GetUIName, 4)
 // see http://forums.renegadeprojects.com/showthread.php?tid=1128
 
 // replaces crate result if , i.e. an Elite unit finds a veterancy crate
-A_FINE_HOOK(481B22, CellClass_CrateBeingCollected_Part1_Overrides, 5)
+A_FINE_HOOK(0x481B22, CellClass_CrateBeingCollected_Part1_Overrides, 0x5)
 {
 	GET(Powerup, RandomPowerup, EBX);
 	GET(CellClass *, pThis, ESI);
@@ -282,7 +282,7 @@ A_FINE_HOOK(481B22, CellClass_CrateBeingCollected_Part1_Overrides, 5)
 	return Handled ? 0x481D86 : 0;
 }
 
-A_FINE_HOOK(481DB8, CellClass_CrateBeingCollected_Part2_ActualEffects, 5)
+A_FINE_HOOK(0x481DB8, CellClass_CrateBeingCollected_Part2_ActualEffects, 0x5)
 {
 	GET(Powerup, RandomPowerup, EBX);
 	GET(CellClass *, pThis, ESI);
@@ -298,7 +298,7 @@ A_FINE_HOOK(481DB8, CellClass_CrateBeingCollected_Part2_ActualEffects, 5)
  * 	click target becomes {0, 0} and unit disregards its own child cells when pathfinding
  * 	so can park {0, 0} next to a structure, then {1, 0} ends up inside said structure and unit explodes upon stopping
  * */
-A_FINE_HOOK(5F7641, ObjectTypeClass_GetFoundationData, 6)
+A_FINE_HOOK(0x5F7641, ObjectTypeClass_GetFoundationData, 0x6)
 {
 	CellStruct *StubFoundation = (CellStruct *)0xAC1438;
 	CellStruct *TestFoundation = (CellStruct *)0x89C978;

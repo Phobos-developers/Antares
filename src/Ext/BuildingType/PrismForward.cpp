@@ -19,7 +19,6 @@ bool BuildingTypeExt::cPrismForwarding::Load(AresStreamReader &Stm, bool Registe
 		.Process(this->MaxNetworkSize)
 		.Process(this->SupportModifier)
 		.Process(this->DamageAdd)
-		.Process(this->MyHeight)
 		.Process(this->Intensity)
 		.Process(this->ChargeDelay)
 		.Process(this->ToAllies)
@@ -38,7 +37,6 @@ bool BuildingTypeExt::cPrismForwarding::Save(AresStreamWriter &Stm) const {
 		.Process(this->MaxNetworkSize)
 		.Process(this->SupportModifier)
 		.Process(this->DamageAdd)
-		.Process(this->MyHeight)
 		.Process(this->Intensity)
 		.Process(this->ChargeDelay)
 		.Process(this->ToAllies)
@@ -80,7 +78,6 @@ void BuildingTypeExt::cPrismForwarding::LoadFromINIFile(BuildingTypeClass *pThis
 		this->SupportModifier.Read(exINI, pID, "PrismForwarding.SupportModifier");
 		this->DamageAdd.Read(exINI, pID, "PrismForwarding.DamageAdd");
 		this->ToAllies.Read(exINI, pID, "PrismForwarding.ToAllies");
-		this->MyHeight.Read(exINI, pID, "PrismForwarding.MyHeight");
 		this->BreakSupport.Read(exINI, pID, "PrismForwarding.BreakSupport");
 		this->Intensity.Read(exINI, pID, "PrismForwarding.Intensity");
 		this->ChargeDelay.Read(exINI, pID, "PrismForwarding.ChargeDelay");
@@ -99,7 +96,7 @@ void BuildingTypeExt::cPrismForwarding::LoadFromINIFile(BuildingTypeClass *pThis
 			(int* pSetting, const char* const pKey, bool const elite)
 		{
 			if(exINI.ReadString(pID, pKey)) {
-				if(auto const pWeapon = WeaponTypeClass::FindOrAllocate(exINI.value())) {
+				if(auto const pWeapon = detail::find_or_allocate<WeaponTypeClass>(exINI.value())) {
 					auto const idxWeapon = *pSetting != -1
 						? *pSetting : this->GetUnusedWeaponSlot(pThis, elite);
 					if(idxWeapon == -1) {

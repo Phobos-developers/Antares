@@ -13,9 +13,11 @@ class TiberiumExt
 public:
 	using base_type = TiberiumClass;
 
-	class ExtData final : public Extension<TiberiumClass>
+	class ExtData final : public Extension<TiberiumClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0xB16B00B5;
+
 		Nullable<int> Damage;
 		Nullable<WarheadTypeClass*> Warhead;
 
@@ -29,7 +31,7 @@ public:
 
 		Valueable<int> DebrisChance;
 
-		ExtData(TiberiumClass* OwnerObject) : Extension<TiberiumClass>(OwnerObject),
+		ExtData(TiberiumClass* OwnerObject) : Extension<TiberiumClass, ExtData>(OwnerObject),
 			Damage(),
 			Warhead(),
 			Heal_Step(),
@@ -41,15 +43,15 @@ public:
 			DebrisChance(33)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void LoadFromINIFile(CCINIClass* pINI);
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		double GetHealDelay() const;
 		int GetHealStep(TechnoClass* pTechno) const;
@@ -64,7 +66,7 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<TiberiumExt> {
+	class ExtContainer final : public Container<TiberiumExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();

@@ -12,8 +12,10 @@
 
 #include <vector>
 
-void SW_HunterSeeker::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_HunterSeeker::Initialize(SWTypeExt::ExtData *pData)
 {
+	auto pSW = pData->OwnerObject();
+
 	// Defaults to HunterSeeker values
 	pData->SW_MaxCount = 1;
 
@@ -31,8 +33,10 @@ void SW_HunterSeeker::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass
 	pData->SW_RadarEvent = false;
 }
 
-void SW_HunterSeeker::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_HunterSeeker::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -50,7 +54,7 @@ void SW_HunterSeeker::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClas
 	pData->SW_RadarEvent = false;
 }
 
-bool SW_HunterSeeker::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_HunterSeeker::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	HouseClass* pOwner = pThis->Owner;
 	auto pExt = SWTypeExt::ExtMap.Find(pThis->Type);
@@ -58,7 +62,7 @@ bool SW_HunterSeeker::Activate(SuperClass* pThis, const CellStruct &Coords, bool
 	// get the appropriate hunter seeker type
 	UnitTypeClass* pType = pExt->HunterSeeker_Type;
 	if(!pType) {
-		if(auto pSide = SideClass::Array->GetItemOrDefault(pOwner->SideIndex)) {
+		if(auto pSide = SideClass::Array.GetItemOrDefault(pOwner->SideIndex)) {
 			auto pSideExt = SideExt::ExtMap.Find(pSide);
 			pType = pSideExt->HunterSeeker;
 		}
@@ -105,7 +109,7 @@ bool SW_HunterSeeker::Activate(SuperClass* pThis, const CellStruct &Coords, bool
 			// put it on the map and let it go
 			CoordStruct crd = CellClass::Cell2Coord(cell);
 
-			if(pHunter->Put(crd, 64)) {
+			if(pHunter->Unlimbo(crd, static_cast<DirType>(64))) {
 				pHunter->Locomotor->Acquire_Hunter_Seeker_Target();
 				pHunter->QueueMission(Mission::Attack, false);
 				pHunter->NextMission();
@@ -129,9 +133,9 @@ CellStruct SW_HunterSeeker::GetLaunchCell(SWTypeExt::ExtData* pSWType, BuildingC
 {
 	auto position = CellClass::Coord2Cell(pBuilding->GetCoords());
 
-	auto cell = MapClass::Instance->Pathfinding_Find(position, SpeedType::Foot,
+	auto cell = MapClass::Instance.NearByLocation(position, SpeedType::Foot,
 		-1, MovementZone::Normal, false, 1, 1, false, false, false, true,
 		CellStruct::Empty, false, false);
 
-	return MapClass::Instance->IsWithinUsableArea(cell, true) ? cell : CellStruct::Empty;
+	return MapClass::Instance.IsWithinUsableArea(cell, true) ? cell : CellStruct::Empty;
 }

@@ -31,13 +31,14 @@ SWRange SW_ChronoSphere::GetRange(const SWTypeExt::ExtData* pData) const
 	return pData->SW_Range;
 }
 
-void SW_ChronoSphere::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_ChronoSphere::Initialize(SWTypeExt::ExtData *pData)
 {
 	pData->SW_AnimVisibility = SuperWeaponAffectedHouse::Team;
 	pData->SW_AnimHeight = 5;
 
 	pData->Chronosphere_KillOrganic = true;
 	pData->Chronosphere_KillTeleporters = false;
+	pData->Chronosphere_KillCargo = false;
 	pData->Chronosphere_AffectIronCurtain = false;
 	pData->Chronosphere_AffectUnwarpable = true;
 	pData->Chronosphere_AffectUndeployable = false;
@@ -50,11 +51,13 @@ void SW_ChronoSphere::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass
 	pData->EVA_Activated = VoxClass::FindIndex("EVA_ChronosphereActivated");
 	
 	pData->SW_AffectsTarget = SuperWeaponTarget::Infantry | SuperWeaponTarget::Unit;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::Chronosphere);
+	pData->SW_Cursor = MouseCursorType::Chronosphere;
 }
 
-void SW_ChronoSphere::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_ChronoSphere::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -65,6 +68,7 @@ void SW_ChronoSphere::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClas
 
 	pData->Chronosphere_KillOrganic.Read(exINI, section, "Chronosphere.KillOrganic");
 	pData->Chronosphere_KillTeleporters.Read(exINI, section, "Chronosphere.KillTeleporters");
+	pData->Chronosphere_KillCargo.Read(exINI, section, "Chronosphere.KillCargo");
 	pData->Chronosphere_AffectIronCurtain.Read(exINI, section, "Chronosphere.AffectsIronCurtain");
 	pData->Chronosphere_AffectUnwarpable.Read(exINI, section, "Chronosphere.AffectsUnwarpable");
 	pData->Chronosphere_AffectUndeployable.Read(exINI, section, "Chronosphere.AffectsUndeployable");
@@ -86,13 +90,13 @@ void SW_ChronoSphere::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClas
 	pData->SW_AffectsTarget = (pData->SW_AffectsTarget | SuperWeaponTarget::Building);
 }
 
-bool SW_ChronoSphere::Activate(SuperClass* const pThis, const CellStruct &Coords, bool const IsPlayer)
+bool SW_ChronoSphere::Activate(SuperClass* const pThis, CellStruct const Coords, bool const IsPlayer)
 {
 	auto const pSW = pThis->Type;
 	auto const pData = SWTypeExt::ExtMap.Find(pSW);
 
-	if(pThis->IsCharged) {
-		auto const pTarget = MapClass::Instance->GetCellAt(Coords);
+	if(pThis->IsReady) {
+		auto const pTarget = MapClass::Instance.GetCellAt(Coords);
 
 		// remember the current source position
 		pThis->ChronoMapCoords = Coords;
@@ -112,7 +116,7 @@ bool SW_ChronoSphere::Activate(SuperClass* const pThis, const CellStruct &Coords
 			int idxWarp = SuperWeaponTypeClass::FindIndex(pData->SW_PostDependent);
 
 			// fallback to use the first warp if there is no specific one
-			auto const& Types = *SuperWeaponTypeClass::Array;
+			auto const& Types = SuperWeaponTypeClass::Array;
 			if(!Types.ValidIndex(idxWarp) || Types[idxWarp]->Type != SuperWeaponType::ChronoWarp) {
 				for(auto const& pWarp : Types) {
 					if(pWarp->Type == SuperWeaponType::ChronoWarp) {

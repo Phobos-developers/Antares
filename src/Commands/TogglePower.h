@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StringTable.h>
+
 #include "../Ext/Rules/Body.h"
 
 #include <CommandClass.h>
@@ -16,23 +18,23 @@ public:
 
 	virtual const wchar_t* GetUIName() const override
 	{
-		return L"Toggle Power Mode";
+		return StringTable::LoadString("TXT_TOGGLE_POWER");
 	}
 
 	virtual const wchar_t* GetUICategory() const override
 	{
-		return L"Interface";
+		return StringTable::LoadString("TXT_INTERFACE");
 	}
 
 	virtual const wchar_t* GetUIDescription() const override
 	{
-		return L"Turn toggle power mode on / off.";
+		return StringTable::LoadString("TXT_TOGGLE_POWER_DESC");
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		if(RulesExt::Global()->TogglePowerAllowed) {
-			MapClass::Instance->SetTogglePowerMode(-1);
+			MapClass::Instance.SetTogglePowerMode(-1);
 		}
 	}
 };

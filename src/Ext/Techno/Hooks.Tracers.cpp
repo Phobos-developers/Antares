@@ -3,7 +3,7 @@
 #include "../../Misc/Debug.h"
 
 #if 0
-A_FINE_HOOK(6F2B40, TechnoClass_CTOR_Log, 6)
+A_FINE_HOOK(0x6F2B40, TechnoClass_CTOR_Log, 0x6)
 {
 	GET(TechnoClass *, pThis, ECX);
 	Debug::Log("CTOR: %X", pThis);
@@ -11,7 +11,7 @@ A_FINE_HOOK(6F2B40, TechnoClass_CTOR_Log, 6)
 	return 0;
 }
 
-A_FINE_HOOK(6F4500, TechnoClass_DTOR_Log, 5)
+A_FINE_HOOK(0x6F4500, TechnoClass_DTOR_Log, 0x5)
 {
 	GET(TechnoClass *, pThis, ECX);
 	Debug::Log("DTOR: %X", pThis);
@@ -19,7 +19,7 @@ A_FINE_HOOK(6F4500, TechnoClass_DTOR_Log, 5)
 	return 0;
 }
 
-A_FINE_HOOK(4720E8, CaptureManagerClass_FreeUnit, a)
+A_FINE_HOOK(0x4720E8, CaptureManagerClass_FreeUnit, 0xa)
 {
 	GET(TechnoClass *, T, ESI);
 	GET(DWORD, mgr, EDI);
@@ -28,7 +28,7 @@ A_FINE_HOOK(4720E8, CaptureManagerClass_FreeUnit, a)
 	return 0;
 }
 
-A_FINE_HOOK(471E34, CaptureManagerClass_CaptureUnit, 6)
+A_FINE_HOOK(0x471E34, CaptureManagerClass_CaptureUnit, 0x6)
 {
 	GET(TechnoClass *, T, ESI);
 	GET(DWORD, mgr, EBX);

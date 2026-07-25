@@ -17,7 +17,35 @@ enum class SuperWeaponAITargetingMode {
 	Base = 11,
 	MultiMissile = 12,
 	HunterSeeker = 13,
-	EnemyBase = 14
+	EnemyBase = 14,
+	IronCurtain = 15,
+	Attack = 16,
+	LowPower = 17,
+	LowPowerAttack = 18,
+	DropPod = 19,
+	LightningRandom = 20
+};
+
+// extra conditions the AI has to see fulfilled before it fires a super weapon
+enum class SuperWeaponAITargetingConstraints : unsigned int {
+	None = 0x0,
+	OffensiveCellClear = 0x1,
+	DefensiveCellClear = 0x2,
+	Enemy = 0x4,
+	LightningStormInactive = 0x8,
+	DominatorInactive = 0x10,
+	Attacked = 0x20,
+	LowPower = 0x40,
+	OffensiveCellSet = 0x80,
+	DefensiveCellSet = 0x100
+};
+
+MAKE_ENUM_FLAGS(SuperWeaponAITargetingConstraints);
+
+enum class SuperWeaponAITargetingPreference : unsigned char {
+	None = 0,
+	Offensive = 1,
+	Defensive = 2
 };
 
 enum class SuperWeaponTarget : unsigned char {

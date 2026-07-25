@@ -30,16 +30,16 @@ public:
 		return L"Toggles the logging of extra data to the DEBUG.TXT log file";
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		if(Debug::bLog) {
 			Debug::LogFileClose(666);
 			Debug::bLog = false;
-			MessageListClass::Instance->PrintMessage(L"Debug logging OFF");
+			MessageListClass::Instance.PrintMessage(L"Debug logging OFF");
 		} else {
 			Debug::LogFileOpen();
 			Debug::bLog = true;
-			MessageListClass::Instance->PrintMessage(L"Debug logging ON");
+			MessageListClass::Instance.PrintMessage(L"Debug logging ON");
 		}
 	}
 };

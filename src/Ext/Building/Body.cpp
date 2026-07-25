@@ -1,5 +1,6 @@
 #include "Body.h"
 #include "../BuildingType/Body.h"
+#include "../Techno/Body.h"
 #include "../TechnoType/Body.h"
 #include "../House/Body.h"
 #include "../Rules/Body.h"
@@ -21,7 +22,6 @@
 
 #include <algorithm>
 
-template<> const DWORD Extension<BuildingClass>::Canary = 0x87654321;
 BuildingExt::ExtContainer BuildingExt::ExtMap;
 
 std::vector<CellStruct> BuildingExt::TempFoundationData1;
@@ -32,10 +32,10 @@ std::vector<CellStruct> BuildingExt::TempCoveredCellsData;
 // member functions
 
 DWORD BuildingExt::GetFirewallFlags(BuildingClass *pThis) {
-	auto pCell = MapClass::Instance->GetCellAt(pThis->Location);
+	auto pCell = MapClass::Instance.GetCellAt(pThis->Location);
 	DWORD flags = 0;
 	for(size_t direction = 0; direction < 8; direction += 2) {
-		auto pNeighbour = pCell->GetNeighbourCell(direction);
+		auto pNeighbour = pCell->GetNeighbourCell(static_cast<FacingType>(direction));
 		if(auto pBld = pNeighbour->GetBuilding()) {
 			auto pTypeData = BuildingTypeExt::ExtMap.Find(pBld->Type);
 			if(pTypeData->Firewall_Is && pBld->Owner == pThis->Owner && !pBld->InLimbo && pBld->IsAlive) {
@@ -50,8 +50,7 @@ bool BuildingExt::IsActiveFirestormWall(BuildingClass* const pBuilding, HouseCla
 {
 	if(HouseExt::IsAnyFirestormActive && pBuilding && pBuilding->Owner != pIgnore) {
 		if(!pBuilding->InLimbo && pBuilding->IsAlive) {
-			auto const pHouseExt = HouseExt::ExtMap.Find(pBuilding->Owner);
-			if(pHouseExt->FirewallActive) {
+			if(pBuilding->Owner->FirestormActive) {
 				auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pBuilding->Type);
 				return pTypeExt->Firewall_Is;
 			}
@@ -86,29 +85,34 @@ void BuildingExt::UpdateDisplayTo(BuildingClass *pThis) {
 				}
 			}
 		}
-		MapClass::Instance->RedrawSidebar(2);
+		MapClass::Instance.RedrawSidebar(2);
 	}
 }
 
 // #664: Advanced Rubble
-//! Switches the building into its Advanced Rubble state or back to normal.
+//! Takes a building off the map and puts its other Advanced Rubble state there.
 /*!
-	If no respective target-state object exists in the ExtData so far, the
-	function will create it. It'll check beforehand whether the necessary
-	Rubble.Intact or Rubble.Destroyed are actually set on the type. If the
-	necessary one is not set, it'll log a debug message and abort.
+	Both callers have already established that the state they are switching to
+	is configured (either a type to become, or Remove set), so there is no
+	"nothing to do" case left to diagnose here.
 
 	Rubble is set to full health on placing, since, no matter what we do in the
-	backend, to the player, each pile of rubble is a new one. The reconstructed
-	building, on the other hand, is set to 1% of it's health, since it was just
-	no reconstructed, and not freshly built or repaired yet. The individual
-	strength settings can override this.
+	backend, to the player, each pile of rubble is a new one. The individual
+	strength setting overrides this: a negative one in [-100,-1] is read as a
+	percentage of the new type's Strength, a positive one as an absolute value
+	capped at it.
 
-	\param beingRepaired if set to true, the function will turn the building
-						 back into its normal state. If false or unset, the
-						 building will be turned into rubble.
+	The placement runs under IKnowWhatImDoing, so the replacement lands without
+	the usual deploy checks having a say; whether it landed is not consulted.
 
-	\returns true if the new state could be deployed, false otherwise.
+	\param pBuilding the building leaving the map
+	\param remove    place nothing, just take the old state away
+	\param pNewType  the type to place in its stead
+	\param owner     which house the replacement belongs to
+	\param strength  the replacement's health, see above
+	\param pAnimType played over the old building's coordinates, may be null
+
+	\returns the building that was placed, or nullptr if there was none.
 
 	\author Renegade
 	\date 16.12.09+
@@ -117,59 +121,38 @@ void BuildingExt::UpdateDisplayTo(BuildingClass *pThis) {
 	\author Gluk-v48
 	\date 07.04.14
 */
-bool BuildingExt::ExtData::RubbleYell(bool beingRepaired) {
-	auto CreateBuilding = [](BuildingClass* pBuilding, bool remove,
-		BuildingTypeClass* pNewType, OwnerHouseKind owner, int strength,
-		AnimTypeClass* pAnimType, const char* pTagName) -> bool
-	{
-		if(!pNewType && !remove) {
-			Debug::Log("Warning! Advanced Rubble was supposed to be reconstructed but"
-				" Ares could not obtain its new BuildingType. Check if [%s]Rubble.%s is"
-				" set (correctly).\n", pBuilding->Type->ID, pTagName);
-			return true;
-		}
+BuildingClass* BuildingExt::ExtData::PlaceRubble(BuildingClass* pBuilding,
+	bool remove, BuildingTypeClass* pNewType, OwnerHouseKind owner, int strength,
+	AnimTypeClass* pAnimType)
+{
+	pBuilding->Limbo(); // only takes it off the map
+	pBuilding->DestroyNthAnim(BuildingAnimSlot::All);
 
-		pBuilding->Remove(); // only takes it off the map
-		pBuilding->DestroyNthAnim(BuildingAnimSlot::All);
+	BuildingClass* pNew = nullptr;
 
-		if(!remove) {
-			auto pOwner = HouseExt::GetHouseKind(owner, true, pBuilding->Owner);
-			auto pNew = static_cast<BuildingClass*>(pNewType->CreateObject(pOwner));
+	if(!remove) {
+		auto pOwner = HouseExt::GetHouseKind(owner, true, pBuilding->Owner);
+		pNew = static_cast<BuildingClass*>(pNewType->CreateObject(pOwner));
 
-			if(strength <= -1 && strength >= -100) {
-				// percentage of original health
-				pNew->Health = std::max((-strength * pNew->Type->Strength) / 100, 1);
-			} else if(strength > 0) {
-				pNew->Health = std::min(strength, pNew->Type->Strength);
-			} /* else Health = Strength*/
+		if(strength <= -1 && strength >= -100) {
+			// percentage of original health
+			pNew->Health = std::max((-strength * pNew->Type->Strength) / 100, 1);
+		} else if(strength > 0) {
+			pNew->Health = std::min(strength, pNew->Type->Strength);
+		} /* else Health = Strength*/
 
-			// The building is created?
-			if(!pNew->Put(pBuilding->Location, pBuilding->Facing.current().value8())) {
-				Debug::Log("Advanced Rubble: Failed to place normal state on map!\n");
-				GameDelete(pNew);
-				return false;
-			}
-		}
-
-		if(pAnimType) {
-			GameCreate<AnimClass>(pAnimType, pBuilding->GetCoords());
-		}
-
-		return true;
-	};
-
-	auto currentBuilding = this->OwnerObject();
-	auto pTypeData = BuildingTypeExt::ExtMap.Find(currentBuilding->Type);
-	if(beingRepaired) {
-		return CreateBuilding(currentBuilding, pTypeData->RubbleIntactRemove,
-			pTypeData->RubbleIntact, pTypeData->RubbleIntactOwner,
-			pTypeData->RubbleIntactStrength, pTypeData->RubbleIntactAnim, "Intact");
-	} else {
-		return CreateBuilding(currentBuilding, pTypeData->RubbleDestroyedRemove,
-			pTypeData->RubbleDestroyed, pTypeData->RubbleDestroyedOwner,
-			pTypeData->RubbleDestroyedStrength, pTypeData->RubbleDestroyedAnim,
-			"Destroyed");
+		++Unsorted::ScenarioInit;
+		// GetFacing<256>, not <8>: Unlimbo wants a 256-direction facing. Shipped
+		// (0x1000F6C1) inlines `((Raw >> 7) + 1) >> 1`, which is GetValue<8>.
+		pNew->Unlimbo(pBuilding->Location, static_cast<DirType>(pBuilding->PrimaryFacing.Current().GetFacing<256>()));
+		--Unsorted::ScenarioInit;
 	}
+
+	if(pAnimType) {
+		GameCreate<AnimClass>(pAnimType, pBuilding->GetCoords());
+	}
+
+	return pNew;
 }
 
 //! Bumps all Technos that reside on a building's foundation out of the way.
@@ -189,14 +172,14 @@ void BuildingExt::ExtData::KickOutOfRubble() {
 	DynamicVectorClass<Item> list;
 
 	// iterate over all cells and remove all infantry
-	auto const location = MapClass::Instance->GetCellAt(pBld->Location)->MapCoords;
+	auto const location = MapClass::Instance.GetCellAt(pBld->Location)->MapCoords;
 	for(auto i = data; *i != BuildingTypeExt::FoundationEndMarker; ++i) {
 		// remove every techno that resides on this cell
-		auto const pCell = MapClass::Instance->GetCellAt(location + *i);
+		auto const pCell = MapClass::Instance.GetCellAt(location + *i);
 		for(NextObject obj(pCell->GetContent()); obj; ++obj) {
 			if(auto const pFoot = abstract_cast<FootClass*>(*obj)) {
 				auto const selected = pFoot->IsSelected;
-				if(pFoot->Remove()) {
+				if(pFoot->Limbo()) {
 					list.AddItem(Item(pFoot, selected));
 				}
 			}
@@ -312,14 +295,12 @@ void BuildingExt::ExtData::doTraverseTo(BuildingClass* targetBuilding) {
 
 void BuildingExt::ExtData::evalRaidStatus() {
 	// if the building is still marked as raided, but unoccupied, return it to its previous owner
-	if(this->isCurrentlyRaided && !this->OwnerObject()->Occupants.Count) {
+	if(this->OwnerBeforeRaid && !this->OwnerObject()->Occupants.Count) {
 		// Fix for #838: Only return the building to the previous owner if he hasn't been defeated
 		if(!this->OwnerBeforeRaid->Defeated) {
-			this->ignoreNextEVA = true; // #698 - used in BuildingClass_ChangeOwnership_TrenchEVA to override EVA announcement
 			this->OwnerObject()->SetOwningHouse(this->OwnerBeforeRaid);
 		}
 		this->OwnerBeforeRaid = nullptr;
-		this->isCurrentlyRaided = false;
 	}
 }
 
@@ -385,7 +366,7 @@ void BuildingExt::buildLines(BuildingClass* theBuilding, CellStruct selectedCell
 		for(short distanceFromCenter = 1; distanceFromCenter <= maxLinkDistance; ++distanceFromCenter) {
 			cellToCheck += directionOffset; // adjust the cell to check based on current distance, relative to the selected cell
 
-			CellClass *cell = MapClass::Instance->TryGetCellAt(cellToCheck);
+			CellClass *cell = MapClass::Instance.TryGetCellAt(cellToCheck);
 
 			if(!cell) { // don't parse this cell if it doesn't exist (duh)
 				break;
@@ -411,18 +392,18 @@ void BuildingExt::buildLines(BuildingClass* theBuilding, CellStruct selectedCell
 		for(int distanceFromCenter = 1; distanceFromCenter <= linkLength; ++distanceFromCenter) {
 			cellToBuildOn += directionOffset;
 
-			if(CellClass *cell = MapClass::Instance->GetCellAt(cellToBuildOn)) {
+			if(CellClass *cell = MapClass::Instance.GetCellAt(cellToBuildOn)) {
 				if(BuildingClass *tempBuilding = specific_cast<BuildingClass *>(theBuilding->Type->CreateObject(buildingOwner))) {
 					CoordStruct coordBuffer = CellClass::Cell2Coord(cellToBuildOn);
 
-					++Unsorted::IKnowWhatImDoing; // put the building there even if normal rules would deny - e.g. under units
-					bool Put = tempBuilding->Put(coordBuffer, 0);
-					--Unsorted::IKnowWhatImDoing;
+					++Unsorted::ScenarioInit; // put the building there even if normal rules would deny - e.g. under units
+					bool Put = tempBuilding->Unlimbo(coordBuffer, DirType::North);
+					--Unsorted::ScenarioInit;
 
 					if(Put) {
 						tempBuilding->QueueMission(Mission::Construction, false);
 						tempBuilding->DiscoveredBy(buildingOwner);
-						tempBuilding->unknown_bool_6DD = 1;
+						tempBuilding->IsReadyToCommence = 1;
 					} else {
 						GameDelete(tempBuilding);
 					}
@@ -445,7 +426,7 @@ signed int BuildingExt::GetImageFrameIndex(BuildingClass *pThis) {
 			int frameIdx = 0;
 			CellClass *Cell = this->GetCell();
 			for(int direction = 0; direction <= 7; direction += 2) {
-				if(BuildingClass *B = Cell->GetNeighbourCell(direction)->GetBuilding()) {
+				if(BuildingClass *B = Cell->GetNeighbourCell(static_cast<FacingType>(direction))->GetBuilding()) {
 					if(B->IsAlive && !B->InLimbo) {
 						frameIdx |= (1 << (direction >> 1));
 					}
@@ -471,6 +452,38 @@ void BuildingExt::KickOutHospitalArmory(BuildingClass *pThis)
 	}
 }
 
+// Reproduces BuildingExt::ExtData::UpdateFactoryPlans (0x100454B0). A building
+// whose type - or any of whose upgrades - has FactoryOwners.Permanent hands its
+// original owner's plans to whoever owns it now, permanently. The upgrade slots
+// are what makes the documented "supported on upgrades" true.
+void BuildingExt::UpdateFactoryPlans(BuildingClass *pThis) {
+	BuildingTypeClass* const types[] = {
+		pThis->Type, pThis->Upgrades[0], pThis->Upgrades[1], pThis->Upgrades[2]
+	};
+
+	for(auto const pType : types) {
+		if(pType && TechnoTypeExt::ExtMap.Find(pType)->FactoryOwners_HaveAllPlans) {
+			auto& plans = HouseExt::ExtMap.Find(pThis->Owner)->FactoryOwners_GatheredPlansOf;
+			auto const pOriginal = TechnoExt::ExtMap.Find(pThis)->OriginalHouseType;
+
+			if(!plans.Contains(pOriginal)) {
+				plans.push_back(pOriginal);
+			}
+			return;
+		}
+	}
+}
+
+// Reproduces BuildingExt::ProduceCashDisplay (0x10011D50): the oil derrick payout
+// is queued on the *building's* flying-string ticker, gated by the building type's
+// own ProduceCashDisplay - upgrades contribute their money but never their flag.
+void BuildingExt::ExtData::ProduceCashDisplay(int amount) {
+	auto const pThis = this->OwnerObject();
+	if(BuildingTypeExt::ExtMap.Find(pThis->Type)->ProduceCashDisplay) {
+		TechnoExt::ExtMap.Find(pThis)->TechnoValue += amount;
+	}
+}
+
 // =============================
 // infiltration
 
@@ -491,15 +504,15 @@ bool BuildingExt::ExtData::InfiltratedBy(HouseClass *Enterer) {
 
 	bool raiseEva = false;
 
-	if(Enterer->ControlledByPlayer() || Owner->ControlledByPlayer()) {
+	if(Enterer->IsControlledByCurrentPlayer() || Owner->IsControlledByCurrentPlayer()) {
 		CellStruct xy = EnteredBuilding->GetMapCoords();
 		if(RadarEventClass::Create(RadarEventType::BuildingInfiltrated, xy)) {
 			raiseEva = true;
 		}
 	}
 
-	bool evaForOwner = Owner->ControlledByPlayer() && raiseEva;
-	bool evaForEnterer = Enterer->ControlledByPlayer() && raiseEva;
+	bool evaForOwner = Owner->IsControlledByCurrentPlayer() && raiseEva;
+	bool evaForEnterer = Enterer->IsControlledByCurrentPlayer() && raiseEva;
 	bool effectApplied = false;
 
 	if(pTypeExt->ResetRadar) {
@@ -527,8 +540,8 @@ bool BuildingExt::ExtData::InfiltratedBy(HouseClass *Enterer) {
 	}
 
 
-	if(pTypeExt->StolenTechIndex > -1) {
-		pEntererExt->StolenTech.set(static_cast<size_t>(pTypeExt->StolenTechIndex));
+	if(pTypeExt->StolenTechIndex) {
+		pEntererExt->StolenTech |= std::bitset<32>(pTypeExt->StolenTechIndex);
 
 		Enterer->RecheckTechTree = true;
 		if(evaForOwner) {
@@ -545,10 +558,7 @@ bool BuildingExt::ExtData::InfiltratedBy(HouseClass *Enterer) {
 	if(pTypeExt->UnReverseEngineer) {
 		Debug::Log("Undoing all Reverse Engineering achieved by house %ls\n", Owner->UIName);
 
-		for(auto Type : *TechnoTypeClass::Array) {
-			auto TypeData = TechnoTypeExt::ExtMap.Find(Type);
-			TypeData->ReversedByHouses.erase(Owner);
-		}
+		HouseExt::ExtMap.Find(Owner)->ReverseEngineered.clear();
 		Owner->RecheckTechTree = true;
 
 		if(evaForOwner) {
@@ -594,12 +604,55 @@ bool BuildingExt::ExtData::InfiltratedBy(HouseClass *Enterer) {
 	}
 
 
+	// SpyEffect.SuperWeapon: grant the enterer a super weapon. It is a one-shot
+	// unless SpyEffect.SuperWeaponPermanent, in which case it also loses the
+	// ability to be put on hold. A powered SW arrives on hold if the enterer is
+	// in a power deficit.
+	if(auto const pSWType = pTypeExt->SpySuperWeapon) {
+		bool const permanent = pTypeExt->SuperWeaponPermanent;
+		auto const idxSW = pSWType->ArrayIndex;
+		auto const pSuper = Enterer->Supers[idxSW];
+		bool const onHold = pSWType->IsPowered && Enterer->HasLowPower();
+
+		if(pSuper->Grant(!permanent, Enterer == HouseClass::CurrentPlayer, onHold)) {
+			if(permanent) {
+				pSuper->CanHold = false;
+			}
+
+			if(Enterer == HouseClass::CurrentPlayer) {
+				auto const pSidebar = &SidebarClass::Instance;
+				pSidebar->AddCameo(AbstractType::Special, idxSW);
+				pSidebar->RepaintSidebar(
+					SidebarClass::GetObjectTabIdx(AbstractType::Super, idxSW, 0));
+			}
+
+			if(evaForOwner || evaForEnterer) {
+				VoxClass::Play("EVA_BuildingInfiltrated");
+			}
+			effectApplied = true;
+		}
+	}
+
+
+	// SpyEffect.SabotageDelay: arm the building like a planted C4 charge.
+	// A negative value falls back to [General]C4Delay, in minutes.
+	if(int sabotage = pTypeExt->SabotageDelay) {
+		if(sabotage < 0) {
+			sabotage = static_cast<int>(RulesClass::Instance->C4Delay * 900.0);
+		}
+		if(sabotage >= 0) {
+			EnteredBuilding->C4Applied = true;
+			EnteredBuilding->C4Timer.Start(sabotage);
+		}
+	}
+
+
 	int bounty = 0;
 	int available = Owner->Available_Money();
 	if(pTypeExt->StolenMoneyAmount > 0) {
 		bounty = pTypeExt->StolenMoneyAmount;
-	} else if(pTypeExt->StolenMoneyPercentage > 0) {
-		bounty = available * pTypeExt->StolenMoneyPercentage;
+	} else if(pTypeExt->StolenMoneyPercentage > 0.0f) {
+		bounty = static_cast<int>(available * pTypeExt->StolenMoneyPercentage);
 	}
 	if(bounty > 0) {
 		bounty = std::min(bounty, available);
@@ -615,35 +668,66 @@ bool BuildingExt::ExtData::InfiltratedBy(HouseClass *Enterer) {
 	}
 
 
-	if(pTypeExt->GainVeterancy) {
-		bool promotionStolen = true;
+	// SpyEffect.UnitVeterancy still derives the branch from Factory=, but the
+	// five explicit SpyEffect.<branch>Veterancy flags stack on top of it and are
+	// not restricted to what this building actually produces. Naval, aircraft
+	// and building promotion have no stock HouseClass flag, so they live on the
+	// house extension.
+	bool promotionStolen = false;
 
+	if(pTypeExt->GainVeterancy) {
 		switch(EnteredType->Factory) {
-			case UnitTypeClass::AbsID:
-				Enterer->WarFactoryInfiltrated = true;
-				break;
 			case InfantryTypeClass::AbsID:
 				Enterer->BarracksInfiltrated = true;
+				promotionStolen = true;
 				break;
-				// TODO: aircraft/building
+			case UnitTypeClass::AbsID:
+				Enterer->WarFactoryInfiltrated = true;
+				promotionStolen = true;
+				break;
 			default:
-				promotionStolen = false;
+				break;
 		}
+	}
 
-		if(promotionStolen) {
-			Enterer->RecheckTechTree = true;
-			if(Enterer->ControlledByPlayer()) {
-				MouseClass::Instance->SidebarNeedsRepaint();
-			}
-			if(evaForOwner) {
-				VoxClass::Play("EVA_TechnologyStolen");
-			}
-			if(evaForEnterer) {
-				VoxClass::Play("EVA_BuildingInfiltrated");
-				VoxClass::Play("EVA_NewTechnologyAcquired");
-			}
-			effectApplied = true;
+	if(pTypeExt->InfantryVeterancy) {
+		Enterer->BarracksInfiltrated = true;
+		promotionStolen = true;
+	}
+
+	if(pTypeExt->VehicleVeterancy) {
+		Enterer->WarFactoryInfiltrated = true;
+		promotionStolen = true;
+	}
+
+	if(pTypeExt->NavalVeterancy) {
+		pEntererExt->NavalYardInfiltrated = true;
+		promotionStolen = true;
+	}
+
+	if(pTypeExt->AircraftVeterancy) {
+		pEntererExt->AircraftFactoryInfiltrated = true;
+		promotionStolen = true;
+	}
+
+	if(pTypeExt->BuildingVeterancy) {
+		pEntererExt->BuildingInfiltrated = true;
+		promotionStolen = true;
+	}
+
+	if(promotionStolen) {
+		Enterer->RecheckTechTree = true;
+		if(Enterer->IsControlledByCurrentPlayer()) {
+			MouseClass::Instance.SidebarNeedsRepaint();
 		}
+		if(evaForOwner) {
+			VoxClass::Play("EVA_TechnologyStolen");
+		}
+		if(evaForEnterer) {
+			VoxClass::Play("EVA_BuildingInfiltrated");
+			VoxClass::Play("EVA_NewTechnologyAcquired");
+		}
+		effectApplied = true;
 	}
 
 
@@ -678,13 +762,13 @@ bool BuildingExt::ExtData::InfiltratedBy(HouseClass *Enterer) {
 		if(evaForOwner || evaForEnterer) {
 			VoxClass::Play("EVA_BuildingInfiltrated");
 		}
-		MapClass::Instance->sub_657CE0();
-		MapClass::Instance->RedrawSidebar(2);
+		MapClass::Instance.sub_657CE0();
+		MapClass::Instance.RedrawSidebar(2);
 		effectApplied = true;
 	}
 
 	if(effectApplied) {
-		EnteredBuilding->UpdatePlacement(PlacementType::Redraw);
+		EnteredBuilding->Mark(MarkType::Change);
 	}
 	return true;
 }
@@ -697,8 +781,7 @@ void BuildingExt::ExtData::UpdateFirewall(bool const changedState) {
 		return;
 	}
 
-	auto const pHouseExt = HouseExt::ExtMap.Find(pThis->Owner);
-	auto const active = pHouseExt->FirewallActive;
+	auto const active = pThis->Owner->FirestormActive;
 
 	if(!changedState) {
 		// update only the idle anim
@@ -723,8 +806,8 @@ void BuildingExt::ExtData::UpdateFirewall(bool const changedState) {
 
 		if(pThis->FirestormWallFrame != idxFrame) {
 			pThis->FirestormWallFrame = idxFrame;
-			pThis->GetCell()->Setup(0xFFFFFFFF);
-			pThis->UpdatePlacement(PlacementType::Redraw);
+			pThis->GetCell()->RecalcAttributes(-1);
+			pThis->Mark(MarkType::Change);
 		}
 
 		auto& Anim = pThis->GetAnim(BuildingAnimSlot::Special);
@@ -759,9 +842,9 @@ void BuildingExt::ExtData::UpdateFirewallLinks() {
 		}
 
 		// and all surrounding buildings
-		auto const pCell = MapClass::Instance->GetCellAt(pThis->Location);
+		auto const pCell = MapClass::Instance.GetCellAt(pThis->Location);
 		for(auto i = 0u; i < 8; i += 2) {
-			auto const pNeighbour = pCell->GetNeighbourCell(i);
+			auto const pNeighbour = pCell->GetNeighbourCell(static_cast<FacingType>(i));
 			if(auto const pBld = pNeighbour->GetBuilding()) {
 				auto const pExt = BuildingExt::ExtMap.Find(pBld);
 				pExt->UpdateFirewall();
@@ -898,6 +981,26 @@ void BuildingExt::ExtData::UpdateSecretLab() {
 	}
 }
 
+bool BuildingExt::ExtData::IsBaseNormal() const {
+	if(this->SkipBaseNormal) {
+		return false;
+	}
+
+	auto const pThis = this->OwnerObject();
+	auto const pType = pThis->Type;
+
+	auto const pExt = BuildingTypeExt::ExtMap.Find(pType);
+	if(pExt->AIBaseNormal.isset()) {
+		return pExt->AIBaseNormal;
+	}
+
+	if(pType->UndeploysInto && pType->ResourceGatherer) {
+		return false;
+	}
+
+	return !pThis->IsStrange();
+}
+
 size_t BuildingExt::ExtData::GetSuperWeaponCount() const {
 	auto pExt = BuildingTypeExt::ExtMap.Find(this->OwnerObject()->Type);
 	return pExt->GetSuperWeaponCount();
@@ -1024,18 +1127,26 @@ bool BuildingExt::ExtData::ReverseEngineer(TechnoClass *Victim) {
 		return false;
 	}
 
-	TechnoTypeClass * VictimType = Victim->GetTechnoType();
+	TechnoTypeClass *VictimType = Victim->GetTechnoType();
 	TechnoTypeExt::ExtData *pVictimData = TechnoTypeExt::ExtMap.Find(VictimType);
 
 	if(!pVictimData->CanBeReversed) {
 		return false;
 	}
 
-	HouseClass *Owner = this->OwnerObject()->Owner;
+	// ReversedAs substitutes the type that is unlocked. Only CanBeReversed is read
+	// off the victim itself; everything below works on the substitute. There is no
+	// category guard here - the docs explicitly allow reversing into a BuildingType.
+	if(auto const pReversedAs = pVictimData->ReversedAs.Get()) {
+		VictimType = pReversedAs;
+	}
 
-	if(!pVictimData->ReversedByHouses.contains(Owner)) {
+	HouseClass *Owner = this->OwnerObject()->Owner;
+	HouseExt::ExtData *pOwnerData = HouseExt::ExtMap.Find(Owner);
+
+	if(!pOwnerData->ReverseEngineered.contains(VictimType)) {
 		bool WasBuildable = HouseExt::PrereqValidate(Owner, VictimType, false, true) == 1;
-		pVictimData->ReversedByHouses.insert(Owner, true);
+		pOwnerData->ReverseEngineered.insert(VictimType, true);
 		if(!WasBuildable) {
 			bool IsBuildable = HouseExt::RequirementsMet(Owner, VictimType) != HouseExt::RequirementStatus::Forbidden;
 			if(IsBuildable) {
@@ -1061,12 +1172,23 @@ void BuildingExt::ExtData::KickOutClones(TechnoClass* const Production) {
 		return;
 	}
 
+	// ClonedAs overrides what comes out of the cloning facility. A mismatch in
+	// category cancels cloning outright - infantry can only be cloned as infantry
+	// and units only as units - and it cancels the CloningVats path too.
+	auto CloneType = ProductionType;
+	if(auto const pClonedAs = ProductionTypeData->ClonedAs.Get()) {
+		CloneType = pClonedAs;
+	}
+	if(CloneType->WhatAmI() != ProductionType->WhatAmI()) {
+		return;
+	}
+
 	auto const FactoryOwner = Factory->Owner;
 
 	auto const& CloningSources = ProductionTypeData->ClonedAt;
 
-	auto KickOutClone = [ProductionType, FactoryOwner](BuildingClass *B) -> void {
-		auto Clone = static_cast<TechnoClass *>(ProductionType->CreateObject(FactoryOwner));
+	auto KickOutClone = [CloneType, FactoryOwner](BuildingClass *B) -> void {
+		auto Clone = static_cast<TechnoClass *>(CloneType->CreateObject(FactoryOwner));
 		if(B->KickOutUnit(Clone, CellStruct::Empty) != KickOutResult::Succeeded) {
 			Clone->UnInit();
 		}
@@ -1119,26 +1241,25 @@ template <typename T>
 void BuildingExt::ExtData::Serialize(T& Stm) {
 	Stm
 		.Process(this->OwnerBeforeRaid)
-		.Process(this->isCurrentlyRaided)
-		.Process(this->ignoreNextEVA)
 		.Process(this->FreeUnits_Done)
 		.Process(this->AboutToChronoshift)
+		.Process(this->SkipBaseNormal)
 		.Process(this->PrismForwarding)
 		.Process(this->RegisteredJammers)
 		.Process(this->SensorArrayActiveCounter)
-		.Process(this->CashUpgradeTimers)
 		.Process(this->SecretLab_Placed)
 		.Process(this->TogglePower_HasPower)
+		.Process(this->CashUpgradeTimers)
 		.Process(this->DockReloadTimers);
 }
 
 void BuildingExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<BuildingClass>::LoadFromStream(Stm);
+	Extension<BuildingClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void BuildingExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<BuildingClass>::SaveToStream(Stm);
+	Extension<BuildingClass, ExtData>::SaveToStream(Stm);
 	Serialize(Stm);
 }
 
@@ -1148,8 +1269,8 @@ bool BuildingExt::LoadGlobals(AresStreamReader& Stm) {
 		.Process(TempFoundationData2)
 		.Success();
 
-	MouseClass::Instance->CurrentFoundation_Data = TempFoundationData1.data();
-	MouseClass::Instance->CurrentFoundationCopy_Data = TempFoundationData2.data();
+	MouseClass::Instance.CurrentFoundation_Data = TempFoundationData1.data();
+	MouseClass::Instance.CurrentFoundationCopy_Data = TempFoundationData2.data();
 
 	return ret;
 }
@@ -1172,7 +1293,7 @@ BuildingExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(43BCBD, BuildingClass_CTOR, 6)
+DEFINE_HOOK(0x43BCBD, BuildingClass_CTOR, 0x6)
 {
 	GET(BuildingClass*, pItem, ESI);
 
@@ -1180,7 +1301,7 @@ DEFINE_HOOK(43BCBD, BuildingClass_CTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK(43C022, BuildingClass_DTOR, 6)
+DEFINE_HOOK(0x43C022, BuildingClass_DTOR, 0x6)
 {
 	GET(BuildingClass*, pItem, ESI);
 
@@ -1188,8 +1309,8 @@ DEFINE_HOOK(43C022, BuildingClass_DTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(454190, BuildingClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(453E20, BuildingClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x454190, BuildingClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x453E20, BuildingClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(BuildingClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -1199,14 +1320,34 @@ DEFINE_HOOK(453E20, BuildingClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(45417E, BuildingClass_Load_Suffix, 5)
+DEFINE_HOOK(0x45417E, BuildingClass_Load_Suffix, 0x5)
 {
 	BuildingExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(454244, BuildingClass_Save_Suffix, 7)
+DEFINE_HOOK(0x454244, BuildingClass_Save_Suffix, 0x7)
 {
 	BuildingExt::ExtMap.SaveStatic();
 	return 0;
 }
+
+static_assert(sizeof(BuildingExt::cPrismForwarding) == 0x30, "cPrismForwarding must match the 3.0p1 layout");
+
+// the reserves are swapped against 0.A, which is what shrinks the struct to 0x30
+static_assert(offsetof(BuildingExt::cPrismForwarding, SupportTarget) == 0x1C, "cPrismForwarding layout slipped");
+static_assert(offsetof(BuildingExt::cPrismForwarding, DamageReserve) == 0x24, "cPrismForwarding layout slipped");
+static_assert(offsetof(BuildingExt::cPrismForwarding, ModifierReserve) == 0x28, "cPrismForwarding layout slipped");
+
+static_assert(sizeof(BuildingExt::ExtData) == 0xC0, "BuildingExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the start, the bool cluster, the prism block, the jammer
+// map, the two bools that moved ahead of the timers, and the last member.
+static_assert(offsetof(BuildingExt::ExtData, OwnerBeforeRaid) == 0x08, "BuildingExt::ExtData layout slipped");
+static_assert(offsetof(BuildingExt::ExtData, SkipBaseNormal) == 0x0E, "BuildingExt::ExtData layout slipped");
+static_assert(offsetof(BuildingExt::ExtData, PrismForwarding) == 0x10, "BuildingExt::ExtData layout slipped");
+static_assert(offsetof(BuildingExt::ExtData, RegisteredJammers) == 0x40, "BuildingExt::ExtData layout slipped");
+static_assert(offsetof(BuildingExt::ExtData, SecretLab_Placed) == 0x50, "BuildingExt::ExtData layout slipped");
+static_assert(offsetof(BuildingExt::ExtData, CashUpgradeTimers) == 0x54, "BuildingExt::ExtData layout slipped");
+static_assert(offsetof(BuildingExt::ExtData, DockReloadTimers) == 0x78, "BuildingExt::ExtData layout slipped");

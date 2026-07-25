@@ -8,7 +8,7 @@
 
 // this was only a leftover stub from TS. reimplemented
 // using the same mechanism.
-DEFINE_HOOK(489270, CellChainReact, 5)
+DEFINE_HOOK(0x489270, CellChainReact, 0x5)
 {
 	GET(CellStruct*, cell, ECX);
 
@@ -17,23 +17,23 @@ DEFINE_HOOK(489270, CellChainReact, 5)
 	static const int minDelay = 15;
 	static const int maxDelay = 120;
 
-	auto pCell = MapClass::Instance->GetCellAt(*cell);
+	auto pCell = MapClass::Instance.GetCellAt(*cell);
 	auto idxTib = pCell->GetContainedTiberiumIndex();
 
-	TiberiumClass* pTib = TiberiumClass::Array->GetItemOrDefault(idxTib);
-	OverlayTypeClass* pOverlay = OverlayTypeClass::Array->GetItemOrDefault(pCell->OverlayTypeIndex);
+	TiberiumClass* pTib = TiberiumClass::Array.GetItemOrDefault(idxTib);
+	OverlayTypeClass* pOverlay = OverlayTypeClass::Array.GetItemOrDefault(pCell->OverlayTypeIndex);
 
-	if(pTib && pOverlay && pOverlay->ChainReaction && pCell->Powerup > 1) {
+	if(pTib && pOverlay && pOverlay->ChainReaction && pCell->OverlayData > 1) {
 		CoordStruct crd = pCell->GetCoords();
 
-		if(ScenarioClass::Instance->Random.RandomRanged(0, 99) < reactChanceMultiplier * pCell->Powerup) {
-			bool wasFullGrown = (pCell->Powerup >= 11);
+		if(ScenarioClass::Instance->Random.RandomRanged(0, 99) < reactChanceMultiplier * pCell->OverlayData) {
+			bool wasFullGrown = (pCell->OverlayData >= 11);
 
-			unsigned char delta = pCell->Powerup / 2;
+			unsigned char delta = pCell->OverlayData / 2;
 			int damage = pTib->Power * delta;
 
 			// remove some of the tiberium
-			pCell->Powerup -= delta;
+			pCell->OverlayData -= delta;
 			pCell->MarkForRedraw();
 
 			// get the warhead
@@ -51,9 +51,9 @@ DEFINE_HOOK(489270, CellChainReact, 5)
 			// spawn some animation on the neighbour cells
 			if(auto pType = AnimTypeClass::Find("INVISO")) {
 				for(size_t i = 0; i<8; ++i) {
-					auto pNeighbour = pCell->GetNeighbourCell(i);
+					auto pNeighbour = pCell->GetNeighbourCell(static_cast<FacingType>(i));
 
-					if(pCell->GetContainedTiberiumIndex() != -1 && pNeighbour->Powerup > 2) {
+					if(pCell->GetContainedTiberiumIndex() != -1 && pNeighbour->OverlayData > 2) {
 						if(ScenarioClass::Instance->Random.RandomRanged(0, 99) < spreadChance) {
 							int delay = ScenarioClass::Instance->Random.RandomRanged(minDelay, maxDelay);
 							crd = pNeighbour->GetCoords();
@@ -74,14 +74,14 @@ DEFINE_HOOK(489270, CellChainReact, 5)
 }
 
 // hook up the area damage delivery with chain reactions
-DEFINE_HOOK(48964F, DamageArea_ChainReaction, 5)
+DEFINE_HOOK(0x48964F, DamageArea_ChainReaction, 0x5)
 {
 	GET(CellClass*, pCell, EBX);
 	pCell->ChainReaction();
 	return 0;
 }
 
-DEFINE_HOOK(424DD3, AnimClass_ReInit_TiberiumChainReaction_Chance, 6)
+DEFINE_HOOK(0x424DD3, AnimClass_ReInit_TiberiumChainReaction_Chance, 0x6)
 {
 	GET(TiberiumClass*, pTib, EDI);
 	auto pExt = TiberiumExt::ExtMap.Find(pTib);
@@ -90,7 +90,7 @@ DEFINE_HOOK(424DD3, AnimClass_ReInit_TiberiumChainReaction_Chance, 6)
 	return react ? 0x424DF9 : 0x424E9B;
 }
 
-DEFINE_HOOK(424EC5, AnimClass_ReInit_TiberiumChainReaction_Damage, 6)
+DEFINE_HOOK(0x424EC5, AnimClass_ReInit_TiberiumChainReaction_Damage, 0x6)
 {
 	GET(TiberiumClass*, pTib, EDI);
 	auto pExt = TiberiumExt::ExtMap.Find(pTib);

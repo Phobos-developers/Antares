@@ -14,21 +14,23 @@ class InfantryExt
 public:
 	using base_type = InfantryClass;
 
-	class ExtData final : public Extension<InfantryClass>
+	class ExtData final : public Extension<InfantryClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0xE1E2E3E4;
 
-		ExtData(InfantryClass* OwnerObject) : Extension<InfantryClass>(OwnerObject)
+
+		ExtData(InfantryClass* OwnerObject) : Extension<InfantryClass, ExtData>(OwnerObject)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		bool IsOccupant(); //!< Determines whether this InfantryClass is currently an occupant inside a BuildingClass.
 
@@ -37,7 +39,7 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<InfantryExt> {
+	class ExtContainer final : public Container<InfantryExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();

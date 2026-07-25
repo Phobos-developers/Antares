@@ -1,4 +1,5 @@
 #include "Body.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include "../Rules/Body.h"
 #include "../TechnoType/Body.h"
 #include "../Building/Body.h"
@@ -7,6 +8,7 @@
 #include "../Tiberium/Body.h"
 #include "../WarheadType/Body.h"
 #include "../WeaponType/Body.h"
+#include "../../Enum/CursorTypes.h"
 #include "../../Misc/Debug.h"
 #include "../../Misc/JammerClass.h"
 #include "../../Misc/PoweredUnitClass.h"
@@ -16,13 +18,14 @@
 #include <HouseClass.h>
 #include <InfantryClass.h>
 #include <SpecificStructures.h>
+#include <TemporalClass.h>
 #include <TiberiumClass.h>
 #include <UnitClass.h>
 
 #include <algorithm>
 
 // bugfix #297: Crewed=yes jumpjets spawn parachuted infantry on destruction, not idle
-DEFINE_HOOK(737F97, UnitClass_ReceiveDamage, 0)
+DEFINE_HOOK(0x737F97, UnitClass_ReceiveDamage, 0x0)
 {
 	GET(UnitClass *, t, ESI);
 	GET_STACK(TechnoClass *, Killer, 0x54);
@@ -35,12 +38,12 @@ DEFINE_HOOK(737F97, UnitClass_ReceiveDamage, 0)
 }
 
 // bugfix #297: Crewed=yes AircraftTypes spawn parachuting infantry on death
-DEFINE_HOOK(41668B, AircraftClass_ReceiveDamage, 6)
+DEFINE_HOOK(0x41668B, AircraftClass_ReceiveDamage, 0x6)
 {
 	GET(AircraftClass *, a, ESI);
 	GET_STACK(TechnoClass *, Killer, 0x28);
 	GET_STACK(int, ignoreDefenses, 0x20);
-	bool select = a->IsSelected && a->Owner->ControlledByPlayer();
+	bool select = a->IsSelected && a->Owner->IsControlledByCurrentPlayer();
 	TechnoExt::SpawnSurvivors(a, Killer, select, ignoreDefenses != 0);
 
 	// Crashable support for aircraft
@@ -55,7 +58,7 @@ DEFINE_HOOK(41668B, AircraftClass_ReceiveDamage, 6)
 }
 
 // rotation when crashing made optional
-DEFINE_HOOK(4DECAE, FootClass_Crash_Spin, 5)
+DEFINE_HOOK(0x4DECAE, FootClass_Crash_Spin, 0x5)
 {
 	GET(FootClass*, pThis, ESI);
 	auto pExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
@@ -63,7 +66,7 @@ DEFINE_HOOK(4DECAE, FootClass_Crash_Spin, 5)
 }
 
 // move to the next hva frame, even if this unit isn't moving
-DEFINE_HOOK(4DA8B2, FootClass_Update_AnimRate, 6)
+DEFINE_HOOK(0x4DA8B2, FootClass_Update_AnimRate, 0x6)
 {
 	GET(FootClass*, pThis, ESI);
 	auto pType = pThis->GetTechnoType();
@@ -84,13 +87,38 @@ DEFINE_HOOK(4DA8B2, FootClass_Update_AnimRate, 6)
 	return Undecided;
 }
 
-DEFINE_HOOK(6F9E50, TechnoClass_Update, 5)
+DEFINE_HOOK(0x6F9E50, TechnoClass_Update, 0x5)
 {
 	GET(TechnoClass* const, pThis, ECX);
 
 	auto const pType = pThis->GetTechnoType();
 	auto const pData = TechnoExt::ExtMap.Find(pThis);
 	auto const pTypeData = TechnoTypeExt::ExtMap.Find(pType);
+
+	// amphibious type conversion. a type that names either half swaps to the
+	// water one only while it is actually over water or beach and not riding a
+	// bridge, and to the land one in every other case.
+	//
+	// pType and pTypeData are deliberately NOT refreshed afterwards: the shipped
+	// handler restores the saved pre-conversion type and keeps using the old ext
+	// for everything below, so an object that just converted is still processed
+	// as its previous type for one frame.
+	if(pTypeData->Convert_Water || pTypeData->Convert_Land) {
+		auto pToType = pTypeData->Convert_Water.Get();
+
+		if(pThis->OnBridge) {
+			pToType = pTypeData->Convert_Land;
+		} else {
+			auto const land = pThis->GetCell()->LandType;
+			if(land != LandType::Water && land != LandType::Beach) {
+				pToType = pTypeData->Convert_Land;
+			}
+		}
+
+		if(pToType && pType != pToType) {
+			TechnoExt::UpdateType(pThis, pToType);
+		}
+	}
 
 	// #1208
 	if(pTypeData->PassengerTurret) {
@@ -111,48 +139,49 @@ DEFINE_HOOK(6F9E50, TechnoClass_Update, 5)
 
 	AttachEffectClass::Update(pThis);
 
-	return 0;
-}
-
-//! TechnoClass::Update is called every frame; returning 0 tells it to execute the original function's code as well.
-//! EXCEPT if the target is under Temporal, use the 71A860 hook for that - Graion, 2013-06-13.
-DEFINE_HOOK(6F9E76, TechnoClass_Update_CheckOperators, 6)
-{
-	GET(TechnoClass* const, pThis, ESI); // object this is called on
-
-	auto const pData = TechnoExt::ExtMap.Find(pThis);
-
 	// Related to operators/drivers, issue #342
-	auto const pBuildingBelow = pThis->GetCell()->GetBuilding();
-	auto const buildingBelowIsMe = pThis == pBuildingBelow;
-
-	/* Conditions checked:
-		pBuildingBelow will be NULL if no building was found
-		This check ensures that Operator'd units don't Deactivate above structures such as War Factories, Repair Depots or Battle Bunkers.
-		(Which is potentially abusable, but let's hope no one figures that out.)
-	*/
-	if(!pBuildingBelow || (buildingBelowIsMe && pBuildingBelow->IsPowerOnline())) {
-		bool Override = false;
-		if(auto const pFoot = abstract_cast<FootClass*>(pThis)) {
-			if(!pBuildingBelow) {
-				// immobile, though not disabled. like hover tanks after
-				// a repair depot has been sold or warped away.
-				Override = (pFoot->Locomotor->Is_Powered() == pThis->Deactivated);
-			}
+	if(pData->AlwaysOperated) {
+		// IsOperated() already answered "this type never uses operators" once
+		// and latched it. Only a building still has anything to do here, and
+		// only to come back online.
+		if(pThis->WhatAmI() == AbstractType::Building && pThis->Deactivated
+			&& pThis->IsPowerOnline() && !pThis->IsUnderEMP() && pData->IsPowered())
+		{
+			pThis->Reactivate();
+			pThis->Owner->RecheckTechTree = true; // #885
 		}
+	} else {
+		auto const pBuildingBelow = pThis->GetCell()->GetBuilding();
+		auto const buildingBelowIsMe = pThis == pBuildingBelow;
 
-		if(pData->IsOperated()) { // either does have an operator or doesn't need one, so...
-			if(Override || (pThis->Deactivated && !pThis->IsUnderEMP() && pData->IsPowered())) { // ...if it's currently off, turn it on! (oooh baby)
-				pThis->Reactivate();
-				if(buildingBelowIsMe) {
-					pThis->Owner->RecheckTechTree = true; // #885
+		/* Conditions checked:
+			pBuildingBelow will be NULL if no building was found
+			This check ensures that Operator'd units don't Deactivate above structures such as War Factories, Repair Depots or Battle Bunkers.
+			(Which is potentially abusable, but let's hope no one figures that out.)
+		*/
+		if(!pBuildingBelow || (buildingBelowIsMe && pBuildingBelow->IsPowerOnline())) {
+			bool Override = false;
+			if(auto const pFoot = abstract_cast<FootClass*>(pThis)) {
+				if(!pBuildingBelow) {
+					// immobile, though not disabled. like hover tanks after
+					// a repair depot has been sold or warped away.
+					Override = (pFoot->Locomotor->Is_Powered() == pThis->Deactivated);
 				}
 			}
-		} else { // doesn't have an operator, so...
-			if(!pThis->Deactivated) { // ...if it's not off yet, turn it off!
-				pThis->Deactivate();
-				if(buildingBelowIsMe) {
-					pThis->Owner->RecheckTechTree = true; // #885
+
+			if(pData->IsOperated()) { // either does have an operator or doesn't need one, so...
+				if(Override || (pThis->Deactivated && !pThis->IsUnderEMP() && pData->IsPowered())) { // ...if it's currently off, turn it on! (oooh baby)
+					pThis->Reactivate();
+					if(buildingBelowIsMe) {
+						pThis->Owner->RecheckTechTree = true; // #885
+					}
+				}
+			} else { // doesn't have an operator, so...
+				if(!pThis->Deactivated) { // ...if it's not off yet, turn it off!
+					pThis->Deactivate();
+					if(buildingBelowIsMe) {
+						pThis->Owner->RecheckTechTree = true; // #885
+					}
 				}
 			}
 		}
@@ -173,9 +202,6 @@ DEFINE_HOOK(6F9E76, TechnoClass_Update_CheckOperators, 6)
 		}
 	} else {
 		// dropping Radar Jammers (#305) here for now; should check if another TechnoClass::Update hook might be better ~Ren
-		auto const pType = pThis->GetTechnoType();
-		auto const pTypeData = TechnoTypeExt::ExtMap.Find(pType);
-
 		if(pTypeData->RadarJamRadius) {
 			if(!pData->RadarJam) {
 				pData->RadarJam = std::make_unique<JammerClass>(pThis);
@@ -185,13 +211,29 @@ DEFINE_HOOK(6F9E76, TechnoClass_Update_CheckOperators, 6)
 		}
 	}
 
-	/* 	using 0x6F9E7C instead makes this function override the original game one's entirely -
-		don't activate that unless you handle _everything_ originally handled by the game */
+	if(pData->TechnoValue) {
+		pData->DisplayValue(false);
+	}
+
+	// a unit whose driver was killed is pinned to Harmless every frame, so it
+	// cannot be given orders or re-acquire a target. a magnetron currently
+	// holding it is the one thing that gets to keep its own orders.
+	if(pData->DriverKilled && pThis->CurrentMission != Mission::Harmless) {
+		auto const pFoot = abstract_cast<FootClass*>(pThis);
+
+		if(!pFoot || !pFoot->IsAttackedByLocomotor) {
+			pThis->SetTarget(nullptr);
+			pThis->SetDestination(nullptr, true);
+			pThis->QueueMission(Mission::Harmless, true);
+		}
+	}
+
 	return 0;
 }
 
+
 // Radar Jammers (#305) unjam all on owner change
-DEFINE_HOOK(7014D5, TechnoClass_ChangeOwnership_RadarJammer, 6)
+DEFINE_HOOK(0x7014D5, TechnoClass_ChangeOwnership_RadarJammer, 0x6)
 {
 	GET(TechnoClass* const, pThis, ESI);
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
@@ -200,11 +242,15 @@ DEFINE_HOOK(7014D5, TechnoClass_ChangeOwnership_RadarJammer, 6)
 		pJammer->UnjamAll();
 	}
 
+	if(pExt->TechnoValue) {
+		pExt->DisplayValue(true);
+	}
+
 	return 0;
 }
 
 // fix for vehicle paradrop alignment
-DEFINE_HOOK(415CA6, AircraftClass_Paradrop, 6)
+DEFINE_HOOK(0x415CA6, AircraftClass_Paradrop_Units, 0x6)
 {
 	GET(AircraftClass *, A, EDI);
 	GET(FootClass *, P, ESI);
@@ -221,14 +267,15 @@ DEFINE_HOOK(415CA6, AircraftClass_Paradrop, 6)
 }
 
 // #1232: fix for dropping units out of flying Carryalls
-DEFINE_HOOK(415DF6, AircraftClass_Paradrop_Carryall, 6)
+DEFINE_HOOK(0x415DF6, AircraftClass_Paradrop_Carryall, 0x6)
 {
 	GET(FootClass *, pTechno, ESI);
+	pTechno->Transporter = nullptr;
 	pTechno->IsOnCarryall = false;
 	return 0;
 }
 
-DEFINE_HOOK(6F407D, TechnoClass_Init_1, 6)
+DEFINE_HOOK(0x6F407D, TechnoClass_Init_1, 0x6)
 {
 	GET(TechnoClass* const, pThis, ESI);
 	auto const pType = pThis->GetTechnoType();
@@ -300,19 +347,19 @@ DEFINE_HOOK(6F407D, TechnoClass_Init_1, 6)
 
 	// if override is in effect, do not create initial payload.
 	// this object might have been deployed, undeployed, ...
-	if(Unsorted::IKnowWhatImDoing && Unsorted::CurrentFrame) {
+	if(Unsorted::ScenarioInit && Unsorted::CurrentFrame) {
 		pData->PayloadCreated = true;
 	}
 
 	return 0x6F4102;
 }
 
-DEFINE_HOOK(6F4103, TechnoClass_Init_2, 6)
+DEFINE_HOOK(0x6F4103, TechnoClass_Init_2, 0x6)
 {
 	return 0x6F41C0;
 }
 
-DEFINE_HOOK(446EE2, BuildingClass_Place_InitialPayload, 6)
+DEFINE_HOOK(0x446EE2, BuildingClass_Place_InitialPayload, 0x6)
 {
 	GET(BuildingClass* const, pThis, EBP);
 
@@ -322,7 +369,7 @@ DEFINE_HOOK(446EE2, BuildingClass_Place_InitialPayload, 6)
 	return 0;
 }
 
-DEFINE_HOOK(4D718C, FootClass_Put_InitialPayload, 6)
+DEFINE_HOOK(0x4D718C, FootClass_Put_InitialPayload, 0x6)
 {
 	GET(FootClass* const, pThis, ESI);
 
@@ -335,7 +382,7 @@ DEFINE_HOOK(4D718C, FootClass_Put_InitialPayload, 6)
 }
 
 // temporal per-slot
-DEFINE_HOOK(71A84E, TemporalClass_UpdateA, 5)
+DEFINE_HOOK(0x71A84E, TemporalClass_UpdateA, 0x5)
 {
 	GET(TemporalClass* const, pThis, ESI);
 
@@ -362,20 +409,8 @@ DEFINE_HOOK(71A84E, TemporalClass_UpdateA, 5)
 	return 0x71A88D;
 }
 
-// temporal per-slot
-DEFINE_HOOK(71AB30, TemporalClass_GetHelperDamage, 5)
-{
-	GET(TemporalClass *, Temp, ESI);
-	TechnoClass *T = Temp->Owner;
-	TechnoExt::ExtData *pData = TechnoExt::ExtMap.Find(T);
-	WeaponStruct *W = T->GetWeapon(pData->idxSlot_Warp);
-	WarheadTypeExt::Temporal_WH = W->WeaponType->Warhead;
-	R->EAX<WeaponStruct *>(W);
-	return 0x71AB47;
-}
-
 // parasite per-slot
-DEFINE_HOOK(62A020, ParasiteClass_Update, A)
+DEFINE_HOOK(0x62A020, ParasiteClass_Update, 0xA)
 {
 	GET(TechnoClass *, T, ECX);
 	TechnoExt::ExtData *pData = TechnoExt::ExtMap.Find(T);
@@ -384,7 +419,7 @@ DEFINE_HOOK(62A020, ParasiteClass_Update, A)
 	return 0x62A02A;
 }
 
-DEFINE_HOOK(62A7B1, Parasite_ExitUnit, 9)
+DEFINE_HOOK(0x62A7B1, Parasite_ExitUnit, 0x9)
 {
 	GET(TechnoClass *, T, ECX);
 	TechnoExt::ExtData *pData = TechnoExt::ExtMap.Find(T);
@@ -393,7 +428,7 @@ DEFINE_HOOK(62A7B1, Parasite_ExitUnit, 9)
 	return 0x62A7BA;
 }
 
-DEFINE_HOOK(629804, ParasiteClass_UpdateSquiddy, 9)
+DEFINE_HOOK(0x629804, ParasiteClass_UpdateSquiddy, 0x9)
 {
 	GET(TechnoClass *, T, ECX);
 	TechnoExt::ExtData *pData = TechnoExt::ExtMap.Find(T);
@@ -403,7 +438,7 @@ DEFINE_HOOK(629804, ParasiteClass_UpdateSquiddy, 9)
 }
 
 /*
-DEFINE_HOOK(6F3330, TechnoClass_SelectWeapon, 5)
+DEFINE_HOOK(0x6F3330, TechnoClass_SelectWeapon, 0x5)
 {
 	GET(TechnoClass *, pThis, ECX);
 	GET_STACK(TechnoClass *, pTarg, 0x4);
@@ -573,14 +608,14 @@ bool TechnoClassExt::EvalWeaponAgainst(TechnoClass *pThis, TechnoClass *pTarget,
 }
 */
 
-DEFINE_HOOK(51F76D, InfantryClass_Unload, 5)
+DEFINE_HOOK(0x51F76D, InfantryClass_Unload, 0x5)
 {
 	GET(TechnoClass *, I, ESI);
 	TechnoTypeExt::ExtData *pData = TechnoTypeExt::ExtMap.Find(I->GetTechnoType());
 	return pData->Is_Deso ? 0x51F77Du : 0x51F792u;
 }
 
-DEFINE_HOOK(51CE9A, InfantryClass_Idle, 5)
+DEFINE_HOOK(0x51CE9A, InfantryClass_Idle, 0x5)
 {
 	GET(InfantryClass *, I, ESI);
 	TechnoTypeExt::ExtData *pData = TechnoTypeExt::ExtMap.Find(I->GetTechnoType());
@@ -596,18 +631,8 @@ DEFINE_HOOK(51CE9A, InfantryClass_Idle, 5)
 	return pData->Is_Cow ? 0x51CEAEu : 0x51CECDu;
 }
 
-DEFINE_HOOK(747BBD, UnitTypeClass_LoadFromINI, 5)
-{
-	GET(UnitTypeClass *, U, ESI);
-
-	U->AltImage = R->EAX<SHPStruct *>(); // jumping over, so replicated
-	return U->Gunner
-		? 0x747BD7u
-		: 0x747E90u;
-}
-
 // godawful hack - Desolator deploy fire is triggered by ImmuneToRadiation !
-DEFINE_HOOK(5215F9, InfantryClass_UpdateDeploy, 6)
+DEFINE_HOOK(0x5215F9, InfantryClass_UpdateDeployment_Deso1, 0x6)
 {
 	GET(TechnoClass *, I, ESI);
 	return TechnoTypeExt::ExtMap.Find(I->GetTechnoType())->Is_Deso
@@ -615,91 +640,40 @@ DEFINE_HOOK(5215F9, InfantryClass_UpdateDeploy, 6)
 		: 0x52160Du;
 }
 
-// 52138C, 6
 // godawful hack 2 - Desolator deploy fire is triggered by ImmuneToRadiation !
-// DON'T USE
-EXPORT_FUNC(InfantryClass_UpdateDeploy2)
+DEFINE_HOOK(0x52138C, InfantryClass_UpdateDeployment_Deso2, 0x6)
 {
-/*
 	GET(TechnoClass *, I, ESI);
-	TechnoTypeClassExt::TechnoTypeClassData *pData = TechnoTypeClassExt::Ext_p[I->GetTechnoType()];
-	return pData->Is_Deso_Radiation ? 0x52139A : 0x5214B9;
-	WRONG: needs more code to reimplement weapon shooting without rad checks
-*/
-	return 0;
+	return TechnoTypeExt::ExtMap.Find(I->GetTechnoType())->Is_Deso
+		? 0x52139Au
+		: 0x5214B9u;
 }
 
 // stops movement sound from being played while unit is being pulled by a magnetron (see terror drone)
-DEFINE_HOOK(7101CF, FootClass_ImbueLocomotor, 7)
+DEFINE_HOOK(0x7101CF, FootClass_ImbueLocomotor, 0x7)
 {
 	GET(FootClass *, F, ESI);
-	F->Audio7.ShutUp();
+	F->MoveSoundAudioController.Stop();
 	return 0;
 }
 
-DEFINE_HOOK(4DAA68, FootClass_Update_MoveSound, 6)
+DEFINE_HOOK(0x4DAA68, FootClass_Update_MoveSound, 0x6)
 {
 	GET(FootClass *, F, ESI);
-	if(F->unknown_bool_53C) {
+	if(F->IsMoveSoundPlaying) {
 		return 0x4DAAEE;
 	}
 	if(F->LocomotorSource) {
-		F->Audio7.ShutUp();
+		F->MoveSoundAudioController.Stop();
 		return 0x4DAAEE;
 	}
 	return 0x4DAA70;
 }
 
-/* #397 - AffectsEnemies */
-DEFINE_HOOK(701C97, TechnoClass_ReceiveDamage_AffectsEnemies, 6)
-{
-	GET(WarheadTypeClass *, pThis, EBP);
-	GET(TechnoClass *, Victim, ESI);
-	LEA_STACK(args_ReceiveDamage *, Arguments, 0xC8);
-
-	// get the owner of the attacker. if there's none, use source house
-	auto pSourceHouse = Arguments->Attacker ? Arguments->Attacker->Owner : Arguments->SourceHouse;
-
-	// default for ownerless damage i.e. crates/fire particles
-	bool CanAffect = true;
-
-	// check if allied to target, then apply either AffectsAllies or AffectsEnemies
-	if(pSourceHouse) {
-		auto pExt = WarheadTypeExt::ExtMap.Find(pThis);
-		CanAffect = Victim->Owner->IsAlliedWith(pSourceHouse) ? pThis->AffectsAllies : pExt->AffectsEnemies;
-
-		/* Ren, 08.01.2011:
-			<not applicable any more \>
-			
-			The question of how this works came up because the current treatment of Neutral is technically wrong:
-			Semantically, AffectsEnemies=no only means "you cannot attack enemies", but our code renders it as "you cannot attack non-allies";
-			this obviously means that AffectsEnemies=no includes being unable to attack Neutral, despite the fact that Neutral is, well, neutral - not our enemy.
-			
-			In the specific situation this came up in, the current behavior was desired and no one else complained so far,
-			so I'm not proposing a change at this point. 
-			In fact, since this flag is AffectsAllies's evil twin, it is very most likely that practically *all* users of 
-			AffectsEnemies assume this behavior; he who sets AffectsEnemies=no likely does so with the intention of limiting damage to allied troops.
-			I just wanted this behavior and the logic behind it to be documented for the future.
-			
-			Note that, in the specific case of AffectsEnemies=no, AffectsAllies=no, this will rear its ugly head as a bug: Neutral should be affected, but won't be.
-			*/
-
-		/* AlexB, 2013-08-19:
-			"You're either with us, or against us" -- Old saying in Tennessee, ... or was it Texas?
-
-			The game has no clear concept of neutrality. If something like that is going to be added, it could be
-			in the form of a Nullable<bool> AffectsNeutral, and a CanAffect = AffectsNeutral.Get(CanAffect) if the
-			source house is neutral (however this is going to be inferred).
-		*/
-	}
-
-	return CanAffect ? 0x701CD7u : 0x701CC2u;
-}
-
 // select the most appropriate firing voice and also account
 // for undefined flags, so you actually won't lose functionality
 // when a unit becomes elite.
-DEFINE_HOOK(7090A8, TechnoClass_SelectFiringVoice, 0) {
+DEFINE_HOOK(0x7090A8, TechnoClass_SelectFiringVoice, 0x0) {
 	GET(TechnoClass*, pThis, ESI);
 	GET(TechnoClass*, pTarget, ECX);
 
@@ -747,8 +721,9 @@ DEFINE_HOOK(7090A8, TechnoClass_SelectFiringVoice, 0) {
 
 	// generic attack voice
 	if(idxVoice < 0 && pType->VoiceAttack.Count) {
-		unsigned int idxRandom = Randomizer::Global()->Random();
-		idxVoice = pType->VoiceAttack.GetItem(idxRandom % pType->VoiceAttack.Count);
+		int const idxRandom = Randomizer::Global.RandomRanged(
+			0, pType->VoiceAttack.Count - 1);
+		idxVoice = pType->VoiceAttack.GetItem(idxRandom);
 	}
 
 	// play voice
@@ -760,7 +735,7 @@ DEFINE_HOOK(7090A8, TechnoClass_SelectFiringVoice, 0) {
 }
 
 // Support per unit modification of Iron Curtain effect duration
-DEFINE_HOOK(70E2B0, TechnoClass_IronCurtain, 5) {
+DEFINE_HOOK(0x70E2B0, TechnoClass_IronCurtain, 0x5) {
 	GET(TechnoClass*, pThis, ECX);
 	GET_STACK(int, duration, STACK_OFFS(0x0, -0x4));
 	//GET_STACK(HouseClass*, source, STACK_OFFS(0x0, -0x8));
@@ -781,7 +756,7 @@ DEFINE_HOOK(70E2B0, TechnoClass_IronCurtain, 5) {
 
 // update the vehicle thief's destination. needed to follow a
 // target without the requirement to also enable Thief=yes.
-DEFINE_HOOK(5202F9, InfantryClass_UpdateVehicleThief_Check, 6)
+DEFINE_HOOK(0x5202F9, InfantryClass_UpdateVehicleThief_Check, 0x6)
 {
 	GET(InfantryClass*, pThis, ESI);
 
@@ -798,7 +773,7 @@ DEFINE_HOOK(5202F9, InfantryClass_UpdateVehicleThief_Check, 6)
 }
 
 // the hijacker is close to the target. capture.
-DEFINE_HOOK(5203F7, InfantryClass_UpdateVehicleThief_Hijack, 5)
+DEFINE_HOOK(0x5203F7, InfantryClass_UpdateVehicleThief_Hijack, 0x5)
 {
 	enum {GoOn = 0x5206A1, Stop = 0x520473};
 
@@ -814,36 +789,62 @@ DEFINE_HOOK(5203F7, InfantryClass_UpdateVehicleThief_Hijack, 5)
 	return finalize ? Stop : GoOn;
 }
 
-DEFINE_HOOK(51E7BF, InfantryClass_GetCursorOverObject_CanCapture, 6)
+// a team script can order this one to look for a vehicle to take rather than
+// for a structure to garrison
+DEFINE_HOOK(0x4DFE00, FootClass_GarrisonStructure_TakeVehicle, 0x6)
+{
+	GET(FootClass* const, pThis, ECX);
+
+	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+	if(!pExt->TakeVehicleMode) {
+		return 0;
+	}
+
+	R->EAX(pExt->PerformHijackOnArea());
+	return 0x4DFF3E;
+}
+
+DEFINE_HOOK(0x51E7BF, InfantryClass_GetActionOnObject_CanCapture, 0x6)
 {
 	GET(InfantryClass *, pSelected, EDI);
 	GET(ObjectClass *, pTarget, ESI);
 
-	enum { 
+	enum {
 		Capture = 0x51E84B,  // the game will return an Enter cursor no questions asked
 		DontCapture = 0x51E85A, // the game will assume this is not a VehicleThief and will check for other cursors normally
 		Select = 0x51E7EF, // select target instead of ordering this
-		DontMindMe = 0, // the game will check if this is a VehicleThief
-	} DoWhat = DontMindMe;
+	};
 
-	if(TechnoClass* pTechno = generic_cast<TechnoClass*>(pTarget)) {
-		if(pTechno->GetTechnoType()->IsTrain) {
-			DoWhat = Select;
-		} else {
-			TechnoExt::ExtData* pExt = TechnoExt::ExtMap.Find(pSelected);
-			TechnoTypeExt::ExtData* pTypeExt = TechnoTypeExt::ExtMap.Find(pSelected->Type);
-			if(pSelected->Type->VehicleThief || pTypeExt->CanDrive) {
-				DoWhat = (pExt->GetActionHijack(pTechno) != AresAction::None ? Capture : DontCapture);
-			}
-		}
+	if(!pTarget || (pTarget->AbstractFlags & AbstractFlags::Techno) == AbstractFlags::None
+		|| !pTarget->IsStrange())
+	{
+		return DontCapture;
 	}
 
-	return DoWhat;
+	TechnoTypeExt::ExtData* pTypeExt = TechnoTypeExt::ExtMap.Find(pSelected->Type);
+	if(!pSelected->Type->VehicleThief && !pTypeExt->CanDrive) {
+		return DontCapture;
+	}
+
+	if(pTarget->GetTechnoType()->IsTrain) {
+		return Select;
+	}
+
+	auto const pTechno = static_cast<TechnoClass*>(pTarget);
+	TechnoExt::ExtData* pExt = TechnoExt::ExtMap.Find(pSelected);
+
+	if(pExt->GetActionHijack(pTechno) == AresAction::None) {
+		return DontCapture;
+	}
+
+	CursorType::SetAction(static_cast<MouseCursorType>(92), Action::Capture, 0);
+
+	return Capture;
 }
 
 // change all the special things infantry do, like vehicle thief, infiltration,
 // bridge repair, enter transports or bio reactors, ...
-DEFINE_HOOK(519675, InfantryClass_UpdatePosition_BeforeInfantrySpecific, A)
+DEFINE_HOOK(0x519675, InfantryClass_UpdatePosition_BeforeInfantrySpecific, 0xA)
 {
 	// called after FootClass:UpdatePosition has been called and before
 	// all specific infantry handling takes place.
@@ -886,7 +887,7 @@ DEFINE_HOOK(519675, InfantryClass_UpdatePosition_BeforeInfantrySpecific, A)
 	return DoWhat;
 }
 
-DEFINE_HOOK(471C96, CaptureManagerClass_CanCapture, A)
+DEFINE_HOOK(0x471C96, CaptureManagerClass_CanCapture, 0xA)
 {
 	// this is a complete rewrite, because it might be easier to change
 	// this in a central place than spread all over the source code.
@@ -940,7 +941,7 @@ DEFINE_HOOK(471C96, CaptureManagerClass_CanCapture, A)
 	return Allowed;
 }
 
-DEFINE_HOOK(53C450, TechnoClass_CanBePermaMC, 5)
+DEFINE_HOOK(0x53C450, TechnoClass_CanBePermaMC, 0x5)
 {
 	// complete rewrite. used by psychic dominator, ai targeting, etc.
 	GET(TechnoClass*, pThis, ECX);
@@ -964,7 +965,7 @@ DEFINE_HOOK(53C450, TechnoClass_CanBePermaMC, 5)
 	return 0x53C4BA;
 }
 
-DEFINE_HOOK(73758A, UnitClass_ReceivedRadioCommand_QueryEnterAsPassenger_KillDriver, 6)
+DEFINE_HOOK(0x73758A, UnitClass_ReceivedRadioCommand_QueryEnterAsPassenger_KillDriver, 0x6)
 {
 	// prevent units from getting the enter cursor on transports
 	// with killed drivers.
@@ -973,7 +974,7 @@ DEFINE_HOOK(73758A, UnitClass_ReceivedRadioCommand_QueryEnterAsPassenger_KillDri
 	return (pExt->DriverKilled ? 0x73761Fu : 0u);
 }
 
-DEFINE_HOOK(41946B, AircraftClass_ReceivedRadioCommand_QueryEnterAsPassenger_KillDriver, 6)
+DEFINE_HOOK(0x41946B, AircraftClass_ReceivedRadioCommand_QueryEnterAsPassenger_KillDriver, 0x6)
 {
 	// prevent units from getting the enter cursor on transports
 	// with killed drivers.
@@ -982,7 +983,7 @@ DEFINE_HOOK(41946B, AircraftClass_ReceivedRadioCommand_QueryEnterAsPassenger_Kil
 	return (pExt->DriverKilled ? 0x4190DDu : 0u);
 }
 
-DEFINE_HOOK(6F6A58, TechnoClass_DrawHealthBar_HidePips_KillDriver, 6)
+DEFINE_HOOK(0x6F6A58, TechnoClass_DrawHealthBar_HidePips_KillDriver, 0x6)
 {
 	// prevent player from seeing pips on transports with killed drivers.
 	GET(TechnoClass*, pThis, ESI);
@@ -990,7 +991,7 @@ DEFINE_HOOK(6F6A58, TechnoClass_DrawHealthBar_HidePips_KillDriver, 6)
 	return (pExt->DriverKilled ? 0x6F6AB6u : 0u);
 }
 
-DEFINE_HOOK(7087EB, TechnoClass_ShouldRetaliate_KillDriver, 6)
+DEFINE_HOOK(0x7087EB, TechnoClass_ShouldRetaliate_KillDriver, 0x6)
 {
 	// prevent units with killed drivers from retaliating.
 	GET(TechnoClass*, pThis, ESI);
@@ -998,7 +999,7 @@ DEFINE_HOOK(7087EB, TechnoClass_ShouldRetaliate_KillDriver, 6)
 	return (pExt->DriverKilled ? 0x708B17u : 0u);
 }
 
-DEFINE_HOOK(7091D6, TechnoClass_CanPassiveAquire_KillDriver, 6)
+DEFINE_HOOK(0x7091D6, TechnoClass_CanPassiveAquire_KillDriver, 0x6)
 {
 	// prevent units with killed drivers from looking for victims.
 	GET(TechnoClass*, pThis, ESI);
@@ -1006,7 +1007,7 @@ DEFINE_HOOK(7091D6, TechnoClass_CanPassiveAquire_KillDriver, 6)
 	return (pExt->DriverKilled ? 0x70927Du : 0u);
 }
 
-DEFINE_HOOK(6F3283, TechnoClass_CanScatter_KillDriver, 8)
+DEFINE_HOOK(0x6F3283, TechnoClass_CanScatter_KillDriver, 0x8)
 {
 	// prevent units with killed drivers from scattering when attacked.
 	GET(TechnoClass*, pThis, ESI);
@@ -1014,7 +1015,7 @@ DEFINE_HOOK(6F3283, TechnoClass_CanScatter_KillDriver, 8)
 	return (pExt->DriverKilled ? 0x6F32C5u : 0u);
 }
 
-DEFINE_HOOK(5198AD, InfantryClass_UpdatePosition_EnteredGrinder, 6)
+DEFINE_HOOK(0x5198AD, InfantryClass_UpdatePosition_EnteredGrinder, 0x6)
 {
 	GET(InfantryClass *, Infantry, ESI);
 	GET(BuildingClass *, Grinder, EBX);
@@ -1022,7 +1023,7 @@ DEFINE_HOOK(5198AD, InfantryClass_UpdatePosition_EnteredGrinder, 6)
 	BuildingExt::ExtData *pData = BuildingExt::ExtMap.Find(Grinder);
 
 	if(pData->ReverseEngineer(Infantry)) {
-		if(Infantry->Owner->ControlledByPlayer()) {
+		if(Infantry->Owner->IsControlledByCurrentPlayer()) {
 			VoxClass::Play("EVA_ReverseEngineeredInfantry");
 			VoxClass::Play("EVA_NewTechnologyAcquired");
 		}
@@ -1031,7 +1032,7 @@ DEFINE_HOOK(5198AD, InfantryClass_UpdatePosition_EnteredGrinder, 6)
 	return 0;
 }
 
-DEFINE_HOOK(73A1BC, UnitClass_UpdatePosition_EnteredGrinder, 7)
+DEFINE_HOOK(0x73A1BC, UnitClass_UpdatePosition_EnteredGrinder, 0x7)
 {
 	GET(UnitClass *, Vehicle, EBP);
 	GET(BuildingClass *, Grinder, EBX);
@@ -1039,7 +1040,7 @@ DEFINE_HOOK(73A1BC, UnitClass_UpdatePosition_EnteredGrinder, 7)
 	BuildingExt::ExtData *pData = BuildingExt::ExtMap.Find(Grinder);
 
 	if(pData->ReverseEngineer(Vehicle)) {
-		if(Vehicle->Owner->ControlledByPlayer()) {
+		if(Vehicle->Owner->IsControlledByCurrentPlayer()) {
 			VoxClass::Play("EVA_ReverseEngineeredVehicle");
 			VoxClass::Play("EVA_NewTechnologyAcquired");
 		}
@@ -1047,7 +1048,7 @@ DEFINE_HOOK(73A1BC, UnitClass_UpdatePosition_EnteredGrinder, 7)
 
 	// #368: refund hijackers
 	if(Vehicle->HijackerInfantryType != -1) {
-		if(InfantryTypeClass *Hijacker = InfantryTypeClass::Array->GetItem(Vehicle->HijackerInfantryType)) {
+		if(InfantryTypeClass *Hijacker = InfantryTypeClass::Array.GetItem(Vehicle->HijackerInfantryType)) {
 			int refund = Hijacker->GetRefund(Vehicle->Owner, 0);
 			Grinder->Owner->GiveMoney(refund);
 		}
@@ -1056,7 +1057,7 @@ DEFINE_HOOK(73A1BC, UnitClass_UpdatePosition_EnteredGrinder, 7)
 	return 0;
 }
 
-DEFINE_HOOK(6F6AC9, TechnoClass_Remove, 6) {
+DEFINE_HOOK(0x6F6AC9, TechnoClass_Remove, 0x6) {
 	GET(TechnoClass *, pThis, ESI);
 	TechnoExt::ExtData* TechnoExt = TechnoExt::ExtMap.Find(pThis);
 
@@ -1091,19 +1092,30 @@ DEFINE_HOOK(6F6AC9, TechnoClass_Remove, 6) {
 		TechnoExt->AttachEffects_RecreateAnims = true;
 	}
 
+	if(TechnoExt->TechnoValue) {
+		TechnoExt->DisplayValue(true);
+	}
+
 	return pThis->InLimbo ? 0x6F6C93u : 0x6F6AD5u;
 }
 
-DEFINE_HOOK(74642C, UnitClass_ReceiveGunner, 6)
+DEFINE_HOOK(0x74642C, UnitClass_ReceiveGunner, 0x6)
 {
 	GET(UnitClass *, Unit, ESI);
 	auto pData = TechnoExt::ExtMap.Find(Unit);
+
+	// let go of whatever this unit was warping before the gunner replaces its
+	// weapons, and stash what is left afterwards, not what was there before
+	if(auto const pTemporal = Unit->TemporalImUsing) {
+		pTemporal->LetGo();
+	}
+
 	pData->MyOriginalTemporal = Unit->TemporalImUsing;
 	Unit->TemporalImUsing = nullptr;
 	return 0;
 }
 
-DEFINE_HOOK(74653C, UnitClass_RemoveGunner, 0)
+DEFINE_HOOK(0x74653C, UnitClass_RemoveGunner, 0x0)
 {
 	GET(UnitClass *, Unit, EDI);
 	auto pData = TechnoExt::ExtMap.Find(Unit);
@@ -1113,7 +1125,7 @@ DEFINE_HOOK(74653C, UnitClass_RemoveGunner, 0)
 }
 
 
-DEFINE_HOOK(741206, UnitClass_GetFireError, 6)
+DEFINE_HOOK(0x741206, UnitClass_CanFire, 0x6)
 {
 	GET(UnitClass *, Unit, ESI);
 	auto Type = Unit->Type;
@@ -1128,8 +1140,43 @@ DEFINE_HOOK(741206, UnitClass_GetFireError, 6)
 	;
 }
 
+// if the cargo could not be placed the carryall keeps it and tries again
+DEFINE_HOOK(0x415544, AircraftClass_Mi_Unload_Blocked, 0xB)
+{
+	GET(AircraftClass* const, pThis, ESI);
+	GET(FootClass* const, pCargo, EDI);
+
+	if(R->EAX()) {
+		pCargo->Transporter = nullptr;
+		pCargo->IsOnCarryall = false;
+
+	} else {
+		pThis->Passengers.AddPassenger(pCargo);
+		pThis->EnterIdleMode(0, 1);
+	}
+
+	return 0x41554F;
+}
+
+// a dropped unit guards where it landed and rejoins the team it came with
+DEFINE_HOOK(0x416CF4, AircraftClass_Carryall_Unload_Guard, 0x5)
+{
+	GET(UnitClass* const, pCargo, ESI);
+
+	pCargo->Transporter = nullptr;
+	pCargo->QueueMission(Mission::Guard, true);
+
+	if(auto const pTeam = pCargo->Team) {
+		// TeamClass::Add(FootClass*, bool), not yet in YRpp
+		using AddMemberFunc = bool(__thiscall*)(TeamClass*, FootClass*, bool);
+		reinterpret_cast<AddMemberFunc>(0x6EA500)(pTeam, pCargo, false);
+	}
+
+	return 0;
+}
+
 // bug #1290: carryall size limit
-DEFINE_HOOK(417D75, AircraftClass_GetCursorOverObject_CanTote, 5)
+DEFINE_HOOK(0x417D75, AircraftClass_GetActionOnObject_CanTote, 0x5)
 {
 	GET(AircraftClass *, pCarryall, ESI);
 	GET(UnitClass *, pTarget, EDI);
@@ -1142,7 +1189,7 @@ DEFINE_HOOK(417D75, AircraftClass_GetCursorOverObject_CanTote, 5)
 	;
 }
 
-DEFINE_HOOK(416E37, AircraftClass_Mi_MoveCarryall_CanTote, 5)
+DEFINE_HOOK(0x416E37, AircraftClass_Mi_MoveCarryall_CanTote, 0x5)
 {
 	GET(AircraftClass *, pCarryall, ESI);
 	GET(UnitClass *, pTarget, EDI);
@@ -1155,7 +1202,7 @@ DEFINE_HOOK(416E37, AircraftClass_Mi_MoveCarryall_CanTote, 5)
 	;
 }
 
-DEFINE_HOOK(416C4D, AircraftClass_Carryall_Unload_DestroyCargo, 5)
+DEFINE_HOOK(0x416C4D, AircraftClass_Carryall_Unload_DestroyCargo, 0x5)
 {
 	GET(AircraftClass* , pCarryall, EDI);
 	GET(UnitClass *, pCargo, ESI);
@@ -1169,11 +1216,11 @@ DEFINE_HOOK(416C4D, AircraftClass_Carryall_Unload_DestroyCargo, 5)
 	return 0x416C53;
 }
 
-DEFINE_HOOK(416C94, AircraftClass_Carryall_Unload_UpdateCargo, 6)
+DEFINE_HOOK(0x416C94, AircraftClass_Carryall_Unload_UpdateCargo, 0x6)
 {
 	GET(UnitClass *, pCargo, ESI);
 
-	pCargo->UpdatePosition(2);
+	pCargo->UpdatePosition(PCPType::End);
 
 	if(pCargo->Deactivated && pCargo->Locomotor->Is_Powered()) {
 		pCargo->Locomotor->Power_Off();
@@ -1184,7 +1231,7 @@ DEFINE_HOOK(416C94, AircraftClass_Carryall_Unload_UpdateCargo, 6)
 
 // support Occupier and VehicleThief on one type. if this is not done
 // the Occupier handling will leave a dangling Destination pointer.
-DEFINE_HOOK(4D9A83, FootClass_PointerGotInvalid_OccupierVehicleThief, 6)
+DEFINE_HOOK(0x4D9A83, FootClass_PointerGotInvalid_OccupierVehicleThief, 0x6)
 {
 	GET(InfantryClass*, pInfantry, ESI);
 	GET(InfantryTypeClass*, pType, EAX);
@@ -1201,13 +1248,13 @@ DEFINE_HOOK(4D9A83, FootClass_PointerGotInvalid_OccupierVehicleThief, 6)
 // issue #895788: cells' high occupation flags are marked only if they
 // actually contains a bridge while unmarking depends solely on object
 // height above ground. this mismatch causes the cell to become blocked.
-DEFINE_HOOK(7441B6, UnitClass_MarkOccupationBits, 6)
+DEFINE_HOOK(0x7441B6, UnitClass_MarkOccupationBits, 0x6)
 {
 	GET(UnitClass*, pThis, ECX);
 	GET(CoordStruct*, pCrd, ESI);
 
-	CellClass* pCell = MapClass::Instance->GetCellAt(*pCrd);
-	int height = MapClass::Instance->GetCellFloorHeight(*pCrd) + CellClass::BridgeHeight;
+	CellClass* pCell = MapClass::Instance.GetCellAt(*pCrd);
+	int height = MapClass::Instance.GetCellFloorHeight(*pCrd) + CellClass::BridgeHeight;
 	bool alt = (pCrd->Z >= height && pCell->ContainsBridge());
 
 	// remember which occupation bit we set
@@ -1223,15 +1270,15 @@ DEFINE_HOOK(7441B6, UnitClass_MarkOccupationBits, 6)
 	return 0x744209;
 }
 
-DEFINE_HOOK(744216, UnitClass_UnmarkOccupationBits, 6)
+DEFINE_HOOK(0x744216, UnitClass_UnmarkOccupationBits, 0x6)
 {
 	GET(UnitClass*, pThis, ECX);
 	GET(CoordStruct*, pCrd, ESI);
 
 	enum { obNormal = 1, obAlt = 2 };
 
-	CellClass* pCell = MapClass::Instance->GetCellAt(*pCrd);
-	int height = MapClass::Instance->GetCellFloorHeight(*pCrd) + CellClass::BridgeHeight;
+	CellClass* pCell = MapClass::Instance.GetCellAt(*pCrd);
+	int height = MapClass::Instance.GetCellFloorHeight(*pCrd) + CellClass::BridgeHeight;
 	int alt = (pCrd->Z >= height) ? obAlt : obNormal;
 
 	// also clear the last occupation bit, if set
@@ -1254,7 +1301,7 @@ DEFINE_HOOK(744216, UnitClass_UnmarkOccupationBits, 6)
 	return 0x74425E;
 }
 
-DEFINE_HOOK(70DEBA, TechnoClass_UpdateGattling_Cycle, 6)
+DEFINE_HOOK(0x70DEBA, TechnoClass_UpdateGattling_Cycle, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	GET(int, lastStageValue, EAX);
@@ -1272,8 +1319,8 @@ DEFINE_HOOK(70DEBA, TechnoClass_UpdateGattling_Cycle, 6)
 		if(pExt->GattlingCyclic) {
 			pThis->GattlingValue = 0;
 			pThis->CurrentGattlingStage = 0;
-			pThis->Audio4.DTOR_1();
-			pThis->unknown_bool_4B8 = false;
+			pThis->GattlingSoundController.Stop();
+			pThis->IsGattlingSoundPlaying = false;
 		}
 	}
 
@@ -1286,7 +1333,7 @@ DEFINE_HOOK(70DEBA, TechnoClass_UpdateGattling_Cycle, 6)
 // make the space between gunner name segment and ifv
 // name smart. it disappears if one of them is empty,
 // eliminating leading and trailing spaces.
-DEFINE_HOOK(746C55, UnitClass_GetUIName, 6)
+DEFINE_HOOK(0x746C55, UnitClass_GetUIName_Space, 0x6)
 {
 	GET(UnitClass*, pThis, ESI);
 	GET(wchar_t*, pGunnerName, EAX);
@@ -1306,7 +1353,7 @@ DEFINE_HOOK(746C55, UnitClass_GetUIName, 6)
 
 // spawn tiberium when a unit dies. this is a minor part of the
 // tiberium heal feature. the actual healing happens in FootClass_Update.
-DEFINE_HOOK(702216, TechnoClass_ReceiveDamage_TiberiumHeal, 6)
+DEFINE_HOOK(0x702216, TechnoClass_ReceiveDamage_TiberiumHeal, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	TechnoTypeClass* pType = pThis->GetTechnoType();
@@ -1315,12 +1362,12 @@ DEFINE_HOOK(702216, TechnoClass_ReceiveDamage_TiberiumHeal, 6)
 	// TS did not check for HasAbility here, either
 	if(pExt->TiberiumRemains.Get(pType->TiberiumHeal && RulesExt::Global()->Tiberium_HealEnabled)) {
 		CoordStruct crd = pThis->GetCoords();
-		CellClass* pCenter = MapClass::Instance->GetCellAt(crd);
+		CellClass* pCenter = MapClass::Instance.GetCellAt(crd);
 
 		// increase the tiberium for the four neighbours and center.
 		// center is retrieved by getting a neighbour cell index >= 8
 		for(auto i = 0u; i < 5u; ++i) {
-			CellClass* pCell = pCenter->GetNeighbourCell(2*i);
+			CellClass* pCell = pCenter->GetNeighbourCell(static_cast<FacingType>(2*i));
 			int value = ScenarioClass::Instance->Random.RandomRanged(0, 2);
 			pCell->IncreaseTiberium(0, value);
 		}
@@ -1330,7 +1377,7 @@ DEFINE_HOOK(702216, TechnoClass_ReceiveDamage_TiberiumHeal, 6)
 }
 
 // damage the techno when it is moving over a cell containing tiberium
-DEFINE_HOOK(4D85E4, FootClass_UpdatePosition_TiberiumDamage, 9)
+DEFINE_HOOK(0x4D85E4, FootClass_UpdatePosition_TiberiumDamage, 0x9)
 {
 	GET(FootClass*, pThis, ESI);
 
@@ -1349,7 +1396,7 @@ DEFINE_HOOK(4D85E4, FootClass_UpdatePosition_TiberiumDamage, 9)
 			if(pThis->Health > 0) {
 				CellClass* pCell = pThis->GetCell();
 				int idxTiberium = pCell->GetContainedTiberiumIndex();
-				if(auto pTiberium = TiberiumClass::Array->GetItemOrDefault(idxTiberium)) {
+				if(auto pTiberium = TiberiumClass::Array.GetItemOrDefault(idxTiberium)) {
 					auto pTibExt = TiberiumExt::ExtMap.Find(pTiberium);
 
 					pWarhead = pTibExt->GetWarhead();
@@ -1374,7 +1421,7 @@ DEFINE_HOOK(4D85E4, FootClass_UpdatePosition_TiberiumDamage, 9)
 }
 
 // spill the stored tiberium on destruction
-DEFINE_HOOK(702200, TechnoClass_ReceiveDamage_SpillTiberium, 6)
+DEFINE_HOOK(0x702200, TechnoClass_ReceiveDamage_SpillTiberium, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 
@@ -1401,13 +1448,13 @@ DEFINE_HOOK(702200, TechnoClass_ReceiveDamage_SpillTiberium, 6)
 
 			// get the spill center
 			CoordStruct crd = pThis->GetCoords();
-			CellClass* pCenter = MapClass::Instance->GetCellAt(crd);
+			CellClass* pCenter = MapClass::Instance.GetCellAt(crd);
 
 			const unsigned int Neighbours[] = {9, 2, 7, 1, 4, 3, 0, 5, 6};
 			for(auto neighbour : Neighbours) {
 				// spill random amount
 				int amount = ScenarioClass::Instance->Random.RandomRanged(0, 2);
-				CellClass* pCell = pCenter->GetNeighbourCell(neighbour);
+				CellClass* pCell = pCenter->GetNeighbourCell(static_cast<FacingType>(neighbour));
 				pCell->IncreaseTiberium(0, amount);
 				value -= amount;
 
@@ -1423,7 +1470,7 @@ DEFINE_HOOK(702200, TechnoClass_ReceiveDamage_SpillTiberium, 6)
 }
 
 // blow up harvester units big time
-DEFINE_HOOK(738749, UnitClass_Destroy_TiberiumExplosive, 6)
+DEFINE_HOOK(0x738749, UnitClass_Destroy_TiberiumExplosive, 0x6)
 {
 	GET(UnitClass*, pThis, ESI);
 
@@ -1433,8 +1480,8 @@ DEFINE_HOOK(738749, UnitClass_Destroy_TiberiumExplosive, 6)
 
 				// multiply the amounts with their powers and sum them up
 				int morePower = 0;
-				for(int i=0; i<TiberiumClass::Array->Count; ++i) {
-					TiberiumClass* pTiberium = TiberiumClass::Array->GetItem(i);
+				for(int i=0; i<TiberiumClass::Array.Count; ++i) {
+					TiberiumClass* pTiberium = TiberiumClass::Array.GetItem(i);
 					double power = pThis->Tiberium.GetAmount(i) * pTiberium->Power;
 					morePower += Game::F2I(power);
 				}
@@ -1453,7 +1500,7 @@ DEFINE_HOOK(738749, UnitClass_Destroy_TiberiumExplosive, 6)
 }
 
 // merge two small visceroids into one large visceroid
-DEFINE_HOOK(739F21, UnitClass_UpdatePosition_Visceroid, 6)
+DEFINE_HOOK(0x739F21, UnitClass_UpdatePosition_Visceroid, 0x6)
 {
 	GET(UnitClass*, pThis, EBP);
 
@@ -1475,7 +1522,7 @@ DEFINE_HOOK(739F21, UnitClass_UpdatePosition_Visceroid, 6)
 						pDest->Type = pLargeType;
 						pDest->Health = pLargeType->Strength;
 
-						CellClass* pCell = MapClass::Instance->GetCellAt(pDest->LastMapCoords);
+						CellClass* pCell = MapClass::Instance.GetCellAt(pDest->LastMapCoords);
 						pDest->UpdateThreatInCell(pCell);
 
 						pThis->UnInit();
@@ -1490,18 +1537,18 @@ DEFINE_HOOK(739F21, UnitClass_UpdatePosition_Visceroid, 6)
 }
 
 // complete rewrite
-DEFINE_HOOK(4D98C0, FootClass_Destroyed, A) {
+DEFINE_HOOK(0x4D98C0, FootClass_Destroyed, 0xA) {
 	GET(FootClass*, pThis, ECX);
 	//GET_STACK(AbstractClass*, pKiller, 0x4);
 	auto pType = pThis->GetTechnoType();
 
 	// exclude unimportant units, and only play for current player
 	if(!pType->DontScore && !pType->Insignificant && !pType->Spawned
-		&& pThis->Owner->ControlledByPlayer())
+		&& pThis->Owner->IsControlledByCurrentPlayer())
 	{
 		auto pExt = TechnoTypeExt::ExtMap.Find(pType);
 		int idx = pExt->EVA_UnitLost;
-		if(idx != -1) {
+		if(idx >= 0 && !TechnoExt::ExtMap.Find(pThis)->SuppressLossMessage) {
 			CellStruct cell = pThis->GetMapCoords();
 			RadarEventClass::Create(RadarEventType::UnitLost, cell);
 			VoxClass::PlayIndex(idx, -1, -1);
@@ -1512,7 +1559,7 @@ DEFINE_HOOK(4D98C0, FootClass_Destroyed, A) {
 }
 
 // linking units for type selection
-DEFINE_HOOK(732C30, TechnoClass_IDMatches, 5)
+DEFINE_HOOK(0x732C30, TechnoClass_IDMatches, 0x5)
 {
 	GET(TechnoClass*, pThis, ECX);
 	GET(DynamicVectorClass<const char*>*, pNames, EDX);
@@ -1544,7 +1591,7 @@ DEFINE_HOOK(732C30, TechnoClass_IDMatches, 5)
 }
 
 // #1283653: fix for jammed buildings and attackers in open topped transports
-DEFINE_HOOK(702A38, TechnoClass_ReceiveDamage_OpenTopped, 7)
+DEFINE_HOOK(0x702A38, TechnoClass_ReceiveDamage_OpenTopped, 0x7)
 {
 	REF_STACK(TechnoClass*, pAttacker, STACK_OFFS(0xC4, -0x10));
 
@@ -1558,7 +1605,7 @@ DEFINE_HOOK(702A38, TechnoClass_ReceiveDamage_OpenTopped, 7)
 }
 
 // #912875: respect the remove flag for invalidating SpawnManager owners
-DEFINE_HOOK(707B19, TechnoClass_PointerGotInvalid_SpawnCloakOwner, 6)
+DEFINE_HOOK(0x707B19, TechnoClass_PointerGotInvalid_SpawnCloakOwner, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	GET(void*, ptr, EBP);
@@ -1577,7 +1624,7 @@ DEFINE_HOOK(707B19, TechnoClass_PointerGotInvalid_SpawnCloakOwner, 6)
 
 // flying aircraft carriers
 // allow spawned units to spawn above ground
-DEFINE_HOOK(414338, AircraftClass_Put_SpawnHigh, 6)
+DEFINE_HOOK(0x414338, AircraftClass_Put_SpawnHigh, 0x6)
 {
 	GET(AircraftClass*, pThis, ESI);
 	GET(AircraftTypeClass*, pType, ECX);
@@ -1586,8 +1633,50 @@ DEFINE_HOOK(414338, AircraftClass_Put_SpawnHigh, 6)
 	return 0x41433E;
 }
 
+// buildings have no locomotor to ask whether the missile may take off
+DEFINE_HOOK(0x6B72F9, SpawnManagerClass_Update_Buildings, 0x5)
+{
+	GET(SpawnManagerClass* const, pThis, ESI);
+	GET(SpawnControl* const, pNode, EAX);
+
+	if(pNode->IsSpawnMissile != 1) {
+		return 0x6B735C;
+	}
+
+	auto const pOwner = pThis->Owner;
+
+	return (pOwner && pOwner->WhatAmI() == AbstractType::Building)
+		? 0x6B735Cu
+		: 0x6B72FEu
+	;
+}
+
+// a spawn waiting to respawn still occupies its dock
+DEFINE_HOOK(0x6B7D50, SpawnManagerClass_CountDockedSpawns, 0x6)
+{
+	GET(SpawnManagerClass* const, pThis, ECX);
+
+	auto count = 0;
+
+	for(auto const pNode : pThis->SpawnedNodes) {
+		auto const status = pNode->Status;
+
+		if(status == SpawnNodeStatus::Idle
+			|| status == SpawnNodeStatus::Reloading
+			|| (status == SpawnNodeStatus::Dead
+				&& pNode->SpawnTimer.StartTime >= 0
+				&& !pNode->SpawnTimer.TimeLeft))
+		{
+			++count;
+		}
+	}
+
+	R->EAX(count);
+	return 0x6B7D73;
+}
+
 // aim for the cell for flying carriers
-DEFINE_HOOK(6B783B, SpawnManagerClass_Update_SpawnHigh, 5)
+DEFINE_HOOK(0x6B783B, SpawnManagerClass_Update_SpawnHigh, 0x5)
 {
 	GET(SpawnManagerClass*, pThis, ESI);
 
@@ -1601,7 +1690,7 @@ DEFINE_HOOK(6B783B, SpawnManagerClass_Update_SpawnHigh, 5)
 }
 
 // issue #279: per unit AirstrikeAttackVoice and AirstrikeAbortSound
-DEFINE_HOOK(41D940, AirstrikeClass_Fire_AirstrikeAttackVoice, 5)
+DEFINE_HOOK(0x41D940, AirstrikeClass_Fire_AirstrikeAttackVoice, 0x5)
 {
 	GET(AirstrikeClass*, pAirstrike, EDI);
 
@@ -1622,7 +1711,7 @@ DEFINE_HOOK(41D940, AirstrikeClass_Fire_AirstrikeAttackVoice, 5)
 	return 0x41D970;
 }
 
-DEFINE_HOOK(41D5AE, AirstrikeClass_PointerGotInvalid_AirstrikeAbortSound, 9)
+DEFINE_HOOK(0x41D5AE, AirstrikeClass_PointerGotInvalid_AirstrikeAbortSound, 0x9)
 {
 	GET(AirstrikeClass*, pAirstrike, ESI);
 
@@ -1643,7 +1732,7 @@ DEFINE_HOOK(41D5AE, AirstrikeClass_PointerGotInvalid_AirstrikeAbortSound, 9)
 	return 0x41D5E0;
 }
 
-DEFINE_HOOK(702CFE, TechnoClass_ReceiveDamage_PreventScatter, 6)
+DEFINE_HOOK(0x702CFE, TechnoClass_ReceiveDamage_PreventScatter, 0x6)
 {
 	GET(FootClass*, pThis, ESI);
 	GET_STACK(WarheadTypeClass*, pWarhead, STACK_OFFS(0xC4, -0xC));
@@ -1658,7 +1747,7 @@ DEFINE_HOOK(702CFE, TechnoClass_ReceiveDamage_PreventScatter, 6)
 	return 0x702D11;
 }
 
-DEFINE_HOOK(6F826E, TechnoClass_CanAutoTargetObject_CivilianEnemy, 5)
+DEFINE_HOOK(0x6F826E, TechnoClass_CanAutoTargetObject_CivilianEnemy, 0x5)
 {
 	GET(TechnoClass*, pThis, EDI);
 	GET(TechnoClass*, pTarget, ESI);
@@ -1680,7 +1769,7 @@ DEFINE_HOOK(6F826E, TechnoClass_CanAutoTargetObject_CivilianEnemy, 5)
 		if(pOwner->IsAlliedWith(pTargetTarget)) {
 			auto pData = RulesExt::Global();
 
-			bool repel = pOwner->ControlledByHuman() ? pData->AutoRepelPlayer : pData->AutoRepelAI;
+			bool repel = pOwner->IsControlledByHuman() ? pData->AutoRepelPlayer : pData->AutoRepelAI;
 			if(repel) {
 				return ConsiderEnemy;
 			}
@@ -1693,9 +1782,20 @@ DEFINE_HOOK(6F826E, TechnoClass_CanAutoTargetObject_CivilianEnemy, 5)
 // particle system related
 
 // make damage sparks customizable, using game setting as default.
-DEFINE_HOOK(6FACD9, TechnoClass_Update_DamageSparks, 6)
+DEFINE_HOOK(0x6FACD9, TechnoClass_Update_DamageSparks, 0x6)
 {
+	GET(TechnoClass*, pThis, ESI);
 	GET(TechnoTypeClass*, pType, EBX);
+
+	// The game only asks whether it already has a spark system at 0x6FADB3,
+	// after it has built and thrown away a DynamicVector of every candidate
+	// ParticleSystemType. Answer it up front instead: an object that is
+	// already sparking cannot gain a second system, so the whole block is
+	// dead work every frame it stays damaged.
+	if(pThis->SparkParticleSystem) {
+		return 0x6FAF01;
+	}
+
 	auto pExt = TechnoTypeExt::ExtMap.Find(pType);
 
 	bool sparks = pExt->DamageSparks.Get(pType->DamageSparks);
@@ -1705,7 +1805,7 @@ DEFINE_HOOK(6FACD9, TechnoClass_Update_DamageSparks, 6)
 }
 
 // smoke particle systems created when a techno is damaged
-DEFINE_HOOK(702894, TechnoClass_ReceiveDamage_SmokeParticles, 6)
+DEFINE_HOOK(0x702894, TechnoClass_ReceiveDamage_SmokeParticles, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	REF_STACK(DynamicVectorClass<ParticleSystemTypeClass const *>, Systems, 0x30);
@@ -1726,7 +1826,7 @@ DEFINE_HOOK(702894, TechnoClass_ReceiveDamage_SmokeParticles, 6)
 }
 
 // spark particle systems created at random intervals
-DEFINE_HOOK(6FAD49, TechnoClass_Update_SparkParticles, 0) // breaks the loop
+DEFINE_HOOK(0x6FAD49, TechnoClass_Update_SparkParticles, 0x0) // breaks the loop
 {
 	GET(TechnoClass*, pThis, ESI);
 	REF_STACK(DynamicVectorClass<ParticleSystemTypeClass const *>, Systems, 0x60);
@@ -1747,7 +1847,7 @@ DEFINE_HOOK(6FAD49, TechnoClass_Update_SparkParticles, 0) // breaks the loop
 }
 
 // customizable berserk fire rate modification
-DEFINE_HOOK(6FF28F, TechnoClass_Fire_BerserkROFMultiplier, 6)
+DEFINE_HOOK(0x6FF28F, TechnoClass_Fire_BerserkROFMultiplier, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	GET(int, ROF, EAX);
@@ -1762,7 +1862,7 @@ DEFINE_HOOK(6FF28F, TechnoClass_Fire_BerserkROFMultiplier, 6)
 	return 0x6FF29E;
 }
 
-DEFINE_HOOK(6FE31C, TechnoClass_Fire_AllowDamage, 8)
+DEFINE_HOOK(0x6FE31C, TechnoClass_Fire_AllowDamage, 0x8)
 {
 	//GET(TechnoClass*, pThis, ESI);
 	GET(WeaponTypeClass*, pWeapon, EBX);
@@ -1780,75 +1880,73 @@ DEFINE_HOOK(6FE31C, TechnoClass_Fire_AllowDamage, 8)
 }
 
 // issue #1324: enemy repair wrench visible when it shouldn't
-DEFINE_HOOK(6F525B, TechnoClass_DrawExtras_PowerOff, 5)
+DEFINE_HOOK(0x6F526C, TechnoClass_DrawExtras_PowerOff, 0x5)
 {
-	GET(TechnoClass*, pTechno, EBP);
+	GET(BuildingClass*, pBld, EBP);
 	GET_STACK(RectangleStruct*, pRect, 0xA0);
 
-	if(auto pBld = abstract_cast<BuildingClass*>(pTechno)) {
-		auto const pExt = BuildingExt::ExtMap.Find(pBld);
+	auto const pExt = BuildingExt::ExtMap.Find(pBld);
 
-		// allies and observers can always see by default
-		bool canSeeRepair = HouseClass::Player->IsAlliedWith(pBld->Owner)
-			|| HouseClass::IsPlayerObserver();
+	// allies and observers can always see by default
+	bool canSeeRepair = HouseClass::CurrentPlayer->IsAlliedWith(pBld->Owner)
+		|| HouseClass::IsCurrentPlayerObserver();
 
-		bool showRepair = FileSystem::WRENCH_SHP
-			&& pBld->IsBeingRepaired
-			// fixes the wrench playing over a temporally challenged building
-			&& !pBld->IsBeingWarpedOut()
-			&& !pBld->WarpingOut
-			// never show to enemies when cloaked, and only if allowed
-			&& (canSeeRepair || (pBld->CloakState == CloakState::Uncloaked && RulesExt::Global()->EnemyWrench));
+	bool showRepair = FileSystem::WRENCH_SHP
+		&& pBld->IsBeingRepaired
+		// fixes the wrench playing over a temporally challenged building
+		&& !pBld->IsBeingWarpedOut()
+		&& !pBld->WarpingOut
+		// never show to enemies when cloaked, and only if allowed
+		&& (canSeeRepair || (pBld->CloakState == CloakState::Uncloaked && RulesExt::Global()->EnemyWrench));
 
-		// display power off marker only for current player's buildings
-		bool showPower = FileSystem::POWEROFF_SHP
-			&& !pExt->TogglePower_HasPower
-			// only for owned buildings, but observers got magic eyes
-			&& (pBld->Owner->ControlledByPlayer() || HouseClass::IsPlayerObserver());
+	// display power off marker only for current player's buildings
+	bool showPower = FileSystem::POWEROFF_SHP
+		&& !pExt->TogglePower_HasPower
+		// only for owned buildings, but observers got magic eyes
+		&& (pBld->Owner->IsControlledByCurrentPlayer() || HouseClass::IsCurrentPlayerObserver());
 
-		// display any?
-		if(showPower || showRepair) {
-			auto cell = pBld->GetMapCoords();
+	// display any?
+	if(showPower || showRepair) {
+		auto cell = pBld->GetMapCoords();
 
-			if(!MapClass::Instance->GetCellAt(cell)->IsShrouded()) {
-				CoordStruct crd;
-				pBld->GetPosition_2(&crd);
+		if(!MapClass::Instance.GetCellAt(cell)->IsShrouded()) {
+			CoordStruct crd;
+			pBld->GetRenderCoords(&crd);
 
-				Point2D point;
-				TacticalClass::Instance->CoordsToClient(&crd, &point);
+			Point2D point;
+			TacticalClass::Instance->CoordsToClient(&crd, &point);
 
-				// offset the markers
-				Point2D ptRepair = point;
-				if(showPower) {
-					ptRepair.X -= 7;
-					ptRepair.Y -= 7;
-				}
+			// offset the markers
+			Point2D ptRepair = point;
+			if(showPower) {
+				ptRepair.X -= 7;
+				ptRepair.Y -= 7;
+			}
 
-				Point2D ptPower = point;
-				if(showRepair) {
-					ptPower.X += 18;
-					ptPower.Y += 18;
-				}
+			Point2D ptPower = point;
+			if(showRepair) {
+				ptPower.X += 18;
+				ptPower.Y += 18;
+			}
 
-				// animation display speed
-				// original frame calculation: ((currentframe%speed)*6)/(speed-1)
-				int speed = GameOptionsClass::Instance->GetAnimSpeed(14) / 4;
-				if(speed < 2) {
-					speed = 2;
-				}
+			// animation display speed
+			// original frame calculation: ((currentframe%speed)*6)/(speed-1)
+			int speed = GameOptionsClass::Instance.GetAnimSpeed(14) / 4;
+			if(speed < 2) {
+				speed = 2;
+			}
 
-				// draw the markers
-				if(showRepair) {
-					int frame = (FileSystem::WRENCH_SHP->Frames * (Unsorted::CurrentFrame % speed)) / speed;
-					DSurface::Hidden_2->DrawSHP(FileSystem::MOUSE_PAL, FileSystem::WRENCH_SHP,
-						frame, &ptRepair, pRect, BlitterFlags(0xE00), 0, 0, 0, 1000, 0, 0, 0, 0, 0);
-				}
+			// draw the markers
+			if(showRepair) {
+				int frame = (FileSystem::WRENCH_SHP->Frames * (Unsorted::CurrentFrame % speed)) / speed;
+				DSurface::Temp->DrawSHP(FileSystem::MOUSE_PAL, FileSystem::WRENCH_SHP,
+					frame, &ptRepair, pRect, BlitterFlags(0xE00), 0, 0, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
+			}
 
-				if(showPower) {
-					int frame = (FileSystem::POWEROFF_SHP->Frames * (Unsorted::CurrentFrame % speed)) / speed;
-					DSurface::Hidden_2->DrawSHP(FileSystem::MOUSE_PAL, FileSystem::POWEROFF_SHP,
-						frame, &ptPower, pRect, BlitterFlags(0xE00), 0, 0, 0, 1000, 0, 0, 0, 0, 0);
-				}
+			if(showPower) {
+				int frame = (FileSystem::POWEROFF_SHP->Frames * (Unsorted::CurrentFrame % speed)) / speed;
+				DSurface::Temp->DrawSHP(FileSystem::MOUSE_PAL, FileSystem::POWEROFF_SHP,
+					frame, &ptPower, pRect, BlitterFlags(0xE00), 0, 0, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
 			}
 		}
 	}
@@ -1856,7 +1954,7 @@ DEFINE_HOOK(6F525B, TechnoClass_DrawExtras_PowerOff, 5)
 	return 0x6F5347;
 }
 
-DEFINE_HOOK(741613, UnitClass_ApproachTarget_OmniCrusher, 6)
+DEFINE_HOOK(0x741613, UnitClass_ApproachTarget_OmniCrusher, 0x6)
 {
 	GET(UnitClass* const, pThis, ESI);
 
@@ -1866,7 +1964,7 @@ DEFINE_HOOK(741613, UnitClass_ApproachTarget_OmniCrusher, 6)
 	return aggressive ? 0u : 0x741685u;
 }
 
-DEFINE_HOOK(7418AA, UnitClass_CrushCell_CrushDamage, 6)
+DEFINE_HOOK(0x7418AA, UnitClass_CrushCell_CrushDamage, 0x6)
 {
 	GET(UnitClass* const, pThis, EDI);
 	GET(ObjectClass* const, pVictim, ESI);
@@ -1888,11 +1986,11 @@ DEFINE_HOOK(7418AA, UnitClass_CrushCell_CrushDamage, 6)
 	return 0;
 }
 
-DEFINE_HOOK(4D9920, FootClass_SelectAutoTarget_Cloaked, 9)
+DEFINE_HOOK(0x4D9920, FootClass_SelectAutoTarget_Cloaked, 0x9)
 {
 	GET(FootClass* const, pThis, ECX);
 
-	if(pThis->Owner->ControlledByHuman()
+	if(pThis->Owner->IsControlledByHuman()
 		&& pThis->GetCurrentMission() == Mission::Guard)
 	{
 		auto const pType = pThis->GetTechnoType();
@@ -1919,7 +2017,7 @@ DEFINE_HOOK(4D9920, FootClass_SelectAutoTarget_Cloaked, 9)
 	return 0;
 }
 
-DEFINE_HOOK(70BE80, TechnoClass_ShouldSelfHealOneStep, 5)
+DEFINE_HOOK(0x70BE80, TechnoClass_ShouldSelfHealOneStep, 0x5)
 {
 	GET(TechnoClass* const, pThis, ECX);
 	auto const pExt = TechnoExt::ExtMap.Find(pThis);
@@ -1928,7 +2026,7 @@ DEFINE_HOOK(70BE80, TechnoClass_ShouldSelfHealOneStep, 5)
 	return 0x70BF46;
 }
 
-DEFINE_HOOK(6FA743, TechnoClass_Update_SelfHeal, A)
+DEFINE_HOOK(0x6FA743, TechnoClass_Update_SelfHeal, 0xA)
 {
 	GET(TechnoClass* const, pThis, ESI);
 
@@ -1950,7 +2048,7 @@ DEFINE_HOOK(6FA743, TechnoClass_Update_SelfHeal, A)
 	return 0x6FA793;
 }
 
-DEFINE_HOOK(7162B0, TechnoTypeClass_GetPipMax_MindControl, 6)
+DEFINE_HOOK(0x7162B0, TechnoTypeClass_GetPipMax_MindControl, 0x6)
 {
 	GET(TechnoTypeClass const* const, pThis, ECX);
 
@@ -1967,7 +2065,73 @@ DEFINE_HOOK(7162B0, TechnoTypeClass_GetPipMax_MindControl, 6)
 	return 0x7162BC;
 }
 
-DEFINE_HOOK(73769E, UnitClass_ReceivedRadioCommand_SpecificPassengers, 8)
+// without Passengers.BySize every passenger takes up a single slot, no
+// matter its Size. SizeLimit is still respected either way.
+DEFINE_HOOK(0x73762B, UnitClass_ReceivedRadioCommand_BySize1, 0x6)
+{
+	GET(UnitClass* const, pThis, ESI);
+
+	auto const pType = pThis->Type;
+
+	if(TechnoTypeExt::ExtMap.Find(pType)->Passengers_BySize) {
+		return 0;
+	}
+
+	return (pThis->Passengers.NumPassengers < pType->Passengers)
+		? 0x737677u
+		: 0x73780Fu
+	;
+}
+
+DEFINE_HOOK(0x73778F, UnitClass_ReceivedRadioCommand_BySize2, 0x6)
+{
+	GET(UnitClass* const, pThis, ESI);
+
+	auto const pType = pThis->Type;
+
+	if(TechnoTypeExt::ExtMap.Find(pType)->Passengers_BySize) {
+		return 0;
+	}
+
+	return (pThis->Passengers.NumPassengers == pType->Passengers)
+		? 0x7377AAu
+		: 0x7377C9u
+	;
+}
+
+DEFINE_HOOK(0x73782F, UnitClass_ReceivedRadioCommand_BySize3, 0x6)
+{
+	GET(UnitClass* const, pThis, ESI);
+
+	auto const pType = pThis->Type;
+
+	if(TechnoTypeExt::ExtMap.Find(pType)->Passengers_BySize) {
+		return 0;
+	}
+
+	return (pThis->Passengers.NumPassengers < pType->Passengers)
+		? 0x737877u
+		: 0x73780Fu
+	;
+}
+
+DEFINE_HOOK(0x737994, UnitClass_ReceivedRadioCommand_BySize4, 0x6)
+{
+	GET(UnitClass* const, pThis, ESI);
+
+	auto const pType = pThis->Type;
+
+	if(TechnoTypeExt::ExtMap.Find(pType)->Passengers_BySize) {
+		return 0;
+	}
+
+	return (pThis->Passengers.NumPassengers < pType->Passengers)
+		? 0x7379E8u
+		: 0x737AFCu
+	;
+}
+
+DEFINE_HOOK(0x73769E, UnitClass_ReceivedRadioCommand_SpecificPassengers, 0x8)
 {
 	GET(UnitClass* const, pThis, ESI);
 	GET(TechnoClass const* const, pSender, EDI);
@@ -1984,7 +2148,7 @@ DEFINE_HOOK(73769E, UnitClass_ReceivedRadioCommand_SpecificPassengers, 8)
 	return allowed ? 0u : 0x73780Fu;
 }
 
-DEFINE_HOOK(41949F, AircraftClass_ReceivedRadioCommand_SpecificPassengers, 6)
+DEFINE_HOOK(0x41949F, AircraftClass_ReceivedRadioCommand_SpecificPassengers, 0x6)
 {
 	GET(AircraftClass* const, pThis, ESI);
 	GET_STACK(TechnoClass const* const, pSender, 0x14);
@@ -2007,7 +2171,7 @@ DEFINE_HOOK(41949F, AircraftClass_ReceivedRadioCommand_SpecificPassengers, 6)
 	return allowed ? Allowed : Disallowed;
 }
 
-DEFINE_HOOK(740031, UnitClass_GetCursorOverObject_NoManualUnload, 6)
+DEFINE_HOOK(0x740031, UnitClass_GetActionOnObject_NoManualUnload, 0x6)
 {
 	GET(UnitClass const* const, pThis, ESI);
 
@@ -2017,7 +2181,7 @@ DEFINE_HOOK(740031, UnitClass_GetCursorOverObject_NoManualUnload, 6)
 	return pExt->NoManualUnload ? 0x740115u : 0u;
 }
 
-DEFINE_HOOK(700EEC, TechnoClass_CanDeploySlashUnload_NoManualUnload, 6)
+DEFINE_HOOK(0x700EEC, TechnoClass_CanDeploySlashUnload_NoManualUnload, 0x6)
 {
 	// this techno is known to be a unit
 	GET(UnitClass const* const, pThis, ESI);
@@ -2025,10 +2189,12 @@ DEFINE_HOOK(700EEC, TechnoClass_CanDeploySlashUnload_NoManualUnload, 6)
 	auto const pType = pThis->GetTechnoType();
 	auto const pExt = TechnoTypeExt::ExtMap.Find(pType);
 
-	return pExt->NoManualUnload ? 0x700DCEu : 0u;
+	// a unit that is bunkered has to be able to unload manually regardless:
+	// leaving the bunker is the only way its passengers get out.
+	return pExt->NoManualUnload && !pThis->BunkerLinkedItem ? 0x700DCEu : 0u;
 }
 
-DEFINE_HOOK(700536, TechnoClass_GetCursorOverObject_NoManualFire, 6)
+DEFINE_HOOK(0x700536, TechnoClass_GetActionOnObject_NoManualFire, 0x6)
 {
 	GET(TechnoClass const* const, pThis, ESI);
 
@@ -2038,7 +2204,7 @@ DEFINE_HOOK(700536, TechnoClass_GetCursorOverObject_NoManualFire, 6)
 	return pExt->NoManualFire ? 0x70056Cu : 0u;
 }
 
-DEFINE_HOOK(7008D4, TechnoClass_GetCursorOverCell_NoManualFire, 6)
+DEFINE_HOOK(0x7008D4, TechnoClass_GetActionOnCell_NoManualFire, 0x6)
 {
 	GET(TechnoClass const* const, pThis, ESI);
 
@@ -2048,18 +2214,28 @@ DEFINE_HOOK(7008D4, TechnoClass_GetCursorOverCell_NoManualFire, 6)
 	return pExt->NoManualFire ? 0x700AB7u : 0u;
 }
 
-DEFINE_HOOK(51ED8E, InfantryClass_GetCursorOverObject_NoManualEnter, 6)
+DEFINE_HOOK(0x51ED8E, InfantryClass_GetActionOnObject_Tunnel, 0x6)
 {
-	//GET(InfantryClass const* const, pThis, ESI);
+	GET(ObjectClass const* const, pTarget, ESI);
 	GET(TechnoTypeClass const* const, pTargetType, EAX);
 
 	auto const pExt = TechnoTypeExt::ExtMap.Find(pTargetType);
-	bool enterable = pTargetType->Passengers > 0 && !pExt->NoManualEnter;
 
-	return enterable ? 0x51ED9Cu : 0x51EE3Bu;
+	if(pTargetType->Passengers > 0 && !pExt->NoManualEnter) {
+		return 0x51ED9C;
+	}
+
+	bool tunnel = false;
+
+	if(pTarget && pTarget->WhatAmI() == AbstractType::Building) {
+		auto const pBuilding = static_cast<BuildingClass const*>(pTarget);
+		tunnel = BuildingTypeExt::ExtMap.Find(pBuilding->Type)->Tunnel >= 0;
+	}
+
+	return tunnel ? 0x51ED9Cu : 0x51EE3Bu;
 }
 
-DEFINE_HOOK(74031A, UnitClass_GetCursorOverObject_NoManualEnter, 6)
+DEFINE_HOOK(0x74031A, UnitClass_GetActionOnObject_NoManualEnter, 0x6)
 {
 	//GET(UnitClass const* const, pThis, ESI);
 	GET(TechnoTypeClass const* const, pTargetType, EAX);

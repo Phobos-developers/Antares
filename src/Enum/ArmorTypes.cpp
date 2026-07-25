@@ -43,23 +43,35 @@ void ArmorType::SaveToStream(AresStreamWriter &Stm)
 		.Process(this->DefaultVerses);
 }
 
-void ArmorType::LoadForWarhead(CCINIClass *pINI, WarheadTypeClass* pWH)
+// makes sure the warhead has one Verses entry per registered armor type,
+// seeding the new ones from the armor's own default
+void ArmorType::GrowForWarhead(WarheadTypeClass* pWH)
 {
 	WarheadTypeExt::ExtData *pData = WarheadTypeExt::ExtMap.Find(pWH);
 	if(!pData) {
 		return;
 	}
 
-	pData->Verses.Reserve(Array.size());
+	pData->Verses.reserve(Array.size());
 
-	while(pData->Verses.Count < static_cast<int>(Array.size())) {
-		auto& pArmor = Array[pData->Verses.Count];
+	while(pData->Verses.size() < Array.size()) {
+		auto& pArmor = Array[pData->Verses.size()];
 		int idx = pArmor->DefaultIndex;
-		pData->Verses.AddItem(
+		pData->Verses.push_back(
 			idx == -1
 				? pArmor->DefaultVerses
 				: pData->Verses[idx]
 		);
+	}
+}
+
+void ArmorType::LoadForWarhead(CCINIClass *pINI, WarheadTypeClass* pWH)
+{
+	ArmorType::GrowForWarhead(pWH);
+
+	WarheadTypeExt::ExtData *pData = WarheadTypeExt::ExtMap.Find(pWH);
+	if(!pData) {
+		return;
 	}
 
 	char buffer[0x80];
@@ -98,7 +110,7 @@ void ArmorType::AddDefaults()
 	FindOrAllocate("special_2");
 }
 
-DEFINE_HOOK(4753F0, ArmorType_FindIndex, A)
+DEFINE_HOOK(0x4753F0, ArmorType_FindIndex, 0xA)
 {
 	GET(CCINIClass *, pINI, ECX);
 	if(ArmorType::Array.empty()) {
@@ -127,7 +139,7 @@ DEFINE_HOOK(4753F0, ArmorType_FindIndex, A)
 	return 0x475430;
 }
 
-DEFINE_HOOK(4B9A52, DropshipLoadout_PrintArmor, 5)
+DEFINE_HOOK(0x4B9A52, DropshipLoadout_PrintArmor, 0x5)
 {
 	R->Stack(0x4, ArmorType::Array[R->EDX()].get());
 	return 0;

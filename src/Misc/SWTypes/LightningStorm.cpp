@@ -35,7 +35,7 @@ SWRange SW_LightningStorm::GetRange(const SWTypeExt::ExtData* pData) const
 	return pData->SW_Range;
 }
 
-void SW_LightningStorm::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_LightningStorm::Initialize(SWTypeExt::ExtData *pData)
 {
 	// Defaults to Lightning Storm values
 	pData->Weather_DebrisMin = 2;
@@ -54,11 +54,13 @@ void SW_LightningStorm::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeCla
 	pData->Message_Abort = "Msg:LightningStormActive";
 
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::LightningStorm;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::LightningStorm);
+	pData->SW_Cursor = MouseCursorType::LightningStorm;
 }
 
-void SW_LightningStorm::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_LightningStorm::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -98,9 +100,9 @@ bool SW_LightningStorm::AbortFire(SuperClass* pSW, bool IsPlayer)
 	return false;
 }
 
-bool SW_LightningStorm::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_LightningStorm::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
-	if(pThis->IsCharged) {
+	if(pThis->IsReady) {
 		// the only thing we do differently is to remember which
 		// SW has been fired here. all needed changes are done
 		// by hooks.

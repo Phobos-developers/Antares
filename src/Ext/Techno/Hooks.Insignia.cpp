@@ -4,7 +4,7 @@
 
 #include <HouseClass.h>
 
-DEFINE_HOOK(70A990, TechnoClass_DrawVeterancy, 5)
+DEFINE_HOOK(0x70A990, TechnoClass_DrawVeterancy, 0x5)
 {
 	GET(TechnoClass *, T, ECX);
 	GET_STACK(Point2D *, XY, 0x4);
@@ -16,25 +16,36 @@ DEFINE_HOOK(70A990, TechnoClass_DrawVeterancy, 5)
 	int iFrame = -1;
 	TechnoTypeExt::ExtData *pTypeData = TechnoTypeExt::ExtMap.Find(T->GetTechnoType());
 
-	bool canSee = T->Owner->IsAlliedWith(HouseClass::Player)
-		|| HouseClass::IsPlayerObserver()
+	bool canSee = T->Owner->IsAlliedWith(HouseClass::CurrentPlayer)
+		|| HouseClass::IsCurrentPlayerObserver()
 		|| pTypeData->Insignia_ShowEnemy.Get(RulesExt::Global()->EnemyInsignia);
 
-	if(!canSee) {
-		iFrame = -1;
-	} else if(SHPStruct *fCustom = pTypeData->Insignia.Get(T)) {
-		iFile = fCustom;
-		iFrame = 0;
-	} else {
-		VeterancyStruct *XP = &T->Veterancy;
-		if(XP->IsElite()) {
-			iFrame = 15;
-		} else if(XP->IsVeteran()) {
-			iFrame = 14;
+	if(canSee) {
+		// The frame the rank would use if InsigniaFrame does not override it:
+		// 0 for a custom insignia SHP, else the two hardcoded pips.shp frames.
+		int fallback = -1;
+
+		if(SHPStruct *fCustom = pTypeData->Insignia.Get(T)) {
+			iFile = fCustom;
+			fallback = 0;
+		} else {
+			VeterancyStruct *XP = &T->Veterancy;
+			if(XP->IsElite()) {
+				fallback = 15;
+			} else if(XP->IsVeteran()) {
+				fallback = 14;
+			}
+		}
+
+		// InsigniaFrame.%s applies to the custom and the default shape alike;
+		// -1 means "keep the default frame index".
+		iFrame = pTypeData->InsigniaFrame.Get(T);
+		if(iFrame < 0) {
+			iFrame = fallback;
 		}
 	}
 
-	if(iFrame != -1 && iFile) {
+	if(iFrame >= 0 && iFile) {
 		offset.X += 5;
 		offset.Y += 2;
 		if(T->WhatAmI() != AbstractType::Infantry) {
@@ -42,8 +53,8 @@ DEFINE_HOOK(70A990, TechnoClass_DrawVeterancy, 5)
 			offset.Y += 4;
 		}
 
-		DSurface::Hidden_2->DrawSHP(
-			FileSystem::THEATER_PAL, iFile, iFrame, &offset, pRect, BlitterFlags(0xE00), 0, -2, 0, 1000, 0, 0, 0, 0, 0);
+		DSurface::Temp->DrawSHP(
+			FileSystem::PALETTE_PAL, iFile, iFrame, &offset, pRect, BlitterFlags(0xE00), 0, -2, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
 	}
 
 	return 0x70AA5B;

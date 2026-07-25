@@ -4,7 +4,6 @@
 #include <WarheadTypeClass.h>
 
 //Static init
-template<> const DWORD Extension<TiberiumClass>::Canary = 0xB16B00B5;
 TiberiumExt::ExtContainer TiberiumExt::ExtMap;
 
 void TiberiumExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
@@ -100,12 +99,12 @@ void TiberiumExt::ExtData::Serialize(T& Stm) {
 }
 
 void TiberiumExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<TiberiumClass>::LoadFromStream(Stm);
+	Extension<TiberiumClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void TiberiumExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<TiberiumClass>::SaveToStream(Stm);
+	Extension<TiberiumClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -120,7 +119,7 @@ TiberiumExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(721876, TiberiumClass_CTOR, 5)
+DEFINE_HOOK(0x721876, TiberiumClass_CTOR, 0x5)
 {
 	GET(TiberiumClass*, pThis, ESI);
 
@@ -128,7 +127,7 @@ DEFINE_HOOK(721876, TiberiumClass_CTOR, 5)
 	return 0;
 }
 
-DEFINE_HOOK(72193A, TiberiumClass_DTOR, 6)
+DEFINE_HOOK(0x72193A, TiberiumClass_DTOR, 0x6)
 {
 	GET(TiberiumClass*, pThis, ESI);
 
@@ -136,8 +135,8 @@ DEFINE_HOOK(72193A, TiberiumClass_DTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(7220D0, TiberiumClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(721E80, TiberiumClass_SaveLoad_Prefix, 7)
+DEFINE_HOOK_AGAIN(0x7220D0, TiberiumClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x721E80, TiberiumClass_SaveLoad_Prefix, 0x7)
 {
 	GET_STACK(TiberiumClass*, pThis, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -147,21 +146,21 @@ DEFINE_HOOK(721E80, TiberiumClass_SaveLoad_Prefix, 7)
 	return 0;
 }
 
-DEFINE_HOOK(72208C, TiberiumClass_Load_Suffix, 7)
+DEFINE_HOOK(0x72208C, TiberiumClass_Load_Suffix, 0x7)
 {
 	TiberiumExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(72212C, TiberiumClass_Save_Suffix, 5)
+DEFINE_HOOK(0x72212C, TiberiumClass_Save_Suffix, 0x5)
 {
 	TiberiumExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(721CDC, TiberiumClass_LoadFromINI, A)
-DEFINE_HOOK_AGAIN(721CE9, TiberiumClass_LoadFromINI, A)
-DEFINE_HOOK(721C7B, TiberiumClass_LoadFromINI, A)
+DEFINE_HOOK_AGAIN(0x721CDC, TiberiumClass_LoadFromINI, 0xA)
+DEFINE_HOOK_AGAIN(0x721CE9, TiberiumClass_LoadFromINI, 0xA)
+DEFINE_HOOK(0x721C7B, TiberiumClass_LoadFromINI, 0xA)
 {
 	GET(TiberiumClass*, pThis, ESI);
 	GET(CCINIClass*, pINI, EBX);
@@ -169,3 +168,10 @@ DEFINE_HOOK(721C7B, TiberiumClass_LoadFromINI, A)
 	TiberiumExt::ExtMap.LoadFromINI(pThis, pINI);
 	return 0;
 }
+
+static_assert(sizeof(TiberiumExt::ExtData) == 0x80, "TiberiumExt::ExtData must match the 3.0p1 layout");
+
+static_assert(offsetof(TiberiumExt::ExtData, Damage) == 0x08, "TiberiumExt::ExtData layout slipped");
+static_assert(offsetof(TiberiumExt::ExtData, Heal_Delay) == 0x30, "TiberiumExt::ExtData layout slipped");
+static_assert(offsetof(TiberiumExt::ExtData, ExplosionWarhead) == 0x40, "TiberiumExt::ExtData layout slipped");
+static_assert(offsetof(TiberiumExt::ExtData, DebrisChance) == 0x50, "TiberiumExt::ExtData layout slipped");

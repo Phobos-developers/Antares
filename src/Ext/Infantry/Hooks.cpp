@@ -6,56 +6,113 @@
 #include "../Techno/Body.h"
 #include "Body.h"
 #include "../Rules/Body.h"
+#include "../TechnoType/Body.h"
+#include "../../Enum/CursorTypes.h"
 #include "../../Misc/Actions.h"
 #include <HouseClass.h>
 #include <InputManagerClass.h>
 #include <VoxClass.h>
 
 // #664: Advanced Rubble - reconstruction part: Check
-DEFINE_HOOK(51E63A, InfantryClass_GetCursorOverObject_EngineerOverFriendlyBuilding, 6) {
+DEFINE_HOOK(0x51E635, InfantryClass_GetActionOnObject_EngineerOverFriendlyBuilding, 0x5) {
 	GET(BuildingClass *, pTarget, ESI);
 	GET(InfantryClass *, pThis, EDI);
 
-	if(BuildingTypeExt::ExtData* pData = BuildingTypeExt::ExtMap.Find(pTarget->Type)) {
-		if((pData->RubbleIntact || pData->RubbleIntactRemove) && pTarget->Owner->IsAlliedWith(pThis)) {
-			return 0x51E659;
-		}
+	auto const pData = BuildingTypeExt::ExtMap.Find(pTarget->Type);
+
+	if((pData->RubbleIntact || pData->RubbleIntactRemove)
+		&& pThis && pTarget->Owner->IsAlliedWith(pThis))
+	{
+		CursorType::SetAction(static_cast<MouseCursorType>(94), Action::GRepair, 0);
+		R->EAX(Action::GRepair);
+		return 0x51E458;
 	}
 
-	return 0;
+	// overwrote the fnstsw test, need to replicate it
+	return (R->EAX() & 0x4000)
+		? 0x51E63A
+		: 0x51E659
+	;
+}
+
+DEFINE_HOOK(0x51E4ED, InfantryClass_GetActionOnObject_EngineerRepairable, 0x6)
+{
+	GET(BuildingClass const* const, pTarget, ESI);
+
+	auto const pType = pTarget->Type;
+	auto const pExt = BuildingTypeExt::ExtMap.Find(pType);
+
+	R->ECX(pExt->EngineerRepairable.Get(pType->Repairable));
+
+	return 0x51E4F3;
+}
+
+DEFINE_HOOK(0x51FA82, InfantryClass_GetActionOnCell_EngineerRepairable, 0x6)
+{
+	GET(BuildingTypeClass const* const, pType, EBP);
+
+	auto const pExt = BuildingTypeExt::ExtMap.Find(pType);
+
+	R->EAX(pExt->EngineerRepairable.Get(pType->Repairable));
+
+	return 0x51FA88;
+}
+
+DEFINE_HOOK(0x51E748, InfantryClass_GetActionOnObject_NoSelfGuardArea, 0x8)
+{
+	GET(InfantryClass const* const, pThis, EDI);
+
+	auto const pExt = TechnoTypeExt::ExtMap.Find(pThis->Type);
+
+	return pExt->NoSelfGuardArea ? 0x51E7A6u : 0u;
 }
 
 // #664: Advanced Rubble - reconstruction part: Reconstruction
-DEFINE_HOOK(519FAF, InfantryClass_UpdatePosition_EngineerRepairsFriendly, 6)
+DEFINE_HOOK(0x519FAF, InfantryClass_UpdatePosition_EngineerRepairsFriendly, 0x6)
 {
 	GET(InfantryClass *, pThis, ESI);
 	GET(BuildingClass *, Target, EDI);
 
-	BuildingExt::ExtData* TargetExtData = BuildingExt::ExtMap.Find(Target);
-	BuildingTypeExt::ExtData* TargetTypeExtData = BuildingTypeExt::ExtMap.Find(Target->Type);
-	bool do_normal_repair = true;
+	auto const pTargetType = Target->Type;
+	BuildingTypeExt::ExtData* TargetTypeExtData = BuildingTypeExt::ExtMap.Find(pTargetType);
 
 	if(TargetTypeExtData->RubbleIntact || TargetTypeExtData->RubbleIntactRemove) {
-		do_normal_repair = false;
-		bool wasSelected = pThis->IsSelected;
-		pThis->Remove();
-		if(!TargetExtData->RubbleYell(true)) {
-			++Unsorted::IKnowWhatImDoing;
-			Target->Put(Target->Location, Target->Facing.current().value8());
-			--Unsorted::IKnowWhatImDoing;
-			VoxClass::Play("EVA_CannotDeployHere");
+		auto const pRubble = BuildingExt::ExtData::PlaceRubble(Target,
+			TargetTypeExtData->RubbleIntactRemove, TargetTypeExtData->RubbleIntact,
+			TargetTypeExtData->RubbleIntactOwner, TargetTypeExtData->RubbleIntactStrength,
+			TargetTypeExtData->RubbleIntactAnim);
+
+		// the pile of rubble has served its purpose and is gone for good
+		Target->UnInit();
+
+		if(!pRubble) {
+			// Rubble.Intact.Remove: nothing was put back, so there is nobody to
+			// hand the engineer to. Take the "already at full health" exit.
+			return 0x519FB9;
 		}
+
+		// hand the engineer to the building that is on the map now, not to the
+		// one that just left it
+		bool wasSelected = pThis->IsSelected;
+		pThis->Limbo();
 		CellStruct Cell = pThis->GetMapCoords();
-		Target->KickOutUnit(pThis, Cell);
+		pRubble->KickOutUnit(pThis, Cell);
 		if(wasSelected) {
 			pThis->Select();
 		}
+
+		return 0x51A65D; //0x51A010 eats the Engineer, 0x51A65D hopefully does not
 	}
 
-	return do_normal_repair ? 0 : 0x51A65D; //0x51A010 eats the Engineer, 0x51A65D hopefully does not
+	// EngineerRepairable was declared, parsed and streamed but never consulted:
+	// a building an engineer may not repair takes the "nothing to repair" exit
+	// at 0x519FB9 the same way a building already at full health does.
+	auto const repairable = TargetTypeExtData->EngineerRepairable.Get(pTargetType->Repairable);
+
+	return repairable ? 0u : 0x519FB9u;
 }
 
-DEFINE_HOOK(51DF38, InfantryClass_Remove, A)
+DEFINE_HOOK(0x51DF38, InfantryClass_Remove, 0xA)
 {
 	GET(InfantryClass *, pThis, ESI);
 	TechnoExt::ExtData* pData = TechnoExt::ExtMap.Find(pThis);
@@ -71,7 +128,7 @@ DEFINE_HOOK(51DF38, InfantryClass_Remove, A)
 	return 0;
 }
 
-DEFINE_HOOK(51DFFD, InfantryClass_Put, 5)
+DEFINE_HOOK(0x51DFFD, InfantryClass_Put, 0x5)
 {
 	GET(InfantryClass *, pThis, EDI);
 	TechnoExt::ExtData* pData = TechnoExt::ExtMap.Find(pThis);
@@ -80,7 +137,7 @@ DEFINE_HOOK(51DFFD, InfantryClass_Put, 5)
 	return 0;
 }
 
-DEFINE_HOOK(518434, InfantryClass_ReceiveDamage_SkipDeathAnim, 7)
+DEFINE_HOOK(0x518434, InfantryClass_ReceiveDamage_SkipDeathAnim, 0x7)
 {
 	GET(InfantryClass *, pThis, ESI);
 	//GET_STACK(ObjectClass *, pAttacker, 0xE0);
@@ -96,7 +153,7 @@ DEFINE_HOOK(518434, InfantryClass_ReceiveDamage_SkipDeathAnim, 7)
 }
 
 // should correct issue #743
-DEFINE_HOOK(51D799, InfantryClass_PlayAnim_WaterSound, 7)
+DEFINE_HOOK(0x51D799, InfantryClass_PlayAnim_WaterSound, 0x7)
 {
 	GET(InfantryClass *, I, ESI);
 	return (I->Transporter || I->Type->MovementZone != MovementZone::AmphibiousDestroyer)
@@ -105,18 +162,18 @@ DEFINE_HOOK(51D799, InfantryClass_PlayAnim_WaterSound, 7)
 	;
 }
 
-DEFINE_HOOK(51E5BB, InfantryClass_GetCursorOverObject_MultiEngineerA, 7) {
+DEFINE_HOOK(0x51E5BB, InfantryClass_GetActionOnObject_MultiEngineerA, 0x7) {
 	// skip old logic's way to determine the cursor
 	return 0x51E5D9;
 }
 
-DEFINE_HOOK(51E5E1, InfantryClass_GetCursorOverObject_MultiEngineerB, 7) {
+DEFINE_HOOK(0x51E5E1, InfantryClass_GetActionOnObject_MultiEngineerB, 0x7) {
 	GET(BuildingClass *, pBld, ECX);
 	Action ret = InfantryExt::GetEngineerEnterEnemyBuildingAction(pBld);
 
 	// use a dedicated cursor
 	if(ret == Action::Damage) {
-		Actions::Set(&RulesExt::Global()->EngineerDamageCursor);
+		CursorType::SetAction(static_cast<MouseCursorType>(87), Action::Damage, 0);
 	}
 
 	// return our action
@@ -124,7 +181,7 @@ DEFINE_HOOK(51E5E1, InfantryClass_GetCursorOverObject_MultiEngineerB, 7) {
 	return 0;
 }
 
-DEFINE_HOOK(519D9C, InfantryClass_UpdatePosition_MultiEngineer, 5) {
+DEFINE_HOOK(0x519D9C, InfantryClass_UpdatePosition_MultiEngineer, 0x5) {
 	GET(InfantryClass *, pEngi, ESI);
 	GET(BuildingClass *, pBld, EDI);
 
@@ -132,7 +189,7 @@ DEFINE_HOOK(519D9C, InfantryClass_UpdatePosition_MultiEngineer, 5) {
 	Action action = InfantryExt::GetEngineerEnterEnemyBuildingAction(pBld);
 	if(action == Action::Damage) {
 		int Damage = static_cast<int>(ceil(pBld->Type->Strength * RulesExt::Global()->EngineerDamage));
-		pBld->ReceiveDamage(&Damage, 0, RulesClass::Global()->C4Warhead, pEngi, true, false, nullptr);
+		pBld->ReceiveDamage(&Damage, 0, RulesClass::Instance->C4Warhead, pEngi, true, false, nullptr);
 		return 0x51A010;
 	} else {
 		return 0x519EAA;
@@ -140,14 +197,14 @@ DEFINE_HOOK(519D9C, InfantryClass_UpdatePosition_MultiEngineer, 5) {
 }
 
 // #1008047: the C4 did not work correctly in YR, because some ability checks were missing
-DEFINE_HOOK(51C325, InfantryClass_IsCellOccupied_C4Ability, 6)
+DEFINE_HOOK(0x51C325, InfantryClass_IsCellOccupied_C4Ability, 0x6)
 {
 	GET(InfantryClass*, pThis, EBP);
 
 	return (pThis->Type->C4 || pThis->HasAbility(Ability::C4)) ? 0x51C37D : 0x51C335;
 }
 
-DEFINE_HOOK(51A4D2, InfantryClass_UpdatePosition_C4Ability, 6)
+DEFINE_HOOK(0x51A4D2, InfantryClass_UpdatePosition_C4Ability, 0x6)
 {
 	GET(InfantryClass*, pThis, ESI);
 
@@ -155,7 +212,7 @@ DEFINE_HOOK(51A4D2, InfantryClass_UpdatePosition_C4Ability, 6)
 }
 
 // do not prone in water
-DEFINE_HOOK(5201CC, InfantryClass_UpdatePanic_ProneWater, 6)
+DEFINE_HOOK(0x5201CC, InfantryClass_UpdatePanic_ProneWater, 0x6)
 {
 	GET(InfantryClass*, pThis, ESI);
 	auto landType = pThis->GetCell()->LandType;
@@ -165,7 +222,7 @@ DEFINE_HOOK(5201CC, InfantryClass_UpdatePanic_ProneWater, 6)
 // #1283638: ivans cannot enter grinders; they get an attack cursor. if the
 // grinder is rigged with a bomb, ivans can enter. this fix lets ivans enter
 // allied grinders. pressing the force fire key brings back the old behavior.
-DEFINE_HOOK(51EB48, InfantryClass_GetCursorOverObject_IvanGrinder, A)
+DEFINE_HOOK(0x51EB48, InfantryClass_GetActionOnObject_IvanGrinder, 0xA)
 {
 	GET(InfantryClass*, pThis, EDI);
 	GET(ObjectClass*, pTarget, ESI);

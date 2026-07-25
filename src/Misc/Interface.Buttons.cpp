@@ -2,7 +2,7 @@
 #include "../Ares.h"
 
 #include <StringTable.h>
-#include <MessageBox.h>
+#include <WWMessageBox.h>
 
 #include <Strsafe.h>
 
@@ -181,10 +181,10 @@ Ares::UISettings::UIAction Interface::parseUIAction(const char* value, Ares::UIS
 }
 
 // show message
-DEFINE_HOOK(52DDBA, Frontend_WndProc_MessageBox, 5) {
+DEFINE_HOOK(0x52DDBA, Frontend_WndProc_MessageBox, 0x5) {
 	if(Interface::nextMessageText) {
 		const wchar_t* ok = StringTable::LoadStringA("TXT_OK");
-		MessageBox::Show(Interface::nextMessageText, ok, nullptr);
+		WWMessageBox::Instance.Process(Interface::nextMessageText, ok, nullptr);
 		Interface::nextMessageText = nullptr;
 		return 0x52DE39;
 	}
@@ -194,7 +194,7 @@ DEFINE_HOOK(52DDBA, Frontend_WndProc_MessageBox, 5) {
 }
 
 // go to the return menu instead of the menu Westwood would like to see here.
-DEFINE_HOOK(52E446, Frontend_WndProc_JustAfterAction, 6) {
+DEFINE_HOOK(0x52E446, Frontend_WndProc_JustAfterAction, 0x6) {
 	GET(int, thisAction, ESI);
 	if((Interface::nextAction != thisAction) && (Interface::nextReturnMenu >= 0)) {
 		R->ESI(Interface::nextReturnMenu);
@@ -205,55 +205,55 @@ DEFINE_HOOK(52E446, Frontend_WndProc_JustAfterAction, 6) {
 }
 
 // hooks for different buttons
-DEFINE_HOOK(53208D, Main_hDlg_SinglePlayerButtonClick, 6) {
+DEFINE_HOOK(0x53208D, Main_hDlg_SinglePlayerButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::SinglePlayerButton,
 		"SINGLEPLAYERBUTTON", pAction, 18) ? 0x532093 : 0);
 }
 
-DEFINE_HOOK(5320C2, Main_hDlg_WWOnlineButtonClick, 6) {
+DEFINE_HOOK(0x5320C2, Main_hDlg_WWOnlineButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::WWOnlineButton,
 		"WWONLINEBUTTON", pAction, 18) ? 0x5320C8 : 0);
 }
 
-DEFINE_HOOK(532051, Main_hDlg_NetworkButtonClick, 6) {
+DEFINE_HOOK(0x532051, Main_hDlg_NetworkButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::NetworkButton,
 		"NETWORKBUTTON", pAction, 18) ? 0x532057 : 0);
 }
 
-DEFINE_HOOK(5320AE, Main_hDlg_MoviesAndCreditsButtonClick, 6) {
+DEFINE_HOOK(0x5320AE, Main_hDlg_MoviesAndCreditsButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::MoviesAndCreditsButton,
 		"MOVIESANDCREDITSBUTTON", pAction, 18) ? 0x5320B4 : 0);
 }
 
-DEFINE_HOOK(52D724, SinglePlayer_hDlg_CampaignButtonClick, 6) {
+DEFINE_HOOK(0x52D724, SinglePlayer_hDlg_CampaignButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::CampaignButton,
 		"CAMPAIGNBUTTON", pAction, 1) ? 0x52D72A : 0);
 }
 
-DEFINE_HOOK(52D713, SinglePlayer_hDlg_SkirmishButtonClick, 6) {
+DEFINE_HOOK(0x52D713, SinglePlayer_hDlg_SkirmishButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::SkirmishButton,
 		"SKIRMISHBUTTON", pAction, 1) ? 0x52D719 : 0);
 }
 
-DEFINE_HOOK(52D7ED, MoviesAndCredits_hDlg_SneakPeeksButtonClick, 6) {
+DEFINE_HOOK(0x52D7ED, MoviesAndCredits_hDlg_SneakPeeksButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::SneakPeeksButton,
 		"SNEAKPEEKSBUTTON", pAction, 4) ? 0x52D7F3 : 0);
 }
 
-DEFINE_HOOK(52D7FB, MoviesAndCredits_hDlg_PlayMoviesButtonClick, 6) {
+DEFINE_HOOK(0x52D7FB, MoviesAndCredits_hDlg_PlayMoviesButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::PlayMoviesButton,
 		"PLAYMOVIESBUTTON", pAction, 4) ? 0x52D801 : 0);
 }
 
-DEFINE_HOOK(52D809, MoviesAndCredits_hDlg_ViewCreditsButtonClick, 6) {
+DEFINE_HOOK(0x52D809, MoviesAndCredits_hDlg_ViewCreditsButtonClick, 0x6) {
 	GET(int*, pAction, EAX);
 	return (Interface::invokeClickAction(Ares::UISettings::ViewCreditsButton,
 		"VIEWCREDITSBUTTON", pAction, 4) ? 0x52D80F : 0);

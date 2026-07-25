@@ -5,8 +5,10 @@
 #include "INIParser.h"
 #include "Enums.h"
 #include "Constructs.h"
+#include "../Enum/CursorTypes.h"
 #include "../Misc/SavegameDef.h"
 
+#include <Unsorted.h>   // Game::F2I
 #include <InfantryTypeClass.h>
 #include <AircraftTypeClass.h>
 #include <UnitTypeClass.h>
@@ -16,13 +18,33 @@
 #include <VoxClass.h>
 
 namespace detail {
+	// The pinned YRpp's ABSTRACTTYPE_ARRAY macro defined a FindOrAllocate next to
+	// Find; upstream's does not. Upstream gives one only to AnimTypeClass, and that
+	// one is a thunk into the game's own 0x428B80, not this shape. Ares needs the
+	// template form for its INI parsing -- currently for exactly one flag,
+	// [SW]Nuke.Payload -- so it lives here now, with the pin's semantics preserved
+	// verbatim: "<none>"/"none" reads as null, an existing ID is reused, anything
+	// else allocates a new type object.
+	template <typename T>
+	inline T* find_or_allocate(const char* pID) {
+		if(!_strcmpi(pID, "<none>") || !_strcmpi(pID, "none")) {
+			return nullptr;
+		}
+		if(auto const pRet = T::Find(pID)) {
+			return pRet;
+		}
+		return GameCreate<T>(pID);
+	}
+
 	template <typename T>
 	inline bool read(T& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate = false) {
 		if(parser.ReadString(pSection, pKey)) {
 			using base_type = std::remove_pointer_t<T>;
 
 			auto const pValue = parser.value();
-			auto const parsed = (allocate ? base_type::FindOrAllocate : base_type::Find)(pValue);
+			auto const parsed = allocate
+				? detail::find_or_allocate<base_type>(pValue)
+				: base_type::Find(pValue);
 			if(parsed || INIClass::IsBlank(pValue)) {
 				value = parsed;
 				return true;
@@ -110,10 +132,53 @@ namespace detail {
 	}
 
 	template <>
+	inline bool read<Point2D>(Point2D& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate) {
+		int buffer[2];
+		if(parser.Read2Integers(pSection, pKey, buffer)) {
+			value.X = buffer[0];
+			value.Y = buffer[1];
+			return true;
+		} else if(!parser.empty()) {
+			Debug::INIParseFailed(pSection, pKey, parser.value(), "Expected a pair of numbers");
+		}
+		return false;
+	}
+
+	template <>
+	inline bool read<Vector3D<int>>(Vector3D<int>& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate) {
+		int buffer[3];
+		if(parser.Read3Integers(pSection, pKey, buffer)) {
+			value.X = buffer[0];
+			value.Y = buffer[1];
+			value.Z = buffer[2];
+			return true;
+		} else if(!parser.empty()) {
+			Debug::INIParseFailed(pSection, pKey, parser.value(), "Expected three numbers");
+		}
+		return false;
+	}
+
+	template <>
 	inline bool read<CSFText>(CSFText& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate) {
 		if(parser.ReadString(pSection, pKey)) {
 			value = parser.value();
 			return true;
+		}
+		return false;
+	}
+
+	// TechnoTypeClass is abstract, so there is nothing to allocate
+	template <>
+	inline bool read<TechnoTypeClass*>(TechnoTypeClass*& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate) {
+		if(parser.ReadString(pSection, pKey)) {
+			auto const pValue = parser.value();
+			auto const parsed = TechnoTypeClass::Find(pValue);
+			if(parsed || INIClass::IsBlank(pValue)) {
+				value = parsed;
+				return true;
+			} else {
+				Debug::INIParseFailed(pSection, pKey, pValue);
+			}
 		}
 		return false;
 	}
@@ -130,6 +195,23 @@ namespace detail {
 			} else {
 				Debug::Log(Debug::Severity::Warning, "Failed to find file %s referenced by [%s]%s=%s\n", flag, pSection, pKey, pValue);
 				Debug::RegisterParserError();
+			}
+		}
+		return false;
+	}
+
+	// resolves a name in the [MouseCursors] registry to its index. an explicitly
+	// blank value stores -1, an unknown name keeps the current value.
+	template <>
+	inline bool read<MouseCursorType>(MouseCursorType& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate) {
+		if(parser.ReadString(pSection, pKey)) {
+			auto const pValue = parser.value();
+			auto const parsed = CursorType::FindIndex(pValue);
+			if(parsed != -1 || INIClass::IsBlank(pValue)) {
+				value = static_cast<MouseCursorType>(parsed);
+				return true;
+			} else {
+				Debug::INIParseFailed(pSection, pKey, pValue);
 			}
 		}
 		return false;
@@ -313,7 +395,9 @@ namespace detail {
 			static const auto Modes = {
 				"none", "nuke", "lightningstorm", "psychicdominator", "paradrop",
 				"geneticmutator", "forceshield", "notarget", "offensive", "stealth",
-				"self", "base", "multimissile", "hunterseeker", "enemybase" };
+				"self", "base", "multimissile", "hunterseeker", "enemybase",
+				"ironcurtain", "attack", "lowpower", "lowpowerattack", "droppod",
+				"lightningrandom" };
 
 			auto it = Modes.begin();
 			for(auto i = 0u; i < Modes.size(); ++i) {
@@ -324,6 +408,61 @@ namespace detail {
 			}
 
 			Debug::INIParseFailed(pSection, pKey, parser.value(), "Expected a targeting mode");
+		}
+		return false;
+	}
+
+	template <>
+	inline bool read<SuperWeaponAITargetingConstraints>(SuperWeaponAITargetingConstraints& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate) {
+		if(parser.ReadString(pSection, pKey)) {
+			auto parsed = SuperWeaponAITargetingConstraints::None;
+
+			auto str = parser.value();
+			char* context = nullptr;
+			for(auto cur = strtok_s(str, Ares::readDelims, &context); cur; cur = strtok_s(nullptr, Ares::readDelims, &context)) {
+				if(!_strcmpi(cur, "offensive_cell_clear")) {
+					parsed |= SuperWeaponAITargetingConstraints::OffensiveCellClear;
+				} else if(!_strcmpi(cur, "defensive_cell_clear")) {
+					parsed |= SuperWeaponAITargetingConstraints::DefensiveCellClear;
+				} else if(!_strcmpi(cur, "enemy")) {
+					parsed |= SuperWeaponAITargetingConstraints::Enemy;
+				} else if(!_strcmpi(cur, "lightningstorm_inactive")) {
+					parsed |= SuperWeaponAITargetingConstraints::LightningStormInactive;
+				} else if(!_strcmpi(cur, "dominator_inactive")) {
+					parsed |= SuperWeaponAITargetingConstraints::DominatorInactive;
+				} else if(!_strcmpi(cur, "attacked")) {
+					parsed |= SuperWeaponAITargetingConstraints::Attacked;
+				} else if(!_strcmpi(cur, "lowpower")) {
+					parsed |= SuperWeaponAITargetingConstraints::LowPower;
+				} else if(!_strcmpi(cur, "offensive_cell_set")) {
+					parsed |= SuperWeaponAITargetingConstraints::OffensiveCellSet;
+				} else if(!_strcmpi(cur, "defensive_cell_set")) {
+					parsed |= SuperWeaponAITargetingConstraints::DefensiveCellSet;
+				} else if(_strcmpi(cur, "none")) {
+					Debug::INIParseFailed(pSection, pKey, cur, "Expected a targeting constraint");
+					return false;
+				}
+			}
+			value = parsed;
+			return true;
+		}
+		return false;
+	}
+
+	template <>
+	inline bool read<SuperWeaponAITargetingPreference>(SuperWeaponAITargetingPreference& value, INI_EX& parser, const char* pSection, const char* pKey, bool allocate) {
+		if(parser.ReadString(pSection, pKey)) {
+			static const auto Preferences = { "none", "offensive", "defensive" };
+
+			auto it = Preferences.begin();
+			for(auto i = 0u; i < Preferences.size(); ++i) {
+				if(_strcmpi(parser.value(), *it++) == 0) {
+					value = static_cast<SuperWeaponAITargetingPreference>(i);
+					return true;
+				}
+			}
+
+			Debug::INIParseFailed(pSection, pKey, parser.value(), "Expected a targeting preference");
 		}
 		return false;
 	}

@@ -7,6 +7,7 @@
 
 #include "../../Misc/Debug.h"
 
+class ParticleSystemClass;
 class SuperWeaponTypeClass;
 
 class BulletExt
@@ -14,32 +15,38 @@ class BulletExt
 public:
 	using base_type = BulletClass;
 
-	class ExtData final : public Extension<BulletClass>
+	class ExtData final : public Extension<BulletClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x2A2A2A2A;
+
 		SuperWeaponTypeClass *NukeSW;
+		ParticleSystemClass *AttachedSystem;
 
 		ExtData(BulletClass* OwnerObject) : Extension(OwnerObject),
-			NukeSW(nullptr)
+			NukeSW(nullptr),
+			AttachedSystem(nullptr)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
 		bool DamageOccupants();
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void CreateAttachedParticleSys();
+
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 	private:
 		template <typename T>
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<BulletExt> {
+	class ExtContainer final : public Container<BulletExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();

@@ -15,22 +15,24 @@ bool SW_ParaDrop::HandlesType(SuperWeaponType type) const
 	return (type == SuperWeaponType::ParaDrop) || (type == SuperWeaponType::AmerParaDrop);
 }
 
-void SW_ParaDrop::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_ParaDrop::Initialize(SWTypeExt::ExtData *pData)
 {
+	auto pSW = pData->OwnerObject();
+
 	// default for american paradrop
 	if(pSW->Type == SuperWeaponType::AmerParaDrop) {
 		// the American paradrop will be the same for every country,
 		// thus we use the SW's default here.
-		pData->ParaDropPlanes.push_back(std::make_unique<ParadropPlane>());
+		auto& Planes = pData->ParaDrop[nullptr];
+		Planes.emplace_back();
 
-		auto const& pPlane = pData->ParaDropPlanes.back();
-		pData->ParaDrop[nullptr].push_back(pPlane.get());
+		auto& Plane = Planes.back();
 
 		auto const& Inf = RulesClass::Instance->AmerParaDropInf;
-		pPlane->Types.insert(pPlane->Types.end(), Inf.begin(), Inf.end());
+		Plane.Types.insert(Plane.Types.end(), Inf.begin(), Inf.end());
 
 		auto const& Num = RulesClass::Instance->AmerParaDropNum;
-		pPlane->Num.insert(pPlane->Num.end(), Num.begin(), Num.end());
+		Plane.Num.insert(Plane.Num.end(), Num.begin(), Num.end());
 	}
 
 	pData->SW_RadarEvent = false;
@@ -38,11 +40,13 @@ void SW_ParaDrop::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pS
 	pData->EVA_Ready = VoxClass::FindIndex("EVA_ReinforcementsReady");
 
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::ParaDrop;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::ParaDrop);
+	pData->SW_Cursor = MouseCursorType::ParaDrop;
 }
 
-void SW_ParaDrop::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_ParaDrop::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -112,11 +116,10 @@ void SW_ParaDrop::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *p
 		auto const count = pINI->ReadInteger(section, key, lastCount);
 
 		// parse every plane
-		ParaDrop.resize(static_cast<size_t>(count), nullptr);
+		ParaDrop.resize(static_cast<size_t>(count));
 		for(int i = 0; i < count; ++i) {
 			if(auto pPlane = ParseParaDrop(base, i)) {
-				ParaDrop[i] = pPlane.get();
-				pData->ParaDropPlanes.push_back(std::move(pPlane));
+				ParaDrop[i] = std::move(*pPlane);
 			}
 		}
 	};
@@ -131,32 +134,32 @@ void SW_ParaDrop::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *p
 	GetParadropPlane(base, 1, nullptr);
 
 	// put all sides into the hash table
-	for(auto const& pSide : *SideClass::Array) {
+	for(auto const& pSide : SideClass::Array) {
 		CreateParaDropBase(pSide->ID, base);
 		GetParadropPlane(base, pData->ParaDrop[nullptr].size(), pSide);
 	}
 
 	// put all countries into the hash table
-	for(auto const& pTHouse : *HouseTypeClass::Array) {
+	for(auto const& pTHouse : HouseTypeClass::Array) {
 		CreateParaDropBase(pTHouse->ID, base);
-		GetParadropPlane(base, pData->ParaDrop[SideClass::Array->Items[pTHouse->SideIndex]].size(), pTHouse);
+		GetParadropPlane(base, pData->ParaDrop[SideClass::Array.Items[pTHouse->SideIndex]].size(), pTHouse);
 	}
 }
 
 bool SW_ParaDrop::Activate(
-	SuperClass* const pThis, const CellStruct &Coords, bool const IsPlayer)
+	SuperClass* const pThis, CellStruct const Coords, bool const IsPlayer)
 {
-	if(pThis->IsCharged) {
-		auto pTarget = MapClass::Instance->TryGetCellAt(Coords);
+	if(pThis->IsReady) {
+		auto pTarget = MapClass::Instance.TryGetCellAt(Coords);
 
 		// find the nearest cell the paradrop troopers can land on
 		if(pTarget && pTarget->Tile_Is_Water()) {
-			auto const cell = MapClass::Instance->Pathfinding_Find(
+			auto const cell = MapClass::Instance.NearByLocation(
 				Coords, SpeedType::Foot, -1, MovementZone::Normal, false, 1, 1,
 				false, false, false, true, CellStruct::Empty, false, false);
 
 			if(cell != CellStruct::Empty) {
-				if(auto const pTemp = MapClass::Instance->TryGetCellAt(cell)) {
+				if(auto const pTemp = MapClass::Instance.TryGetCellAt(cell)) {
 					if(!pTemp->Tile_Is_Water()) {
 						pTarget = pTemp;
 					}
@@ -206,9 +209,9 @@ bool SW_ParaDrop::SendParadrop(SuperClass* pThis, CellClass* pCell)
 	}
 
 	// use paradrop lists from house, side and default
-	std::vector<ParadropPlane*>* drops[3];
+	std::vector<ParadropPlane>* drops[3];
 	drops[0] = pData->ParaDrop.find(pHouse->Type);
-	drops[1] = pData->ParaDrop.find(SideClass::Array->Items[pHouse->Type->SideIndex]);
+	drops[1] = pData->ParaDrop.find(SideClass::Array.Items[pHouse->Type->SideIndex]);
 	drops[2] = pData->ParaDrop.find(nullptr);
 
 	// how many planes shall we launch?
@@ -246,20 +249,19 @@ bool SW_ParaDrop::SendParadrop(SuperClass* pThis, CellClass* pCell)
 					}
 
 					// get the plane at specified index
-					if(auto const pPlane = (*planes)[index]) {
+					auto& Plane = (*planes)[index];
 
-						// get the contents, if not already set
-						if(!ParaDropTypes || !ParaDropNum) {
-							if(!pPlane->Types.empty() && !pPlane->Num.empty()) {
-								ParaDropTypes = pPlane->Types;
-								ParaDropNum = pPlane->Num;
-							}
+					// get the contents, if not already set
+					if(!ParaDropTypes || !ParaDropNum) {
+						if(!Plane.Types.empty() && !Plane.Num.empty()) {
+							ParaDropTypes = Plane.Types;
+							ParaDropNum = Plane.Num;
 						}
+					}
 
-						// get the airplane, if it isn't set already
-						if(!pParaDropPlane) {
-							pParaDropPlane = pPlane->Aircraft;
-						}
+					// get the airplane, if it isn't set already
+					if(!pParaDropPlane) {
+						pParaDropPlane = Plane.Aircraft;
 					}
 				}
 			}
@@ -296,10 +298,10 @@ void SW_ParaDrop::SendPDPlane(HouseClass* pOwner, CellClass* pTarget, AircraftTy
 		return;
 	}
 
-	++Unsorted::IKnowWhatImDoing;
+	++Unsorted::ScenarioInit;
 	auto const pPlane = static_cast<AircraftClass*>(
 		pPlaneType->CreateObject(pOwner));
-	--Unsorted::IKnowWhatImDoing;
+	--Unsorted::ScenarioInit;
 
 	pPlane->Spawned = true;
 
@@ -313,7 +315,7 @@ void SW_ParaDrop::SendPDPlane(HouseClass* pOwner, CellClass* pTarget, AircraftTy
 	}
 
 	// seems to retrieve a random cell struct at a given edge
-	auto const spawn_cell = MapClass::Instance->PickCellOnEdge(
+	auto const spawn_cell = MapClass::Instance.PickCellOnEdge(
 		edge, CellStruct::Empty, CellStruct::Empty, SpeedType::Winged, true,
 		MovementZone::Normal);
 
@@ -325,9 +327,9 @@ void SW_ParaDrop::SendPDPlane(HouseClass* pOwner, CellClass* pTarget, AircraftTy
 
 	auto const spawn_crd = CellClass::Cell2Coord(spawn_cell);
 
-	++Unsorted::IKnowWhatImDoing;
-	auto const bSpawned = pPlane->Put(spawn_crd, Direction::North);
-	--Unsorted::IKnowWhatImDoing;
+	++Unsorted::ScenarioInit;
+	auto const bSpawned = pPlane->Unlimbo(spawn_crd, DirType::North);
+	--Unsorted::ScenarioInit;
 
 	if(!bSpawned) {
 		GameDelete(pPlane);
@@ -342,7 +344,7 @@ void SW_ParaDrop::SendPDPlane(HouseClass* pOwner, CellClass* pTarget, AircraftTy
 		if(abs == AbstractType::UnitType || abs == AbstractType::InfantryType) {
 			for(int k = 0; k < Nums[i]; ++k) {
 				auto const pNew = pType->CreateObject(pOwner);
-				pNew->Remove();
+				pNew->Limbo();
 				pPlane->Passengers.AddPassenger(static_cast<FootClass*>(pNew));
 			}
 		}

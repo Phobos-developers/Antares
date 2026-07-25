@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StringTable.h>
+
 #include "Ares.h"
 #include "Commands/Commands.h"
 
@@ -17,41 +19,41 @@ public:
 	//CommandClass
 	virtual const char* GetName() const override
 	{
-		return "Dump AI Base Plan";
+		return "DumpAIBasePlan";
 	}
 
 	virtual const wchar_t* GetUIName() const override
 	{
-		return L"AI Base Plan Logger";
+		return StringTable::LoadString("TXT_DUMP_AI_BASE_PLAN");
 	}
 
 	virtual const wchar_t* GetUICategory() const override
 	{
-		return L"Development";
+		return StringTable::LoadString("TXT_DEVELOPMENT");
 	}
 
 	virtual const wchar_t* GetUIDescription() const override
 	{
-		return L"Dumps the AI Base Plans to the log";
+		return StringTable::LoadString("TXT_DUMP_AI_BASE_PLAN_DESC");
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		if(this->CheckDebugDeactivated()) {
 			return;
 		}
 
 		Debug::Log("AI Base Plans:\n");
-		for(int i = 0; i < HouseClass::Array->Count; ++i) {
-			auto H = HouseClass::Array->GetItem(i);
-			if(!H->ControlledByHuman()) {
+		for(int i = 0; i < HouseClass::Array.Count; ++i) {
+			auto H = HouseClass::Array.GetItem(i);
+			if(!H->IsControlledByHuman()) {
 				Debug::Log("#%02d: country %25s:\n", i, H->Type->ID);
 				const auto& b = H->Base.BaseNodes;
 				for(int j = 0; j < b.Count; ++j) {
 					const auto& n = b[j];
 					auto idx = n.BuildingTypeIndex;
 					if(idx >= 0) {
-						auto lbl = BuildingTypeClass::Array->GetItem(idx)->ID;
+						auto lbl = BuildingTypeClass::Array.GetItem(idx)->ID;
 						Debug::Log("\tNode #%03d: %s @ (%05d, %05d), Attempts so far: %d, Placed: %d\n"
 							, j, lbl, n.MapCoords.X, n.MapCoords.Y, n.Attempts, n.Placed);
 					} else {
@@ -63,6 +65,6 @@ public:
 			}
 		}
 
-		MessageListClass::Instance->PrintMessage(L"Dumped AI Base Plan");
+		MessageListClass::Instance.PrintMessage(L"Dumped AI Base Plan");
 	}
 };

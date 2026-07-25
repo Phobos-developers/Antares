@@ -79,7 +79,7 @@ void Prereqs::Parse(CCINIClass *pINI, const char *section, const char *key, Dyna
 				idx = GenericPrerequisite::FindIndex(cur);
 				if(idx > -1) {
 					Vec.AddItem(-1 - idx);
-				} else {
+				} else if(!INIClass::IsBlank(cur)) {
 					Debug::INIParseFailed(section, key, cur);
 				}
 			}
@@ -127,11 +127,11 @@ bool Prereqs::HouseOwnsGeneric(HouseClass const* const pHouse, int const Index)
 
 bool Prereqs::HouseOwnsSpecific(HouseClass const* const pHouse, int const Index)
 {
-	auto const pType = BuildingTypeClass::Array->Items[Index];
+	auto const pType = BuildingTypeClass::Array.Items[Index];
 	auto const pPowerup = pType->PowersUpBuilding;
 	if(*pPowerup) {
 		auto const pCore = BuildingTypeClass::Find(pPowerup);
-		if(!pCore || pHouse->OwnedBuildingTypes1.GetItemCount(pCore->ArrayIndex) < 1) {
+		if(!pCore || pHouse->ActiveBuildingTypes.GetItemCount(pCore->ArrayIndex) < 1) {
 			return false;
 		}
 		for(auto const& pBld : pHouse->Buildings) {
@@ -146,7 +146,7 @@ bool Prereqs::HouseOwnsSpecific(HouseClass const* const pHouse, int const Index)
 		}
 		return false;
 	} else {
-		return pHouse->OwnedBuildingTypes1.GetItemCount(Index) > 0;
+		return pHouse->ActiveBuildingTypes.GetItemCount(Index) > 0;
 	}
 }
 
@@ -180,7 +180,7 @@ bool Prereqs::HouseOwnsAny(HouseClass const* const pHouse, const DynamicVectorCl
 
 bool Prereqs::ListContainsSpecific(const BTypeIter &List, int const Index)
 {
-	auto const pItem = BuildingTypeClass::Array->Items[Index];
+	auto const pItem = BuildingTypeClass::Array.Items[Index];
 	return List.contains(pItem);
 }
 

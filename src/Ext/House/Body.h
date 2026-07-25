@@ -2,6 +2,7 @@
 
 #include "../_Container.hpp"
 #include "../../Enum/Prerequisites.h"
+#include "../../Utilities/Constructs.h"
 #include "../../Utilities/Enums.h"
 #include "../../Utilities/Iterator.h"
 #include "../../Utilities/Template.h"
@@ -12,15 +13,40 @@
 
 #include <bitset>
 
+class BuildingTypeClass;
 class FactoryClass;
+class FootClass;
 class SuperClass;
 class SideClass;
 class SuperWeaponTypeClass;
+class TunnelTypeClass;
 
 class HouseExt
 {
 public:
 	using base_type = HouseClass;
+
+	// the passengers currently inside one tunnel network of this house
+	struct TunnelData {
+		std::vector<FootClass*> Passengers;
+		int MaxCap{ 0 };
+
+		TunnelData() = default;
+
+		explicit TunnelData(TunnelTypeClass const* pType);
+
+		void RemovePassenger(void* ptr);
+
+		bool Load(AresStreamReader &Stm, bool RegisterForChange);
+
+		bool Save(AresStreamWriter &Stm) const;
+	};
+
+	// how often a super weapon has been fired, for SW.Shots
+	struct ShotStuff {
+		int ShootAmount{ 0 };
+		int LastCheckedFrame{ 0 };
+	};
 
 	enum class RequirementStatus {
 		Forbidden = 1, // forbidden by special conditions (e.g. reqhouses) that's not likely to change in this session
@@ -36,22 +62,37 @@ public:
 	};
 
 	enum class FactoryState {
-		NoFactory = 0, // there is no factory building for this
-		Unpowered = 1, // there is a factory building, but it is offline
-		Available = 2 // at least one factory building is as online as required
+		Unbuildable = 0, // the house is not allowed to build this at all
+		NoFactory = 1, // there is no factory building for this
+		Unpowered = 2, // there is a factory building, but it is offline
+		Available = 3, // at least one factory building is as online as required
+		Primary = 4 // the factory found is the primary one
 	};
 
-	class ExtData final : public Extension<HouseClass>
+	// the state of the search, and the factory it settled on, if any
+	struct FactoryCheckReturn {
+		FactoryState State;
+		BuildingClass* Factory;
+	};
+
+	class ExtData final : public Extension<HouseClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0x12345678;
+
 		// data read from the INI (type-like)
 		Nullable<bool> Degrades;
 
 		// data for the house instance
 		bool IonSensitive;
-		bool FirewallActive;
+
+		int AuxPower; //!< Power granted or drained by active Battery super weapons and by trigger action 146.
+		int BatteriesActive; //!< Number of currently active Battery super weapons.
 
 		int SWLastIndex;
+
+		int KeepAliveCount; //!< Number of owned objects that keep this house from being defeated.
+		int KeepAliveBuildingsCount; //!< The buildings among them.
 
 		BuildingClass *Factory_BuildingType;
 		BuildingClass *Factory_InfantryType;
@@ -59,47 +100,79 @@ public:
 		BuildingClass *Factory_NavyType;
 		BuildingClass *Factory_AircraftType;
 
+		// the types this house has reverse engineered and can thus build
+		AresMap<TechnoTypeClass const*, bool> ReverseEngineered;
+
 		std::bitset<32> StolenTech;
 		IndexBitfield<HouseClass*> RadarPersist;
+
+		bool NavalYardInfiltrated;
+		bool AircraftFactoryInfiltrated;
+		bool BuildingInfiltrated;
 
 		ValueableVector<HouseTypeClass *> FactoryOwners_GatheredPlansOf;
 
 		std::vector<BuildingClass*> Academies;
 
-		ExtData(HouseClass* OwnerObject) : Extension<HouseClass>(OwnerObject),
+		std::vector<TunnelData> Tunnels;
+
+		std::vector<BuildingTypeClass*> Battery_KeepOnline;
+		std::vector<BuildingTypeClass*> Battery_Overpower;
+
+		std::vector<ShotStuff> SWShotCounts;
+
+		ExtData(HouseClass* OwnerObject) : Extension<HouseClass, ExtData>(OwnerObject),
 			IonSensitive(false),
-			FirewallActive(false),
+			AuxPower(0),
+			BatteriesActive(0),
+			SWLastIndex(-1),
+			KeepAliveCount(0),
+			KeepAliveBuildingsCount(0),
 			Factory_BuildingType(nullptr),
 			Factory_InfantryType(nullptr),
 			Factory_VehicleType(nullptr),
 			Factory_NavyType(nullptr),
 			Factory_AircraftType(nullptr),
-			SWLastIndex(-1),
+			StolenTech(0ull),
 			RadarPersist(),
-			StolenTech(0ull)
+			NavalYardInfiltrated(false),
+			AircraftFactoryInfiltrated(false),
+			BuildingInfiltrated(false)
 		{ }
 
-		virtual ~ExtData();
+		~ExtData();
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
+		void LoadFromINIFile(CCINIClass* pINI);
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 			AnnounceInvalidPointer(Factory_AircraftType, ptr);
 			AnnounceInvalidPointer(Factory_BuildingType, ptr);
 			AnnounceInvalidPointer(Factory_VehicleType, ptr);
 			AnnounceInvalidPointer(Factory_NavyType, ptr);
 			AnnounceInvalidPointer(Factory_InfantryType, ptr);
+
+			if(bRemoved) {
+				for(auto& tunnel : this->Tunnels) {
+					tunnel.RemovePassenger(ptr);
+				}
+			}
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		TunnelData* FindTunnel(size_t index);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
+
+		void SaveToStream(AresStreamWriter &Stm);
 
 		void SetFirestormState(bool active);
 
 		bool CheckBasePlanSanity();
 
 		void UpdateTogglePower();
+
+		ShotStuff ShotsAmount(int idxSWType) const;
+		void UpdateShotsLastCheckedFrame(int idxSWType);
+		void UpdateShootCount(int idxSWType);
 
 		int GetSurvivorDivisor() const;
 		InfantryTypeClass* GetCrew() const;
@@ -110,19 +183,21 @@ public:
 		void UpdateAcademy(BuildingClass* pAcademy, bool added);
 		void ApplyAcademy(TechnoClass* pTechno, AbstractType considerAs) const;
 
+		bool KeepThisAlive(TechnoClass const* pTechno, AbstractType abs, bool added);
+
 	private:
 		template <typename T>
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<HouseExt> {
+	class ExtContainer final : public Container<HouseExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
 
-		virtual bool InvalidateExtDataIgnorable(void* const ptr) const override {
-			auto const abs = static_cast<AbstractClass*>(ptr)->WhatAmI();
-			return abs != AbstractType::Building;
+		bool InvalidateExtDataIgnorable(void* const ptr) const {
+			auto const flags = static_cast<AbstractClass*>(ptr)->AbstractFlags;
+			return (flags & AbstractFlags::Techno) == AbstractFlags::None;
 		}
 	};
 
@@ -138,16 +213,19 @@ public:
 	static bool PrerequisitesMet(HouseClass const* pHouse, TechnoTypeClass const* pItem);
 	static bool PrerequisitesListed(const Prereqs::BTypeIter &List, TechnoTypeClass const* pItem);
 
-	static FactoryState HasFactory(
+	static FactoryCheckReturn HasFactory(
 		HouseClass const* pHouse, TechnoTypeClass const* pItem,
-		bool requirePower);
+		bool allowOccupied, bool requirePower, bool requireCanBuild,
+		bool anyFactory);
 
 	static bool CheckFactoryOwners(HouseClass const* pHouse, TechnoTypeClass const* pItem);
-	static bool CheckFactoryOwner(HouseClass const* pHouse, TechnoTypeClass const* pItem);
-	static bool CheckForbiddenFactoryOwner(HouseClass const* pHouse, TechnoTypeClass const* pItem);
 
 	static bool IsAnyFirestormActive;
 	static bool UpdateAnyFirestormActive(bool lastChange);
+
+	// suppress repeated EVA announcements for the sensor array
+	static CDTimerClass Timer_CloakedUnitDetected;
+	static CDTimerClass Timer_SubterraneanUnitDetected;
 
 	static signed int PrereqValidate(
 		HouseClass const* pHouse, TechnoTypeClass const* pItem,

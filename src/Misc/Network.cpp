@@ -9,12 +9,64 @@
 
 #include <BuildingClass.h>
 #include <HouseClass.h>
-#include <NetworkEvents.h>
+#include "Networking.h"
+#include <TargetClass.h>
 
-DEFINE_HOOK(4C6CCD, Networking_RespondToEvent, 0)
+int AresNetEvent::GetPayloadSize(byte const kind) {
+	auto const EventLength = reinterpret_cast<byte const*>(0x8208EC);
+
+	if(kind <= 0x2E) {
+		return EventLength[kind];
+	}
+
+	switch(static_cast<AresNetEvent::Events>(kind)) {
+	case AresNetEvent::Events::TrenchRedirectClick:
+		return 10;
+	case AresNetEvent::Events::FirewallToggle:
+		return 5;
+	}
+
+	return 0;
+}
+
+DEFINE_HOOK(0x64B704, sub_64B660_PayloadSize, 0x8)
+{
+	GET(byte const, kind, EDI);
+
+	auto const size = AresNetEvent::GetPayloadSize(kind);
+	R->EDX(size);
+	R->EBP(size);
+
+	return (kind == 0x1F) ? 0x64B710u : 0x64B71Du;
+}
+
+DEFINE_HOOK(0x64BE83, sub_64BDD0_PayloadSize1, 0x8)
+{
+	GET(byte const, kind, EDI);
+
+	auto const size = AresNetEvent::GetPayloadSize(kind);
+	R->ECX(size);
+	R->EBP(size);
+	R->Stack(0x20, size);
+
+	return (kind == 0x04) ? 0x64BF1Au : 0x64BE97u;
+}
+
+DEFINE_HOOK(0x64C314, sub_64BDD0_PayloadSize2, 0x8)
+{
+	GET(byte const, kind, ESI);
+
+	auto const size = AresNetEvent::GetPayloadSize(kind);
+	R->ECX(size);
+	R->EBP(size + (kind == 0x04));
+
+	return 0x64C321;
+}
+
+DEFINE_HOOK(0x4C6CCD, Networking_RespondToEvent, 0x0)
 {
 	GET(DWORD, EventKind, EAX);
-	GET(NetworkEvent *, Event, ESI);
+	GET(EventClass *, Event, ESI);
 
 	auto kind = static_cast<AresNetEvent::Events>(EventKind);
 	if(kind >= AresNetEvent::Events::First) {
@@ -38,7 +90,7 @@ DEFINE_HOOK(4C6CCD, Networking_RespondToEvent, 0)
 }
 
 
-DEFINE_HOOK(64CCBF, DoList_ReplaceReconMessage, 6)
+DEFINE_HOOK(0x64CCBF, DoList_ReplaceReconMessage, 0x6)
 {
 	// mimic an increment because decrement happens in the middle of function cleanup and can't be erased nicely
 	int &TempMutex = *reinterpret_cast<int*>(0xA8DAB4);
@@ -80,37 +132,42 @@ DEFINE_HOOK(64CCBF, DoList_ReplaceReconMessage, 6)
 
 /*
  how to raise your own events
-	NetworkEvent Event;
-	Event.Kind = AresNetworkEvent::aev_blah;
-	Event.HouseIndex = U->Owner->ArrayIndex;
-	memcpy(Event.ExtraData, "Boom de yada", 0xkcd);
-	Networking::AddEvent(&Event);
+	AresEvent Event(static_cast<EventType>(AresNetworkEvent::aev_blah), U->Owner->ArrayIndex);
+	memcpy(Event->DataBuffer, "Boom de yada", 0xkcd);
+	Networking::AddEvent(Event);
 */
 
 void AresNetEvent::Handlers::RaiseTrenchRedirectClick(BuildingClass *Source, CellStruct *Target) {
-	NetworkEvent Event;
-	Event.Kind = static_cast<NetworkEvents>(AresNetEvent::Events::TrenchRedirectClick);
-	Event.HouseIndex = byte(Source->Owner->ArrayIndex);
-	byte *ExtraData = Event.ExtraData;
+	AresEvent Event(
+		static_cast<EventType>(AresNetEvent::Events::TrenchRedirectClick),
+		Source->Owner->ArrayIndex);
 
-	NetID SourceObject, TargetCoords;
+	// the payload of an Ares event starts at DataBuffer, i.e. event+7, right after
+	// Type/IsExecuted/HouseIndex/Frame -- shipped Ares 3.0p1 writes the packed cell
+	// to event+7 and the packed building to event+0xC
+	// (AresNetEvent::Handlers::RaiseTrenchRedirectClick, Ares.dll 0x1006B150), and
+	// Networking_RespondToEvent reads them back from [esi+7] and [esi+0Ch]
+	// (0x1006B578, 0x1006B588). The pinned YRpp's NetworkEvent::ExtraData sat at
+	// event+14, past the FRAMEINFO fields, which put every Ares event 7 bytes off
+	// the wire layout the shipped build uses.
+	byte *payload = reinterpret_cast<byte*>(Event->DataBuffer);
 
-	TargetCoords.Pack(Target);
-	memcpy(ExtraData, &TargetCoords, sizeof(TargetCoords));
-	ExtraData += sizeof(TargetCoords);
+	TargetClass const TargetCoords(*Target);
+	memcpy(payload, &TargetCoords, sizeof(TargetCoords));
+	payload += sizeof(TargetCoords);
 
-	SourceObject.Pack(Source);
-	memcpy(ExtraData, &SourceObject, sizeof(SourceObject));
-	ExtraData += sizeof(SourceObject);
+	TargetClass const SourceObject(Source);
+	memcpy(payload, &SourceObject, sizeof(SourceObject));
+	payload += sizeof(SourceObject);
 
-	Networking::AddEvent(&Event);
+	Networking::AddEvent(Event);
 }
 
-void AresNetEvent::Handlers::RespondToTrenchRedirectClick(NetworkEvent *Event) {
-	NetID *ID = reinterpret_cast<NetID *>(Event->ExtraData);
-	if(CellClass * pTargetCell = ID->UnpackCell()) {
+void AresNetEvent::Handlers::RespondToTrenchRedirectClick(EventClass *Event) {
+	TargetClass *ID = reinterpret_cast<TargetClass *>(Event->DataBuffer);
+	if(CellClass * pTargetCell = ID->As_Cell()) {
 		++ID;
-		if(BuildingClass * pSourceBuilding = ID->UnpackBuilding()) {
+		if(BuildingClass * pSourceBuilding = ID->As_Building()) {
 			/*
 				pSourceBuilding == selected building the soldiers are in
 				pTargetCell == cell the user clicked on; event fires only on buildings which showed the enter cursor
@@ -124,17 +181,17 @@ void AresNetEvent::Handlers::RespondToTrenchRedirectClick(NetworkEvent *Event) {
 }
 
 void AresNetEvent::Handlers::RaiseFirewallToggle(HouseClass *Source) {
-	NetworkEvent Event;
-	Event.Kind = static_cast<NetworkEvents>(AresNetEvent::Events::FirewallToggle);
-	Event.HouseIndex = byte(Source->ArrayIndex);
+	AresEvent Event(
+		static_cast<EventType>(AresNetEvent::Events::FirewallToggle),
+		Source->ArrayIndex);
 
-	Networking::AddEvent(&Event);
+	Networking::AddEvent(Event);
 }
 
-void AresNetEvent::Handlers::RespondToFirewallToggle(NetworkEvent *Event) {
-	if(HouseClass * pSourceHouse = HouseClass::Array->GetItem(Event->HouseIndex)) {
+void AresNetEvent::Handlers::RespondToFirewallToggle(EventClass *Event) {
+	if(HouseClass * pSourceHouse = HouseClass::Array.GetItem(Event->HouseIndex)) {
 		HouseExt::ExtData *pData = HouseExt::ExtMap.Find(pSourceHouse);
-		bool FS = pData->FirewallActive;
+		bool FS = pSourceHouse->FirestormActive;
 		FS = !FS;
 		pData->SetFirestormState(FS);
 	}

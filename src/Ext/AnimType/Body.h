@@ -9,41 +9,54 @@
 
 class AnimClass;
 class HouseClass;
+class WeaponTypeClass;
 
 class AnimTypeExt
 {
 public:
 	using base_type = AnimTypeClass;
 
-	class ExtData final : public Extension<AnimTypeClass>
+	class ExtData final : public Extension<AnimTypeClass, ExtData>
 	{
 	public:
+		static constexpr DWORD Canary = 0xEEEEEEEE;
+
 		Valueable<OwnerHouseKind> MakeInfantryOwner;
 
 		CustomPalette Palette;
 
-		ExtData(AnimTypeClass* OwnerObject) : Extension<AnimTypeClass>(OwnerObject),
+		Valueable<Leptons> SpawnsParticle_RangeMinimum;
+		Valueable<Leptons> SpawnsParticle_RangeMaximum;
+
+		Valueable<WeaponTypeClass*> Weapon;
+		Valueable<int> Damage_Delay;
+
+		ExtData(AnimTypeClass* OwnerObject) : Extension<AnimTypeClass, ExtData>(OwnerObject),
 			MakeInfantryOwner(OwnerHouseKind::Invoker),
-			Palette(CustomPalette::PaletteMode::Temperate)
+			Palette(CustomPalette::PaletteMode::Temperate),
+			SpawnsParticle_RangeMinimum(Leptons(0)),
+			SpawnsParticle_RangeMaximum(Leptons(0)),
+			Weapon(nullptr),
+			Damage_Delay(0)
 		{ }
 
-		virtual ~ExtData() = default;
+		~ExtData() = default;
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
+		void LoadFromINIFile(CCINIClass* pINI);
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 	private:
 		template <typename T>
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<AnimTypeExt> {
+	class ExtContainer final : public Container<AnimTypeExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();

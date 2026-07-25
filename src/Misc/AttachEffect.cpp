@@ -35,11 +35,14 @@ bool AttachEffectTypeClass::Load(AresStreamReader &Stm, bool RegisterForChange) 
 		.Process(this->AnimType)
 		.Process(this->AnimResetOnReapply)
 		.Process(this->TemporalHidesAnim)
+		.Process(this->PenetratesIC)
 		.Process(this->FirepowerMultiplier)
 		.Process(this->ArmorMultiplier)
+		.Process(this->ROFMultiplier)
 		.Process(this->SpeedMultiplier)
 		.Process(this->Cloakable)
 		.Process(this->Delay)
+		.Process(this->InitialDelay)
 		.Success()
 		&& Stm.RegisterChange(this); // announce this type
 }
@@ -54,11 +57,14 @@ bool AttachEffectTypeClass::Save(AresStreamWriter &Stm) const {
 		.Process(this->AnimType)
 		.Process(this->AnimResetOnReapply)
 		.Process(this->TemporalHidesAnim)
+		.Process(this->PenetratesIC)
 		.Process(this->FirepowerMultiplier)
 		.Process(this->ArmorMultiplier)
+		.Process(this->ROFMultiplier)
 		.Process(this->SpeedMultiplier)
 		.Process(this->Cloakable)
 		.Process(this->Delay)
+		.Process(this->InitialDelay)
 		.Success()
 		&& Stm.RegisterChange(this);
 }
@@ -70,10 +76,12 @@ void AttachEffectTypeClass::Read(INI_EX &exINI) {
 	this->AnimType.Read(exINI, pSection, "AttachEffect.Animation");
 	this->AnimResetOnReapply.Read(exINI, pSection, "AttachEffect.AnimResetOnReapply");
 	this->TemporalHidesAnim.Read(exINI, pSection, "AttachEffect.TemporalHidesAnim");
+	this->PenetratesIC.Read(exINI, pSection, "AttachEffect.PenetratesIronCurtain");
 	this->ForceDecloak.Read(exINI, pSection, "AttachEffect.ForceDecloak");
 	this->DiscardOnEntry.Read(exINI, pSection, "AttachEffect.DiscardOnEntry");
 	this->FirepowerMultiplier.Read(exINI, pSection, "AttachEffect.FirepowerMultiplier");
 	this->ArmorMultiplier.Read(exINI, pSection, "AttachEffect.ArmorMultiplier");
+	this->ROFMultiplier.Read(exINI, pSection, "AttachEffect.ROFMultiplier");
 	this->SpeedMultiplier.Read(exINI, pSection, "AttachEffect.SpeedMultiplier");
 	this->Cloakable.Read(exINI, pSection, "AttachEffect.Cloakable");
 
@@ -84,6 +92,7 @@ void AttachEffectTypeClass::Read(INI_EX &exINI) {
 	*/
 
 	this->Delay.Read(exINI, pSection, "AttachEffect.Delay");
+	this->InitialDelay.Read(exINI, pSection, "AttachEffect.InitialDelay");
 }
 
 /*!
@@ -98,12 +107,13 @@ void AttachEffectTypeClass::Read(INI_EX &exINI) {
 */
 
 //void AttachEffectTypeClass::Attach(TechnoClass* pTarget, int duration, TechnoClass* pInvoker, int DamageDelay) {
-void AttachEffectTypeClass::Attach(
+bool AttachEffectTypeClass::Attach(
 	TechnoClass* const pTarget, int const duration,
-	TechnoClass* const pInvoker)
+	HouseClass* const pInvoker)
 {
-	if(!pTarget || pTarget->IsIronCurtained()) {
-		return;
+	// an iron curtain keeps the effect out unless the type is allowed through
+	if(!pTarget || (pTarget->IsIronCurtained() && !this->PenetratesIC)) {
+		return false;
 	}
 
 	auto const pTargetExt = TechnoExt::ExtMap.Find(pTarget);
@@ -122,16 +132,9 @@ void AttachEffectTypeClass::Attach(
 				Item.CreateAnim(pTarget);
 			}
 
-			if(this->ForceDecloak) {
-				auto const state = pTarget->CloakState;
-				if(state == CloakState::Cloaked
-					|| state == CloakState::Cloaking)
-				{
-					pTarget->Uncloak(true);
-				}
-			}
-
-			return;
+			// a refresh neither re-invokes nor recalculates
+			this->Decloak(pTarget);
+			return true;
 		}
 	}
 
@@ -141,16 +144,24 @@ void AttachEffectTypeClass::Attach(
 
 	Attaching.Invoker = pInvoker;
 
+	// the animation is created before the decloak, so an effect landing on a
+	// cloaked object gets none even when it uncloaks it
+	Attaching.CreateAnim(pTarget);
+
 	// update the unit with the attached effect
 	pTargetExt->RecalculateStats();
 
-	// check cloak
-	if(this->ForceDecloak && pTarget->CloakState != CloakState::Uncloaked) {
-		pTarget->Uncloak(true);
-	}
+	this->Decloak(pTarget);
+	return true;
+}
 
-	// animation
-	Attaching.CreateAnim(pTarget);
+void AttachEffectTypeClass::Decloak(TechnoClass* const pTarget) const {
+	if(this->ForceDecloak) {
+		auto const state = pTarget->CloakState;
+		if(state == CloakState::Cloaked || state == CloakState::Cloaking) {
+			pTarget->Uncloak(true);
+		}
+	}
 }
 
 bool AttachEffectClass::Load(AresStreamReader &Stm, bool RegisterForChange) {
@@ -202,8 +213,8 @@ void AttachEffectClass::CreateAnim(TechnoClass* pOwner) {
 			pAnim->SetOwnerObject(pOwner);
 			pAnim->RemainingIterations = 0xFFu;
 
-			if(this->Invoker && this->Invoker->Owner) {
-				pAnim->Owner = this->Invoker->Owner;
+			if(this->Invoker) {
+				pAnim->Owner = this->Invoker;
 			}
 		}
 	}
@@ -333,19 +344,33 @@ void AttachEffectClass::Update(TechnoClass* pSource) {
 	}
 
 	//#1623 - generating AttachedEffect from Type
-	if(pTypeData->AttachedTechnoEffect.Duration && !pData->AttachedTechnoEffect_isset) {
-		if(!pData->AttachedTechnoEffect_Delay) {
+	if(!pData->AttachedTechnoEffect_isset) {
+		auto& Effect = pTypeData->AttachedTechnoEffect;
+
+		if(!Effect.Duration) {
+			pData->AttachedTechnoEffect_isset = 2;
+			return;
+		}
+
+		auto delay = pData->AttachedTechnoEffect_Delay;
+		if(delay == 0x7FFFFFFF) {
+			delay = Effect.InitialDelay;
+		}
+
+		if(!delay) {
 			if(!pSource->Deactivated) {
 				Debug::Log(Logging, "[AttachEffect]Missing Type effect of %s...\n", pType->ID);
-				//pTypeData->AttachedTechnoEffect.Attach(pSource, pTypeData->AttachedTechnoEffect.Duration, pSource, pTypeData->AttachedTechnoEffect.DamageDelay);
+				//Effect.Attach(pSource, Effect.Duration, pSource, Effect.DamageDelay);
 
-				pTypeData->AttachedTechnoEffect.Attach(pSource, pTypeData->AttachedTechnoEffect.Duration, pSource);
-
-				pData->AttachedTechnoEffect_isset = true;
-				Debug::Log(Logging, "[AttachEffect]Readded to %s.\n", pType->ID);
+				// only latch it if the effect actually went on. an iron
+				// curtain can refuse it, and then it is retried next frame.
+				if(Effect.Attach(pSource, Effect.Duration, pSource->Owner)) {
+					pData->AttachedTechnoEffect_isset = 1;
+					Debug::Log(Logging, "[AttachEffect]Readded to %s.\n", pType->ID);
+				}
 			}
-		} else if(pData->AttachedTechnoEffect_Delay > 0) {
-			--pData->AttachedTechnoEffect_Delay;
+		} else if(delay > 0) {
+			pData->AttachedTechnoEffect_Delay = delay - 1;
 		}
 	}
 }

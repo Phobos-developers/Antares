@@ -1,4 +1,6 @@
 #include <AnimClass.h>
+#include <Utilities/Macro.h>   // STACK_OFFS
+#include <Unsorted.h>   // Game::F2I
 #include <WeaponTypeClass.h>
 
 #include "Body.h"
@@ -13,7 +15,7 @@
 
 #include <Helpers/Enumerators.h>
 
-DEFINE_HOOK(5880A0, MapClass_FindFirstFirestorm, 6)
+DEFINE_HOOK(0x5880A0, MapClass_FindFirstFirestorm, 0x6)
 {
 	//GET(MapClass* const, pThis, ECX);
 	GET_STACK(CoordStruct* const, pOutBuffer, STACK_OFFS(0x0, -0x4));
@@ -28,7 +30,7 @@ DEFINE_HOOK(5880A0, MapClass_FindFirstFirestorm, 6)
 		auto const end = CellClass::Coord2Cell(*pEnd);
 
 		for(CellSequenceEnumerator it(start, end); it; ++it) {
-			auto const pCell = MapClass::Instance->GetCellAt(*it);
+			auto const pCell = MapClass::Instance.GetCellAt(*it);
 			if(auto const pBld = pCell->GetBuilding()) {
 				if(BuildingExt::IsActiveFirestormWall(pBld, pOwner)) {
 					*pOutBuffer = CellClass::Cell2Coord(*it);
@@ -42,7 +44,7 @@ DEFINE_HOOK(5880A0, MapClass_FindFirstFirestorm, 6)
 	return 0x58855E;
 }
 
-DEFINE_HOOK(4FB257, HouseClass_UnitFromFactory_Firewall, 6)
+DEFINE_HOOK(0x4FB257, HouseClass_UnitFromFactory_Firewall, 0x6)
 {
 	GET(BuildingClass *, B, ESI);
 	GET(HouseClass *, H, EBP);
@@ -55,7 +57,7 @@ DEFINE_HOOK(4FB257, HouseClass_UnitFromFactory_Firewall, 6)
 }
 
 
-DEFINE_HOOK(445355, BuildingClass_KickOutUnit_Firewall, 6)
+DEFINE_HOOK(0x445355, BuildingClass_KickOutUnit_Firewall, 0x6)
 {
 	GET(BuildingClass *, Factory, ESI);
 
@@ -69,7 +71,7 @@ DEFINE_HOOK(445355, BuildingClass_KickOutUnit_Firewall, 6)
 }
 
 // placement linking
-DEFINE_HOOK(6D5455, sub_6D5030, 6)
+DEFINE_HOOK(0x6D5455, sub_6D5030, 0x6)
 {
 	GET(BuildingTypeClass* const, pType, EAX);
 	auto const pExt = BuildingTypeExt::ExtMap.Find(pType);
@@ -78,7 +80,7 @@ DEFINE_HOOK(6D5455, sub_6D5030, 6)
 }
 
 // placement linking
-DEFINE_HOOK(6D5A5C, sub_6D59D0, 6)
+DEFINE_HOOK(0x6D5A5C, sub_6D59D0, 0x6)
 {
 	GET(BuildingTypeClass* const, pType, EDX);
 	auto const pExt = BuildingTypeExt::ExtMap.Find(pType);
@@ -87,7 +89,7 @@ DEFINE_HOOK(6D5A5C, sub_6D59D0, 6)
 }
 
 // frame to draw
-DEFINE_HOOK(43EFB3, BuildingClass_GetStaticImageFrame, 6)
+DEFINE_HOOK(0x43EFB3, BuildingClass_GetStaticImageFrame, 0x6)
 {
 	GET(BuildingClass*, pThis, ESI);
 
@@ -103,7 +105,7 @@ DEFINE_HOOK(43EFB3, BuildingClass_GetStaticImageFrame, 6)
 }
 
 // ignore damage
-DEFINE_HOOK(4423E7, BuildingClass_ReceiveDamage_FSW, 5)
+DEFINE_HOOK(0x4423E7, BuildingClass_ReceiveDamage_FSW, 0x5)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	GET_STACK(int* const, pDamage, 0xA0);
@@ -128,7 +130,7 @@ DEFINE_HOOK(4423E7, BuildingClass_ReceiveDamage_FSW, 5)
 }
 
 // connect the newly built Firestorm Wall
-DEFINE_HOOK(440D01, BuildingClass_Put_FirestormWall, 6)
+DEFINE_HOOK(0x440D01, BuildingClass_Put_FirestormWall, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	//GET(CellStruct const*, pMapCoords, EBP);
@@ -140,7 +142,7 @@ DEFINE_HOOK(440D01, BuildingClass_Put_FirestormWall, 6)
 }
 
 // disconnect the Firestorm Wall
-DEFINE_HOOK(445DF4, BuildingClass_Remove_FirestormWall, 6)
+DEFINE_HOOK(0x445DF4, BuildingClass_Remove_FirestormWall, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	auto const pExt = BuildingExt::ExtMap.Find(pThis);
@@ -151,7 +153,7 @@ DEFINE_HOOK(445DF4, BuildingClass_Remove_FirestormWall, 6)
 }
 
 // main update
-DEFINE_HOOK(440378, BuildingClass_Update_FirestormWall, 6)
+DEFINE_HOOK(0x440378, BuildingClass_Update_FirestormWall, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	auto const pData = BuildingExt::ExtMap.Find(pThis);
@@ -162,21 +164,20 @@ DEFINE_HOOK(440378, BuildingClass_Update_FirestormWall, 6)
 }
 
 // pathfinding 1
-DEFINE_HOOK(483D94, CellClass_Setup_Slave, 6)
+DEFINE_HOOK(0x483D94, CellClass_UpdatePassability, 0x6)
 {
 	GET(BuildingClass* const, pBuilding, ESI);
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pBuilding->Type);
 
 	if(pTypeExt->Firewall_Is) {
-		auto const pHouseExt = HouseExt::ExtMap.Find(pBuilding->Owner);
-		return pHouseExt->FirewallActive ? 0x483D6Bu : 0x483DCDu;
+		return pBuilding->Owner->FirestormActive ? 0x483D6Bu : 0x483DCDu;
 	}
 
 	return 0x483DB0;
 }
 
 // pathfinding 2
-DEFINE_HOOK(51BD4C, InfantryClass_Update, 6)
+DEFINE_HOOK(0x51BD4C, InfantryClass_Update, 0x6)
 {
 	GET(BuildingClass* const, pBld, EDI);
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pBld->Type);
@@ -188,15 +189,14 @@ DEFINE_HOOK(51BD4C, InfantryClass_Update, 6)
 	}
 
 	if(pTypeExt->Firewall_Is) {
-		auto const pHouseExt = HouseExt::ExtMap.Find(pBld->Owner);
-		return pHouseExt->FirewallActive ? Impassable : Ignore;
+		return pBld->Owner->FirestormActive ? Impassable : Ignore;
 	}
 
 	return NoDecision;
 }
 
 // pathfinding 3
-DEFINE_HOOK(51C4C8, InfantryClass_IsCellOccupied, 6)
+DEFINE_HOOK(0x51C4C8, InfantryClass_IsCellOccupied, 0x6)
 {
 	GET(BuildingClass* const, pBld, ESI);
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pBld->Type);
@@ -208,15 +208,14 @@ DEFINE_HOOK(51C4C8, InfantryClass_IsCellOccupied, 6)
 	}
 
 	if(pTypeExt->Firewall_Is) {
-		auto const pHouseExt = HouseExt::ExtMap.Find(pBld->Owner);
-		return pHouseExt->FirewallActive ? Impassable : Ignore;
+		return pBld->Owner->FirestormActive ? Impassable : Ignore;
 	}
 
 	return NoDecision;
 }
 
 // pathfinding 4
-DEFINE_HOOK(73F7B0, UnitClass_IsCellOccupied, 6)
+DEFINE_HOOK(0x73F7B0, UnitClass_IsCellOccupied, 0x6)
 {
 	GET(BuildingClass* const, pBld, ESI);
 	auto const pTypeExt = BuildingTypeExt::ExtMap.Find(pBld->Type);
@@ -228,21 +227,20 @@ DEFINE_HOOK(73F7B0, UnitClass_IsCellOccupied, 6)
 	}
 
 	if(pTypeExt->Firewall_Is) {
-		auto const pHouseExt = HouseExt::ExtMap.Find(pBld->Owner);
-		return pHouseExt->FirewallActive ? Impassable : Ignore;
+		return pBld->Owner->FirestormActive ? Impassable : Ignore;
 	}
 
 	return NoDecision;
 }
 
-DEFINE_HOOK(6F64CB, TechnoClass_DrawHealthBar_FirestormWall, 6)
+DEFINE_HOOK(0x6F64CB, TechnoClass_DrawHealthBar_FirestormWall, 0x6)
 {
 	GET(BuildingClass* const, pThis, ESI);
 	auto const pData = BuildingTypeExt::ExtMap.Find(pThis->Type);
 	return pData->Firewall_Is ? 0x6F6832u : 0u;
 }
 
-DEFINE_HOOK(4DA53E, FootClass_Update, 6)
+DEFINE_HOOK(0x4DA53E, FootClass_Update, 0x6)
 {
 	GET(FootClass* const, pThis, ESI);
 
@@ -269,7 +267,7 @@ DEFINE_HOOK(4DA53E, FootClass_Update, 6)
 					auto health = pType->GetRepairStep();
 
 					int idxTib = pCell->GetContainedTiberiumIndex();
-					if(auto const pTib = TiberiumClass::Array->GetItemOrDefault(idxTib)) {
+					if(auto const pTib = TiberiumClass::Array.GetItemOrDefault(idxTib)) {
 						auto pExt = TiberiumExt::ExtMap.Find(pTib);
 						delay = pExt->GetHealDelay();
 						health = pExt->GetHealStep(pThis);

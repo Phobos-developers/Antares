@@ -29,7 +29,7 @@ void Ares::RegisterCommands()
 	MakeCommand<TogglePowerCommandClass>();
 }
 
-DEFINE_HOOK(533058, CommandClassCallback_Register, 7)
+DEFINE_HOOK(0x533058, CommandClassCallback_Register, 0x7)
 {
 	Ares::RegisterCommands();
 

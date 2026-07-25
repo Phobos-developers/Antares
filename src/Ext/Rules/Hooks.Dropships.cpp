@@ -1,17 +1,18 @@
 #include "Body.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include "../../Enum/ArmorTypes.h"
 #include <Strsafe.h>
 #include <InputManagerClass.h>
 #include <WWMouseClass.h>
 
-DEFINE_HOOK(4B769B, ScenarioClass_GenerateDropshipLoadout, 5)
+DEFINE_HOOK(0x4B769B, ScenarioClass_GenerateDropshipLoadout, 0x5)
 {
 	InputManagerClass::Instance->DoSomething();
 	WWMouseClass::Instance->ShowCursor();
 	return 0x4B76A0;
 }
 
-DEFINE_HOOK(4B99A2, DropshipLoadout_WriteUnit, 0)
+DEFINE_HOOK(0x4B99A2, DropshipLoadout_WriteUnit, 0x0)
 {
 	GET(TechnoTypeClass *, pType, ESI);
 
@@ -57,22 +58,22 @@ DEFINE_HOOK(4B99A2, DropshipLoadout_WriteUnit, 0)
 	Coords.X += 450;
 	Coords.Y += 300;
 
-	Drawing::PrintUnicode(AltCoords, pName, pSurface, &pSurfaceRect, &Coords, Color, 0, 70);
+	Fancy_Text_Print_Wide(*AltCoords, pName, pSurface, pSurfaceRect, Coords, Color, nullptr, static_cast<TextPrintType>(70));
 
 	Coords.Y += 15;
-	Drawing::PrintUnicode(AltCoords, pArmament, pSurface, &pSurfaceRect, &Coords, Color, 0, 70);
+	Fancy_Text_Print_Wide(*AltCoords, pArmament, pSurface, pSurfaceRect, Coords, Color, nullptr, static_cast<TextPrintType>(70));
 
 	Coords.Y += 15;
-	Drawing::PrintUnicode(AltCoords, pArmor, pSurface, &pSurfaceRect, &Coords, Color, 0, 70);
+	Fancy_Text_Print_Wide(*AltCoords, pArmor, pSurface, pSurfaceRect, Coords, Color, nullptr, static_cast<TextPrintType>(70));
 
 	Coords.Y += 15;
-	Drawing::PrintUnicode(AltCoords, pCost, pSurface, &pSurfaceRect, &Coords, Color, 0, 70);
+	Fancy_Text_Print_Wide(*AltCoords, pCost, pSurface, pSurfaceRect, Coords, Color, nullptr, static_cast<TextPrintType>(70));
 
 	return 0x4B9BBF;
 }
 
 
-DEFINE_HOOK(4B93BD, ScenarioClass_GenerateDropshipLoadout_FreeAnims, 0)
+DEFINE_HOOK(0x4B93BD, ScenarioClass_GenerateDropshipLoadout_FreeAnims, 0x0)
 {
 	GET_STACK(SHPStruct *, pBackground, 0xAC);
 	if(pBackground) {

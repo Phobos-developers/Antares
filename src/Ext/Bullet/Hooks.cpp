@@ -1,4 +1,6 @@
 #include <BulletClass.h>
+#include <Utilities/Macro.h>   // STACK_OFFS
+#include "../../Utilities/DirMath.h"
 #include <BuildingClass.h>
 #include <CellClass.h>
 #include <MapClass.h>
@@ -6,6 +8,7 @@
 #include "../Building/Body.h"
 #include "../BuildingType/Body.h"
 #include "../House/Body.h"
+#include "../WarheadType/Body.h"
 #include "../WeaponType/Body.h"
 #include <ScenarioClass.h>
 #include <YRMath.h>
@@ -13,7 +16,7 @@
 
 #include "../../Misc/TrajectoryHelper.h"
 
-DEFINE_HOOK(468BE2, BulletClass_ShouldDetonate_Obstacle, 6)
+DEFINE_HOOK(0x468BE2, BulletClass_ShouldDetonate_Obstacle, 0x6)
 {
 	GET(BulletClass* const, pThis, ESI);
 	GET(CoordStruct* const, pOutCoords, EDI);
@@ -21,10 +24,10 @@ DEFINE_HOOK(468BE2, BulletClass_ShouldDetonate_Obstacle, 6)
 	auto const pTypeExt = BulletTypeExt::ExtMap.Find(pThis->Type);
 
 	if(AresTrajectoryHelper::SubjectToAnything(pThis->Type, pTypeExt)) {
-		auto const Map = MapClass::Instance;
-		auto const pCellSource = Map->GetCellAt(pThis->SourceCoords);
-		auto const pCellTarget = Map->GetCellAt(pThis->TargetCoords);
-		auto const pCellLast = Map->GetCellAt(pThis->LastMapCoords);
+		auto& Map = MapClass::Instance;
+		auto const pCellSource = Map.GetCellAt(pThis->SourceCoords);
+		auto const pCellTarget = Map.GetCellAt(pThis->TargetCoords);
+		auto const pCellLast = Map.GetCellAt(pThis->LastMapCoords);
 
 		auto const pOwner = pThis->Owner ? pThis->Owner->Owner : nullptr;
 
@@ -39,7 +42,7 @@ DEFINE_HOOK(468BE2, BulletClass_ShouldDetonate_Obstacle, 6)
 	return 0x468C86;
 }
 
-DEFINE_HOOK(46867F, BulletClass_SetMovement_Parachute, 5)
+DEFINE_HOOK(0x46867F, BulletClass_SetMovement_Parachute, 0x5)
 {
 	GET(CoordStruct *, XYZ, EAX);
 	GET(BulletClass *, Bullet, ECX);
@@ -57,14 +60,14 @@ DEFINE_HOOK(46867F, BulletClass_SetMovement_Parachute, 5)
 //		Debug::Log("Bullet trajectory is (%lf, %lf, %lf)\n", *Trajectory);
 		Bullet->IsABomb = true;
 	} else {
-		result = Bullet->Put(*XYZ, 0);
+		result = Bullet->Unlimbo(*XYZ, DirType::North);
 	}
 
 	R->EAX(result);
 	return 0x468689;
 }
 
-DEFINE_HOOK(4688BD, BulletClass_SetMovement_Obstacle, 6)
+DEFINE_HOOK(0x4688BD, BulletClass_SetMovement_Obstacle, 0x6)
 {
 	GET(BulletClass* const, pThis, EBX);
 	GET(CoordStruct const* const, pLocation, EDI);
@@ -73,14 +76,14 @@ DEFINE_HOOK(4688BD, BulletClass_SetMovement_Obstacle, 6)
 	auto const pOwner = pThis->Owner ? pThis->Owner->Owner : nullptr;
 
 	// code must use pLocation because it has FlakScatter applied
-	auto crdFirestorm = MapClass::Instance->FindFirstFirestorm(
+	auto crdFirestorm = MapClass::Instance.FindFirstFirestorm(
 		*pLocation, dest, pOwner);
 
 	if(crdFirestorm != CoordStruct::Empty) {
-		crdFirestorm.Z = MapClass::Instance->GetCellFloorHeight(crdFirestorm);
+		crdFirestorm.Z = MapClass::Instance.GetCellFloorHeight(crdFirestorm);
 		pThis->SetLocation(crdFirestorm);
 
-		auto const pCell = MapClass::Instance->GetCellAt(crdFirestorm);
+		auto const pCell = MapClass::Instance.GetCellAt(crdFirestorm);
 		auto const pBld = pCell->GetBuilding();
 		auto const pExt = BuildingExt::ExtMap.Find(pBld);
 		pExt->ImmolateVictim(pThis, false);
@@ -102,7 +105,7 @@ DEFINE_HOOK(4688BD, BulletClass_SetMovement_Obstacle, 6)
 
 // set the weapon type when spawning bullets. at least
 // Ivan Bombs need those
-DEFINE_HOOK(46A5B2, BulletClass_Shrapnel_WeaponType1, 6)
+DEFINE_HOOK(0x46A5B2, BulletClass_Shrapnel_WeaponType1, 0x6)
 {
 	GET(BulletClass*, pShrapnel, EAX);
 	GET(WeaponTypeClass*, pWeapon, ESI);
@@ -112,7 +115,7 @@ DEFINE_HOOK(46A5B2, BulletClass_Shrapnel_WeaponType1, 6)
 	return 0;
 }
 
-DEFINE_HOOK(46AA27, BulletClass_Shrapnel_WeaponType2, 9)
+DEFINE_HOOK(0x46AA27, BulletClass_Shrapnel_WeaponType2, 0x9)
 {
 	GET(BulletClass*, pShrapnel, EAX);
 	GET(WeaponTypeClass*, pWeapon, ESI);
@@ -122,7 +125,7 @@ DEFINE_HOOK(46AA27, BulletClass_Shrapnel_WeaponType2, 9)
 	return 0;
 }
 
-DEFINE_HOOK(469EBA, BulletClass_DetonateAt_Splits, 6)
+DEFINE_HOOK(0x469EBA, BulletClass_DetonateAt_Splits, 0x6)
 {
 	GET(BulletClass*, pThis, ESI);
 	auto pType = pThis->Type;
@@ -157,14 +160,41 @@ DEFINE_HOOK(469EBA, BulletClass_DetonateAt_Splits, 6)
 
 		} else {
 			// fill with technos in range
-			for(auto pTechno : *TechnoClass::Array) {
-				if(pTechno->IsInPlayfield && pTechno->IsOnMap && pTechno->Health > 0) {
-					CoordStruct crdTechno = pTechno->GetCoords();
+			auto const pAirburst = pType->AirburstWeapon;
+			auto const pWarhead = pAirburst ? pAirburst->Warhead : nullptr;
+			auto const pFirer = pThis->Owner;
+			auto const pFirerHouse = pFirer ? pFirer->Owner : nullptr;
+			auto const antiAir = pAirburst && pAirburst->Projectile
+				&& pAirburst->Projectile->AA;
 
-					if(crdDest.DistanceFrom(crdTechno) < 0x500) {
-						targets.AddItem(pTechno);
-					}
+			for(auto pTechno : TechnoClass::Array) {
+				if(!pTechno->IsInPlayfield || !pTechno->IsOnMap || pTechno->Health <= 0) {
+					continue;
 				}
+
+				// RetargetSelf=no exempts the firer from being picked. It can
+				// still be caught by a shot that retargets onto its cell.
+				if(!pExt->RetargetSelf && pTechno == pFirer) {
+					continue;
+				}
+
+				// only objects the airburst warhead can actually affect
+				if(!WarheadTypeExt::CanAffectTarget(pTechno, pFirerHouse, pWarhead)) {
+					continue;
+				}
+
+				CoordStruct crdTechno = pTechno->GetCoords();
+
+				if(crdDest.DistanceFrom(crdTechno) >= 0x500) {
+					continue;
+				}
+
+				// and air units only when the airburst projectile is AA=yes
+				if(!antiAir && pTechno->IsInAir()) {
+					continue;
+				}
+
+				targets.AddItem(pTechno);
 			}
 
 			// fill up the list to cluster count with random cells around destination
@@ -174,7 +204,7 @@ DEFINE_HOOK(469EBA, BulletClass_DetonateAt_Splits, 6)
 				int y = random.RandomRanged(-range, range);
 
 				CellStruct cell = {static_cast<short>(cellDest.X + x), static_cast<short>(cellDest.Y + y)};
-				CellClass* pCell = MapClass::Instance->GetCellAt(cell);
+				CellClass* pCell = MapClass::Instance.GetCellAt(cell);
 
 				targets.AddItem(pCell);
 			}
@@ -211,8 +241,8 @@ DEFINE_HOOK(469EBA, BulletClass_DetonateAt_Splits, 6)
 				auto pSplitExt = BulletTypeExt::ExtMap.Find(pWeapon->Projectile);
 
 				if(auto pBullet = pSplitExt->CreateBullet(pTarget, pThis->Owner, pWeapon)) {
-					DirStruct const dir(5, static_cast<short>(random.RandomRanged(0, 31)));
-					auto const radians = dir.radians();
+					auto const dir = AresDir::FromFacing<5>(static_cast<short>(random.RandomRanged(0, 31)));
+					auto const radians = AresDir::ToRadians(dir);
 
 					auto const sin_rad = Math::sin(radians);
 					auto const cos_rad = Math::cos(radians);
@@ -235,21 +265,21 @@ DEFINE_HOOK(469EBA, BulletClass_DetonateAt_Splits, 6)
 	return 0x46A290;
 }
 
-DEFINE_HOOK(468EB9, BulletClass_Fire_SplitsA, 6)
+DEFINE_HOOK(0x468EB9, BulletClass_Fire_SplitsA, 0x6)
 {
 	GET(BulletTypeClass* const, pType, EAX);
 	auto const pExt = BulletTypeExt::ExtMap.Find(pType);
 	return !pExt->HasSplitBehavior() ? 0x468EC7u : 0x468FF4u;
 }
 
-DEFINE_HOOK(468FFA, BulletClass_Fire_SplitsB, 6)
+DEFINE_HOOK(0x468FFA, BulletClass_Fire_SplitsB, 0x6)
 {
 	GET(BulletTypeClass* const, pType, EAX);
 	auto const pExt = BulletTypeExt::ExtMap.Find(pType);
 	return pExt->HasSplitBehavior() ? 0x46909Au : 0x469008u;
 }
 
-DEFINE_HOOK(467B94, BulletClass_Update_Ranged, 7)
+DEFINE_HOOK(0x467B94, BulletClass_Update_Ranged, 0x7)
 {
 	GET(BulletClass*, pThis, EBP);
 	REF_STACK(bool, Destroy, 0x18);
@@ -270,7 +300,7 @@ DEFINE_HOOK(467B94, BulletClass_Update_Ranged, 7)
 
 	// firestorm wall check
 	if(HouseExt::IsAnyFirestormActive && !pThis->Type->IgnoresFirestorm) {
-		auto const pCell = MapClass::Instance->GetCellAt(CrdNew);
+		auto const pCell = MapClass::Instance.GetCellAt(CrdNew);
 
 		if(auto const pBld = pCell->GetBuilding()) {
 			auto const pOwner = pThis->Owner ? pThis->Owner->Owner : nullptr;
@@ -287,7 +317,7 @@ DEFINE_HOOK(467B94, BulletClass_Update_Ranged, 7)
 	return 0x467BA4;
 }
 
-DEFINE_HOOK(4664FB, BulletClass_Initialize_Ranged, 6)
+DEFINE_HOOK(0x4664FB, BulletClass_Initialize_Ranged, 0x6)
 {
 	GET(BulletClass*, pThis, ECX);
 	// conservative approach for legacy-initialized bullets
@@ -295,7 +325,7 @@ DEFINE_HOOK(4664FB, BulletClass_Initialize_Ranged, 6)
 	return 0;
 }
 
-DEFINE_HOOK(6FE53F, TechnoClass_Fire_CreateBullet, 6)
+DEFINE_HOOK(0x6FE53F, TechnoClass_Fire_CreateBullet, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	GET(WeaponTypeClass*, pWeapon, EBX);
@@ -318,7 +348,7 @@ DEFINE_HOOK(6FE53F, TechnoClass_Fire_CreateBullet, 6)
 	return 0x6FE562;
 }
 
-DEFINE_HOOK(468000, BulletClass_GetAnimFrame, 6)
+DEFINE_HOOK(0x468000, BulletClass_GetAnimFrame, 0x6)
 {
 	GET(BulletClass*, pThis, ECX);
 	auto pType = pThis->Type;
@@ -327,11 +357,11 @@ DEFINE_HOOK(468000, BulletClass_GetAnimFrame, 6)
 	if(pType->AnimLow || pType->AnimHigh) {
 		frame = pThis->AnimFrame;
 	} else if(pType->Rotates()) {
-		auto angle = Math::arctanfoo(-pThis->Velocity.Y, pThis->Velocity.X);
-		DirStruct dir(angle);
+		auto angle = Math::atan2(-pThis->Velocity.Y, pThis->Velocity.X);
+		auto dir = AresDir::FromRadians(angle);
 
 		auto ReverseFacing32 = *reinterpret_cast<int(*)[8]>(0x7F4890);
-		auto facing = ReverseFacing32[dir.value32()];
+		auto facing = ReverseFacing32[dir.GetFacing<32>()];
 
 		auto pExt = BulletTypeExt::ExtMap.Find(pType);
 		const int length = pExt->AnimLength;

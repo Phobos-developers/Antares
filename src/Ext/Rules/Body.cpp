@@ -3,12 +3,13 @@
 #include "../HouseType/Body.h"
 #include "../../Enum/Prerequisites.h"
 #include "../../Enum/ArmorTypes.h"
+#include "../../Enum/CursorTypes.h"
 #include "../../Enum/RadTypes.h"
+#include "../../Enum/TunnelTypes.h"
 #include "../../Utilities/TemplateDef.h"
 #include <FPSCounter.h>
 #include <GameOptionsClass.h>
 
-template<> const DWORD Extension<RulesClass>::Canary = 0x12341234;
 std::unique_ptr<RulesExt::ExtData> RulesExt::Data = nullptr;
 
 void RulesExt::Allocate(RulesClass *pThis) {
@@ -26,6 +27,8 @@ void RulesExt::LoadFromINIFile(RulesClass *pThis, CCINIClass *pINI) {
 void RulesExt::LoadBeforeTypeData(RulesClass *pThis, CCINIClass *pINI) {
 	GenericPrerequisite::LoadFromINIList(pINI);
 	ArmorType::LoadFromINIList(pINI);
+	CursorType::LoadFromINIList(pINI);
+	TunnelTypeClass::LoadFromINIList(pINI);
 
 	SideExt::ExtMap.LoadAllFromINI(pINI);
 	HouseTypeExt::ExtMap.LoadAllFromINI(pINI);
@@ -40,13 +43,31 @@ void RulesExt::LoadAfterTypeData(RulesClass *pThis, CCINIClass *pINI) {
 	Data->LoadAfterTypeData(pThis, pINI);
 }
 
-void RulesExt::ExtData::InitializeConstants() {
+void RulesExt::ExtData::Initialize(CCINIClass* pINI) {
 	GenericPrerequisite::AddDefaults();
 	ArmorType::AddDefaults();
+	CursorType::LoadDefault();
 }
 
 void RulesExt::ExtData::LoadFromINIFile(CCINIClass* pINI) {
 	// earliest loader - can't really do much because nothing else is initialized yet, so lookups won't work
+	const char* sectionGlobalControls = "GlobalControls";
+
+	INI_EX exINI(pINI);
+
+	this->AllowParallelAIQueues.Read(exINI, sectionGlobalControls, "AllowParallelAIQueues");
+
+	if(pINI->ReadString(sectionGlobalControls, "AllowBypassBuildLimit", "", Ares::readBuffer)) {
+		bool temp[3] = {};
+		int read = Parser<bool, 3>::Parse(Ares::readBuffer, temp);
+
+		for(int i = 0; i < read; ++i) {
+			int diffIdx = 2 - i; // remapping so that HouseClass::AIDifficulty can be used as an index
+			this->AllowBypassBuildLimit[diffIdx] = temp[i];
+		}
+	}
+
+	this->DebugKeysEnabled.Read(exINI, sectionGlobalControls, "DebugKeysEnabled");
 }
 
 void RulesExt::ExtData::LoadBeforeTypeData(RulesClass *pThis, CCINIClass *pINI) {
@@ -54,6 +75,7 @@ void RulesExt::ExtData::LoadBeforeTypeData(RulesClass *pThis, CCINIClass *pINI) 
 	const char* sectionGeneral = "General";
 	const char* sectionCombatDamage = "CombatDamage";
 	const char* sectionAV = "AudioVisual";
+	const char* sectionCrateRules = "CrateRules";
 
 	int len = pINI->GetKeyCount(section);
 	for (int i = 0; i < len; ++i) {
@@ -76,6 +98,7 @@ void RulesExt::ExtData::LoadBeforeTypeData(RulesClass *pThis, CCINIClass *pINI) 
 	pData->Tiberium_DamageEnabled.Read(exINI, sectionGeneral, "TiberiumDamageEnabled");
 	pData->Tiberium_HealEnabled.Read(exINI, sectionGeneral, "TiberiumHealEnabled");
 	pData->Tiberium_ExplosiveWarhead.Read(exINI, sectionCombatDamage, "TiberiumExplosiveWarhead");
+	pData->Tiberium_ExplosiveAnim.Read(exINI, sectionAV, "TiberiumExplosiveAnim");
 
 	pData->OverlayExplodeThreshold.Read(exINI, sectionGeneral, "OverlayExplodeThreshold");
 
@@ -105,9 +128,29 @@ void RulesExt::ExtData::LoadBeforeTypeData(RulesClass *pThis, CCINIClass *pINI) 
 
 	pData->AlliedSolidTransparency.Read(exINI, sectionCombatDamage, "AlliedSolidTransparency");
 
-	//pData->DamageAirConsiderBridges.Read(exINI, sectionGeneral, "DamageAirConsiderBridges");
+	pData->DamageAirConsiderBridges.Read(exINI, sectionGeneral, "DamageAirConsiderBridges");
 
 	pData->DiskLaserAnimEnabled.Read(exINI, sectionAV, "DiskLaserAnimEnabled");
+
+	pData->DisplayCreditsDelay.Read(exINI, sectionAV, "DisplayCreditsDelay");
+	pData->StealthSpeakDelay.Read(exINI, sectionAV, "StealthSpeakDelay");
+	pData->SubterraneanSpeakDelay.Read(exINI, sectionAV, "SubterraneanSpeakDelay");
+
+	pData->UnitsUnsellable.Read(exINI, sectionGeneral, "UnitsUnsellable");
+
+	pData->VeteranFlashTimer.Read(exINI, sectionAV, "VeteranFlashTimer");
+
+	pData->RandomCrateMoney.Read(exINI, sectionCrateRules, "RandomCrateMoney");
+
+	pData->IronCurtainFlash.Read(exINI, sectionAV, "IronCurtainFlash");
+
+	pData->RepairStopOnInsufficientFunds.Read(exINI, sectionGeneral, "RepairStopOnInsufficientFunds");
+	pData->ChronoInfantryCrush.Read(exINI, sectionGeneral, "ChronoInfantryCrush");
+
+	pData->StartInMultiplayerUnitCost.Read(exINI, sectionGeneral, "StartInMultiplayerUnitCost");
+	pData->AIFriendlyDistance.Read(exINI, sectionGeneral, "AIFriendlyDistance");
+
+	pData->EMPAIRecoverMission.Read(exINI, sectionCombatDamage, "EMPAIRecoverMission");
 }
 
 // this runs between the before and after type data loading methods for rules ini
@@ -135,13 +178,12 @@ void RulesExt::ExtData::LoadAfterTypeData(RulesClass *pThis, CCINIClass *pINI) {
 	pData->DecloakSound.Read(exINI, "AudioVisual", "DecloakSound");
 	pData->CloakHeight.Read(exINI, "General", "CloakHeight");
 
-	for (int i = 0; i < WeaponTypeClass::Array->Count; ++i) {
-		WeaponTypeClass::Array->GetItem(i)->LoadFromINI(pINI);
+	for (int i = 0; i < WeaponTypeClass::Array.Count; ++i) {
+		WeaponTypeClass::Array.GetItem(i)->LoadFromINI(pINI);
 	}
 
 	pData->EngineerDamage.Read(exINI, "General", "EngineerDamage");
 	pData->EngineerAlwaysCaptureTech.Read(exINI, "General", "EngineerAlwaysCaptureTech");
-	pData->EngineerDamageCursor.Read(exINI, "General", "EngineerDamageCursor");
 
 	pData->EnemyWrench.Read(exINI, "General", "EnemyWrench");
 
@@ -160,8 +202,6 @@ void RulesExt::ExtData::LoadAfterTypeData(RulesClass *pThis, CCINIClass *pINI) {
 	pData->TogglePowerAllowed.Read(exINI, "General", "TogglePowerAllowed");
 	pData->TogglePowerDelay.Read(exINI, "General", "TogglePowerDelay");
 	pData->TogglePowerIQ.Read(exINI, "IQ", "TogglePower");
-	pData->TogglePowerCursor.Read(exINI, "General", "TogglePowerCursor");
-	pData->TogglePowerNoCursor.Read(exINI, "General", "TogglePowerNoCursor");
 
 	pData->FirestormActiveAnim.Read(exINI, "AudioVisual", "FirestormActiveAnim");
 	pData->FirestormIdleAnim.Read(exINI, "AudioVisual", "FirestormIdleAnim");
@@ -169,6 +209,9 @@ void RulesExt::ExtData::LoadAfterTypeData(RulesClass *pThis, CCINIClass *pINI) {
 	pData->FirestormAirAnim.Read(exINI, "AudioVisual", "FirestormAirAnim");
 	pData->FirestormWarhead.Read(exINI, "CombatDamage", "FirestormWarhead");
 	pData->DamageToFirestormDamageCoefficient.Read(exINI, "General", "DamageToFirestormDamageCoefficient");
+
+	pData->BountyEnablers.Read(exINI, "General", "BountyEnablers");
+	pData->BountyDisplay.Read(exINI, "AudioVisual", "BountyDisplay");
 }
 
 bool RulesExt::DetailsCurrentlyEnabled()
@@ -177,13 +220,13 @@ bool RulesExt::DetailsCurrentlyEnabled()
 	// the low frame rate is actually desired. in that case, don't reduce.
 	auto const current = FPSCounter::CurrentFrameRate;
 	auto const wanted = static_cast<unsigned int>(
-		60 / Math::clamp(GameOptionsClass::Instance->GameSpeed, 1, 6));
+		60 / Math::clamp(GameOptionsClass::Instance.GameSpeed, 1, 6));
 	return current >= wanted || current >= Detail::GetMinFrameRate();
 }
 
 bool RulesExt::DetailsCurrentlyEnabled(int const minDetailLevel)
 {
-	return GameOptionsClass::Instance->DetailLevel >= minDetailLevel
+	return GameOptionsClass::Instance.DetailLevel >= minDetailLevel
 		&& DetailsCurrentlyEnabled();
 }
 
@@ -193,22 +236,18 @@ bool RulesExt::DetailsCurrentlyEnabled(int const minDetailLevel)
 template <typename T>
 void RulesExt::ExtData::Serialize(T& Stm) {
 	Stm
-		.Process(Ares::GlobalControls::AllowBypassBuildLimit)
-		.Process(Ares::GlobalControls::AllowParallelAIQueues)
 		.Process(this->ElectricDeath)
 		.Process(this->EngineerDamage)
 		.Process(this->EngineerAlwaysCaptureTech)
-		.Process(this->EngineerDamageCursor)
 		.Process(this->MultiEngineer)
 		.Process(this->TogglePowerAllowed)
 		.Process(this->TogglePowerDelay)
 		.Process(this->TogglePowerIQ)
-		.Process(this->TogglePowerCursor)
-		.Process(this->TogglePowerNoCursor)
 		.Process(this->CanMakeStuffUp)
 		.Process(this->Tiberium_DamageEnabled)
 		.Process(this->Tiberium_HealEnabled)
 		.Process(this->Tiberium_ExplosiveWarhead)
+		.Process(this->Tiberium_ExplosiveAnim)
 		.Process(this->OverlayExplodeThreshold)
 		.Process(this->DecloakSound)
 		.Process(this->CloakHeight)
@@ -246,16 +285,33 @@ void RulesExt::ExtData::Serialize(T& Stm) {
 		.Process(this->DamageToFirestormDamageCoefficient)
 		.Process(this->AlliedSolidTransparency)
 		.Process(this->DamageAirConsiderBridges)
-		.Process(this->DiskLaserAnimEnabled);
+		.Process(this->DiskLaserAnimEnabled)
+		.Process(this->DisplayCreditsDelay)
+		.Process(this->StealthSpeakDelay)
+		.Process(this->SubterraneanSpeakDelay)
+		.Process(this->BountyEnablers)
+		.Process(this->BountyDisplay)
+		.Process(this->UnitsUnsellable)
+		.Process(this->VeteranFlashTimer)
+		.Process(this->RandomCrateMoney)
+		.Process(this->DebugKeysEnabled)
+		.Process(this->AllowParallelAIQueues)
+		.Process(this->AllowBypassBuildLimit)
+		.Process(this->IronCurtainFlash)
+		.Process(this->RepairStopOnInsufficientFunds)
+		.Process(this->ChronoInfantryCrush)
+		.Process(this->StartInMultiplayerUnitCost)
+		.Process(this->AIFriendlyDistance)
+		.Process(this->EMPAIRecoverMission);
 }
 
 void RulesExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<RulesClass>::LoadFromStream(Stm);
+	Extension<RulesClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void RulesExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<RulesClass>::SaveToStream(Stm);
+	Extension<RulesClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -278,14 +334,14 @@ bool RulesExt::SaveGlobals(AresStreamWriter& Stm) {
 // =============================
 // container hooks
 
-DEFINE_HOOK(667A1D, RulesClass_CTOR, 5) {
+DEFINE_HOOK(0x667A1D, RulesClass_CTOR, 0x5) {
 	GET(RulesClass*, pItem, ESI);
 
 	RulesExt::Allocate(pItem);
 	return 0;
 }
 
-DEFINE_HOOK(667A30, RulesClass_DTOR, 5) {
+DEFINE_HOOK(0x667A30, RulesClass_DTOR, 0x5) {
 	GET(RulesClass*, pItem, ECX);
 
 	RulesExt::Remove(pItem);
@@ -294,8 +350,8 @@ DEFINE_HOOK(667A30, RulesClass_DTOR, 5) {
 
 IStream* g_pStm = nullptr;
 
-DEFINE_HOOK_AGAIN(674730, RulesClass_SaveLoad_Prefix, 6)
-DEFINE_HOOK(675210, RulesClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x674730, RulesClass_SaveLoad_Prefix, 0x6)
+DEFINE_HOOK(0x675210, RulesClass_SaveLoad_Prefix, 0x5)
 {
 	//GET(RulesClass*, pItem, ECX);
 	GET_STACK(IStream*, pStm, 0x4);
@@ -305,7 +361,7 @@ DEFINE_HOOK(675210, RulesClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(678841, RulesClass_Load_Suffix, 7)
+DEFINE_HOOK(0x678841, RulesClass_Load_Suffix, 0x7)
 {
 	auto buffer = RulesExt::Global();
 
@@ -321,7 +377,7 @@ DEFINE_HOOK(678841, RulesClass_Load_Suffix, 7)
 	return 0;
 }
 
-DEFINE_HOOK(675205, RulesClass_Save_Suffix, 8)
+DEFINE_HOOK(0x675205, RulesClass_Save_Suffix, 0x8)
 {
 	auto buffer = RulesExt::Global();
 	AresByteStream saver(sizeof(*buffer));
@@ -335,3 +391,15 @@ DEFINE_HOOK(675205, RulesClass_Save_Suffix, 8)
 
 	return 0;
 }
+
+static_assert(sizeof(RulesExt::ExtData) == 0x180, "RulesExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the start, the middle and the end of the block.
+static_assert(offsetof(RulesExt::ExtData, ElectricDeath) == 0x008, "RulesExt::ExtData layout slipped");
+static_assert(offsetof(RulesExt::ExtData, DecloakSound) == 0x038, "RulesExt::ExtData layout slipped");
+static_assert(offsetof(RulesExt::ExtData, HunterSeekerBuildings) == 0x070, "RulesExt::ExtData layout slipped");
+static_assert(offsetof(RulesExt::ExtData, MessageSilosNeeded) == 0x0B0, "RulesExt::ExtData layout slipped");
+static_assert(offsetof(RulesExt::ExtData, DisplayCreditsDelay) == 0x118, "RulesExt::ExtData layout slipped");
+static_assert(offsetof(RulesExt::ExtData, AllowBypassBuildLimit) == 0x14A, "RulesExt::ExtData layout slipped");
+static_assert(offsetof(RulesExt::ExtData, EMPAIRecoverMission) == 0x160, "RulesExt::ExtData layout slipped");

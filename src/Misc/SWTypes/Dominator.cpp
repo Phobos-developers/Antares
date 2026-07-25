@@ -35,7 +35,7 @@ SWRange SW_PsychicDominator::GetRange(const SWTypeExt::ExtData* pData) const
 	return pData->SW_Range;
 }
 
-void SW_PsychicDominator::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW)
+void SW_PsychicDominator::Initialize(SWTypeExt::ExtData *pData)
 {
 	// Defaults to PsychicDominator values
 	pData->Dominator_FirstAnimHeight = 750;
@@ -55,11 +55,13 @@ void SW_PsychicDominator::Initialize(SWTypeExt::ExtData *pData, SuperWeaponTypeC
 
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::PsychicDominator;
 	pData->SW_AffectsTarget = SuperWeaponTarget::Infantry | SuperWeaponTarget::Unit;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::PsychicDominator);
+	pData->SW_Cursor = MouseCursorType::PsychicDominator;
 }
 
-void SW_PsychicDominator::LoadFromINI(SWTypeExt::ExtData *pData, SuperWeaponTypeClass *pSW, CCINIClass *pINI)
+void SW_PsychicDominator::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char * section = pSW->ID;
 
 	if(!pINI->GetSection(section)) {
@@ -94,9 +96,9 @@ bool SW_PsychicDominator::AbortFire(SuperClass* pSW, bool IsPlayer)
 	return false;
 }
 
-bool SW_PsychicDominator::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_PsychicDominator::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
-	if(pThis->IsCharged) {
+	if(pThis->IsReady) {
 		// we do not use PsyDom::Start() here. instead, we set a global state and
 		// let the state machine take care of everything.
 		SW_PsychicDominator::CurrentPsyDom = pThis;
@@ -121,7 +123,7 @@ void PsychicDominatorStateMachine::Update()
 	case PsychicDominatorStatus::FirstAnim:
 		{
 			// here are the contents of PsyDom::Start().
-			CellClass *pTarget = MapClass::Instance->GetCellAt(this->Coords);
+			CellClass *pTarget = MapClass::Instance.GetCellAt(this->Coords);
 			CoordStruct coords = pTarget->GetCoords();
 			coords.Z += pData->Dominator_FirstAnimHeight;
 
@@ -219,10 +221,10 @@ void PsychicDominatorStateMachine::Update()
 	}
 }
 
-bool PsychicDominatorStateMachine::Load(AresStreamReader &Stm, bool RegisterForChange) {
-	return SWStateMachine::Load(Stm, RegisterForChange)
+bool PsychicDominatorStateMachine::Load(AresStreamReader &Stm) {
+	return SWStateMachine::Load(Stm)
 		&& Stm
-		.Process(this->Deferment, RegisterForChange)
+		.Process(this->Deferment)
 		.Success();
 }
 

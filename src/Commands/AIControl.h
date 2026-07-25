@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StringTable.h>
+
 #include "Commands.h"
 
 #include <HouseClass.h>
@@ -17,43 +19,43 @@ public:
 
 	virtual const wchar_t* GetUIName() const override
 	{
-		return L"AI Control";
+		return StringTable::LoadString("TXT_AI_CONTROL");
 	}
 
 	virtual const wchar_t* GetUICategory() const override
 	{
-		return L"Ares";
+		return StringTable::LoadString("TXT_DEVELOPMENT");
 	}
 
 	virtual const wchar_t* GetUIDescription() const override
 	{
-		return L"Let the AI assume control.";
+		return StringTable::LoadString("TXT_AI_CONTROL_DESC");
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		if(this->CheckDebugDeactivated()) {
 			return;
 		}
 
-		HouseClass* pPlayer = HouseClass::Player;
+		HouseClass* pPlayer = HouseClass::CurrentPlayer;
 
-		if(pPlayer->CurrentPlayer && pPlayer->PlayerControl) {
+		if(pPlayer->IsHumanPlayer && pPlayer->IsInPlayerControl) {
 			//let AI assume control
-			pPlayer->CurrentPlayer = pPlayer->PlayerControl = false;
+			pPlayer->IsHumanPlayer = pPlayer->IsInPlayerControl = false;
 			pPlayer->Production = pPlayer->AutocreateAllowed = true;
 
 			//give full capabilities
-			pPlayer->IQLevel = RulesClass::Global()->MaxIQLevels;
-			pPlayer->IQLevel2 = RulesClass::Global()->MaxIQLevels;
+			pPlayer->IQLevel = RulesClass::Instance->MaxIQLevels;
+			pPlayer->IQLevel2 = RulesClass::Instance->MaxIQLevels;
 			pPlayer->AIDifficulty = AIDifficulty::Hard;	//brutal!
 
 			//notify
-			MessageListClass::Instance->PrintMessage(L"AI assumed control!");
+			MessageListClass::Instance.PrintMessage(L"AI assumed control!");
 
 		} else {
 			//re-assume control
-			pPlayer->CurrentPlayer = pPlayer->PlayerControl = true;
+			pPlayer->IsHumanPlayer = pPlayer->IsInPlayerControl = true;
 			pPlayer->Production = pPlayer->AutocreateAllowed = false;
 
 			//make it a vegetable
@@ -62,7 +64,7 @@ public:
 			pPlayer->AIDifficulty = AIDifficulty::Normal;
 
 			//notify
-			MessageListClass::Instance->PrintMessage(L"Player assumed control!");
+			MessageListClass::Instance.PrintMessage(L"Player assumed control!");
 		}
 	}
 };

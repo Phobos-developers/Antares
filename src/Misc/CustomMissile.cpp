@@ -1,4 +1,5 @@
 #include "../Ares.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include "../Ext/TechnoType/Body.h"
 
 #include <AnimClass.h>
@@ -8,7 +9,7 @@
 #include <RocketLocomotionClass.h>
 #include <SpawnManagerClass.h>
 
-DEFINE_HOOK(6622E0, RocketLocomotionClass_ILocomotion_Process_CustomMissile, 6)
+DEFINE_HOOK(0x6622E0, RocketLocomotionClass_ILocomotion_Process_CustomMissile, 0x6)
 {
 	GET(AircraftClass*, pThis, ECX);
 
@@ -22,7 +23,7 @@ DEFINE_HOOK(6622E0, RocketLocomotionClass_ILocomotion_Process_CustomMissile, 6)
 	return 0;
 }
 
-DEFINE_HOOK(66238A, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeoff1, 5)
+DEFINE_HOOK(0x66238A, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeoff1, 0x5)
 {
 	GET(ILocomotion*, pThis, ESI);
 
@@ -39,7 +40,7 @@ DEFINE_HOOK(66238A, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeo
 	return 0;
 }
 
-DEFINE_HOOK(662512, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeoff2, 5)
+DEFINE_HOOK(0x662512, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeoff2, 0x5)
 {
 	GET(ILocomotion*, pThis, ESI);
 
@@ -56,7 +57,7 @@ DEFINE_HOOK(662512, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeo
 	return 0;
 }
 
-DEFINE_HOOK(6627E5, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeoff3, 5)
+DEFINE_HOOK(0x6627E5, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeoff3, 0x5)
 {
 	GET(ILocomotion*, pThis, ESI);
 
@@ -73,7 +74,7 @@ DEFINE_HOOK(6627E5, RocketLocomotionClass_ILocomotion_Process_CustomMissileTakeo
 	return 0;
 }
 
-DEFINE_HOOK(662D85, RocketLocomotionClass_ILocomotion_Process_CustomMissileTrailer, 6)
+DEFINE_HOOK(0x662D85, RocketLocomotionClass_ILocomotion_Process_CustomMissileTrailer, 0x6)
 {
 	GET(ILocomotion*, pThis, ESI);
 
@@ -94,7 +95,7 @@ DEFINE_HOOK(662D85, RocketLocomotionClass_ILocomotion_Process_CustomMissileTrail
 	return 0;
 }
 
-DEFINE_HOOK(66305A, RocketLocomotionClass_Explode_CustomMissile, 6)
+DEFINE_HOOK(0x66305A, RocketLocomotionClass_Explode_CustomMissile, 0x6)
 {
 	GET(AircraftTypeClass*, pType, ECX);
 	GET(RocketLocomotionClass*, pLocomotor, ESI);
@@ -116,7 +117,7 @@ DEFINE_HOOK(66305A, RocketLocomotionClass_Explode_CustomMissile, 6)
 	return 0;
 }
 
-DEFINE_HOOK(663218, RocketLocomotionClass_Explode_CustomMissile2, 5)
+DEFINE_HOOK(0x663218, RocketLocomotionClass_Explode_CustomMissile2, 0x5)
 {
 	GET(RocketLocomotionClass* const, pThis, ESI);
 	REF_STACK(CoordStruct const, coords, STACK_OFFS(0x60, 0x18));
@@ -135,7 +136,7 @@ DEFINE_HOOK(663218, RocketLocomotionClass_Explode_CustomMissile2, 5)
 
 			if(pBullet) {
 				pBullet->SetWeaponType(pWeapon);
-				pBullet->Remove();
+				pBullet->Limbo();
 				pBullet->Detonate(coords);
 				pBullet->UnInit();
 			}
@@ -147,7 +148,7 @@ DEFINE_HOOK(663218, RocketLocomotionClass_Explode_CustomMissile2, 5)
 	return 0;
 }
 
-DEFINE_HOOK(6632F2, RocketLocomotionClass_ILocomotion_MoveTo_CustomMissile, 6)
+DEFINE_HOOK(0x6632F2, RocketLocomotionClass_ILocomotion_MoveTo_CustomMissile, 0x6)
 {
 	GET(AircraftTypeClass*, pType, EDX);
 
@@ -161,7 +162,7 @@ DEFINE_HOOK(6632F2, RocketLocomotionClass_ILocomotion_MoveTo_CustomMissile, 6)
 	return 0;
 }
 
-DEFINE_HOOK(6634F6, RocketLocomotionClass_ILocomotion_DrawMatrix_CustomMissile, 6)
+DEFINE_HOOK(0x6634F6, RocketLocomotionClass_ILocomotion_DrawMatrix_CustomMissile, 0x6)
 {
 	GET(AircraftTypeClass*, pType, ECX);
 
@@ -175,7 +176,7 @@ DEFINE_HOOK(6634F6, RocketLocomotionClass_ILocomotion_DrawMatrix_CustomMissile, 
 	return 0;
 }
 
-DEFINE_HOOK(6B6D60, SpawnManagerClass_CTOR_CustomMissile, 6)
+DEFINE_HOOK(0x6B6D60, SpawnManagerClass_CTOR_CustomMissile, 0x6)
 {
 	GET(SpawnManagerClass*, pSpawnManager, ESI);
 	if(auto pExt = TechnoTypeExt::ExtMap.Find(pSpawnManager->SpawnType)) {
@@ -187,7 +188,7 @@ DEFINE_HOOK(6B6D60, SpawnManagerClass_CTOR_CustomMissile, 6)
 	return 0;
 }
 
-DEFINE_HOOK(6B78F8, SpawnManagerClass_Update_CustomMissile, 6)
+DEFINE_HOOK(0x6B78F8, SpawnManagerClass_Update_CustomMissile, 0x6)
 {
 	GET(TechnoTypeClass*, pSpawnType, EAX);
 	if(auto pExt = TechnoTypeExt::ExtMap.Find(pSpawnType)) {
@@ -199,7 +200,7 @@ DEFINE_HOOK(6B78F8, SpawnManagerClass_Update_CustomMissile, 6)
 	return 0;
 }
 
-DEFINE_HOOK(6B7A72, SpawnManagerClass_Update_CustomMissile2, 6)
+DEFINE_HOOK(0x6B7A72, SpawnManagerClass_Update_CustomMissile2, 0x6)
 {
 	GET(SpawnManagerClass*, pSpawnManager, ESI);
 	GET(int, idxSpawn, EDI);
@@ -219,7 +220,7 @@ DEFINE_HOOK(6B7A72, SpawnManagerClass_Update_CustomMissile2, 6)
 	return 0;
 }
 
-DEFINE_HOOK(6B752E, SpawnManagerClass_Update_CustomMissileTakeoff, 6)
+DEFINE_HOOK(0x6B752E, SpawnManagerClass_Update_CustomMissileTakeoff, 0x6)
 {
 	GET(AircraftClass*, pOwner, EDI);
 

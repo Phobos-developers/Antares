@@ -13,7 +13,6 @@ class RMG {
 public:
 	static bool UrbanAreas;
 	static bool UrbanAreasRead;
-	static int UrbanStructuresReadSoFar;
 	static VectorNames UrbanStructures;
 	static VectorNames UrbanVehicles;
 	static VectorNames UrbanInfantry;

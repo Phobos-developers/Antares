@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StringTable.h>
+
 #include "../Ares.h"
 #include "../Misc/Debug.h"
 
@@ -11,22 +13,22 @@ public:
 	//CommandClass
 	virtual const char* GetName() const override
 	{
-		return "Dump Data Types";
+		return "DumpTypes";
 	}
 
 	virtual const wchar_t* GetUIName() const override
 	{
-		return L"Dump Types";
+		return StringTable::LoadString("TXT_DUMP_TYPES");
 	}
 
 	virtual const wchar_t* GetUICategory() const override
 	{
-		return L"Development";
+		return StringTable::LoadString("TXT_DEVELOPMENT");
 	}
 
 	virtual const wchar_t* GetUIDescription() const override
 	{
-		return L"Dumps the current type list to the log";
+		return StringTable::LoadString("TXT_DUMP_TYPES_DESC");
 	}
 
 	template <typename T>
@@ -34,12 +36,12 @@ public:
 		Debug::Log("[%s]\n", pSection);
 
 		int i = 0;
-		for(auto pItem : *T::Array) {
+		for(auto pItem : T::Array) {
 			Debug::Log("%d = %s\n", i++, pItem->get_ID());
 		}
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		if(this->CheckDebugDeactivated()) {
 			return;
@@ -71,8 +73,8 @@ public:
 /*
 		Debug::Log("Dumping Art Types\n\n");
 		Debug::Log("[Movies]\n");
-		for(int i = 0; i < MovieInfo::Array->Count; ++i) {
-			Debug::Log("%d = %s\n", i, MovieInfo::Array->GetItem(i).Name);
+		for(int i = 0; i < MovieInfo::Array.Count; ++i) {
+			Debug::Log("%d = %s\n", i, MovieInfo::Array.GetItem(i).Name);
 		}
 */
 
@@ -82,17 +84,17 @@ public:
 		LogType<TaskForceClass>("TaskForces");
 
 		Debug::Log("[AITriggerTypes]\n");
-		for(auto const& pItem : *AITriggerTypeClass::Array) {
+		for(auto const& pItem : AITriggerTypeClass::Array) {
 			char Buffer[1024];
 			pItem->FormatForSaving(Buffer, sizeof(Buffer));
 			Debug::Log("%s\n", Buffer);
 		}
 
 		Debug::Log("[AITriggerTypesEnable]\n");
-		for(auto const& pItem : *AITriggerTypeClass::Array) {
+		for(auto const& pItem : AITriggerTypeClass::Array) {
 			Debug::Log("%X = %s\n", pItem->get_ID(), pItem->IsEnabled ? "yes" : "no");
 		}
 
-		MessageListClass::Instance->PrintMessage(L"Type data dumped");
+		MessageListClass::Instance.PrintMessage(L"Type data dumped");
 	}
 };

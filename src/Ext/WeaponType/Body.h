@@ -1,6 +1,7 @@
 #pragma once
 
 #include <CCINIClass.h>
+#include <GeneralStructures.h>
 #include <WeaponTypeClass.h>
 
 #include "../../Misc/Debug.h"
@@ -13,10 +14,12 @@
 class BombClass;
 class BulletClass;
 class EBolt;
+class ParticleSystemTypeClass;
 class RadBeam;
 class RadType;
 class RadSiteClass;
 struct SHPStruct;
+class TechnoClass;
 class VocClass;
 class WarheadTypeClass;
 class WaveClass;
@@ -26,7 +29,7 @@ class WeaponTypeExt
 public:
 	using base_type = WeaponTypeClass;
 
-	class ExtData final : public Extension<WeaponTypeClass>
+	class ExtData final : public Extension<WeaponTypeClass, ExtData>
 	{
 		// wave reverse indexes
 		static auto const idxVehicle = 0;
@@ -36,39 +39,36 @@ public:
 		static auto const idxOther = 4;
 
 	public:
-		// static defaults
-		static const ColorStruct DefaultWaveColor;
-		static const ColorStruct DefaultWaveColorSonic;
-		static const ColorStruct DefaultWaveColorMagBeam;
+		static constexpr DWORD Canary = 0x33333333;
 
 		// Generic
-		bool Weapon_Loaded;
+		Valueable<bool> IsDetachedRailgun;
 
 		// Coloured Rad Beams
 		Nullable<ColorStruct> Beam_Color;
-		int    Beam_Duration;
-		double Beam_Amplitude;
-		bool   Beam_IsHouseColor;
+		Valueable<int> Beam_Duration;
+		Valueable<double> Beam_Amplitude;
+		Valueable<bool> Beam_IsHouseColor;
 
 		// Coloured EBolts
 		Nullable<ColorStruct> Bolt_Color1;
 		Nullable<ColorStruct> Bolt_Color2;
 		Nullable<ColorStruct> Bolt_Color3;
+		Nullable<ParticleSystemTypeClass *> Bolt_ParticleSystem;
 
 		// TS Lasers
-		bool   Wave_IsHouseColor;
-		bool   Wave_IsLaser;
-		bool   Wave_IsBigLaser;
-		Nullable<ColorStruct> Wave_Color;
-		bool   Wave_Reverse[5];
+		Valueable<bool> Wave_IsHouseColor;
+		Valueable<bool> Wave_IsLaser;
+		Valueable<bool> Wave_IsBigLaser;
+		Nullable<Vector3D<int>> Wave_Intensity;
+		Nullable<Vector3D<int>> Wave_Color;
+		Valueable<bool> Wave_Reverse[5];
 
-		Valueable<int> Laser_Thickness;
-/*
-		int    Wave_InitialIntensity;
-		int    Wave_IntensityStep;
-		int    Wave_FinalIntensity;
-*/
+		Valueable<int> LaserThickness;
+
 		// custom Ivan Bombs
+		Valueable<bool> Ivan_DeathBomb;
+		Valueable<bool> Ivan_DeathBombOnAllies;
 		Valueable<bool> Ivan_KillsBridges;
 		Valueable<bool> Ivan_Detachable;
 		Nullable<int> Ivan_Damage;
@@ -80,17 +80,17 @@ public:
 		Nullable<int> Ivan_FlickerRate;
 		Nullable<bool> Ivan_CanDetonateTimeBomb;
 		Nullable<bool> Ivan_CanDetonateDeathBomb;
+		Valueable<bool> Ivan_DetonateOnSell;
 
 		RadType * Rad_Type;
 
-		//MouseCursor Cursor_Attack;
-		//bool Cursor_Custom;
-
 		// #680 Chrono Prison
 		Valueable<bool> Abductor; //!< Will this weapon force eligible targets into the passenger hold of the shooter?
-		Valueable<AnimTypeClass *> Abductor_AnimType;
-		Valueable <bool> Abductor_ChangeOwner;
+		Valueable<bool> Abductor_ChangeOwner;
+		Valueable<bool> Abductor_Temporal;
 		Valueable<double> Abductor_AbductBelowPercent;
+		Valueable<int> Abductor_MaxHealth;
+		Valueable<AnimTypeClass *> Abductor_AnimType;
 
 		// brought back from TS
 		Valueable<Leptons> ProjectileRange;
@@ -99,8 +99,11 @@ public:
 
 		Valueable<int> Ammo;
 
-		ExtData(WeaponTypeClass* OwnerObject) : Extension<WeaponTypeClass>(OwnerObject),
-			Weapon_Loaded(false),
+		Valueable<MouseCursorType> Cursor_Attack;
+		Valueable<MouseCursorType> Cursor_AttackOutOfRange;
+
+		ExtData(WeaponTypeClass* OwnerObject) : Extension<WeaponTypeClass, ExtData>(OwnerObject),
+			IsDetachedRailgun(false),
 			Beam_Color(),
 			Beam_Duration(15),
 			Beam_Amplitude(40.0),
@@ -108,11 +111,15 @@ public:
 			Bolt_Color1(),
 			Bolt_Color2(),
 			Bolt_Color3(),
+			Bolt_ParticleSystem(),
 			Wave_IsHouseColor(false),
 			Wave_IsLaser(false),
 			Wave_IsBigLaser(false),
+			Wave_Intensity(),
 			Wave_Color(),
-			Laser_Thickness(-1),
+			LaserThickness(-1),
+			Ivan_DeathBomb(false),
+			Ivan_DeathBombOnAllies(false),
 			Ivan_KillsBridges(true),
 			Ivan_Detachable(true),
 			Ivan_Damage(),
@@ -124,28 +131,34 @@ public:
 			Ivan_FlickerRate(),
 			Ivan_CanDetonateTimeBomb(),
 			Ivan_CanDetonateDeathBomb(),
+			Ivan_DetonateOnSell(true),
 			Rad_Type(nullptr),
-			ProjectileRange(Leptons(100000)),
-			Ammo(1),
 			Abductor(false),
-			Abductor_AnimType(nullptr),
 			Abductor_ChangeOwner(false),
-			Abductor_AbductBelowPercent(1)
+			Abductor_Temporal(false),
+			Abductor_AbductBelowPercent(1.0),
+			Abductor_MaxHealth(0),
+			Abductor_AnimType(nullptr),
+			ProjectileRange(Leptons(100000)),
+			ApplyDamage(),
+			Ammo(1),
+			Cursor_Attack(MouseCursorType::Attack),
+			Cursor_AttackOutOfRange(MouseCursorType::AttackOutOfRange)
 		{
 			for(int i = 0; i < 5; ++i) {
 				this->Wave_Reverse[i] = false;
 			}
 		}
 
-		virtual void LoadFromINIFile(CCINIClass* pINI) override;
-		virtual void Initialize() override;
+		void LoadFromINIFile(CCINIClass* pINI);
+		void Initialize(CCINIClass* pINI);
 
-		virtual void InvalidatePointer(void *ptr, bool bRemoved) override {
+		void InvalidatePointer(void *ptr, bool bRemoved) {
 		}
 
-		virtual void LoadFromStream(AresStreamReader &Stm) override;
+		void LoadFromStream(AresStreamReader &Stm);
 
-		virtual void SaveToStream(AresStreamWriter &Stm) override;
+		void SaveToStream(AresStreamWriter &Stm);
 
 		bool IsWave() const {
 			auto const pThis = this->OwnerObject();
@@ -154,10 +167,11 @@ public:
 
 		bool IsWaveReversedAgainst(AbstractClass const* pTarget) const;
 
-		ColorStruct GetWaveColor() const;
 		ColorStruct GetBeamColor() const;
 
 		bool conductAbduction(BulletClass *);
+
+		bool Abduct(TechnoClass* pAttacker, TechnoClass* pTarget) const;
 
 		void PlantBomb(TechnoClass* pSource, ObjectClass* pTarget) const;
 
@@ -170,7 +184,7 @@ public:
 		void Serialize(T& Stm);
 	};
 
-	class ExtContainer final : public Container<WeaponTypeExt> {
+	class ExtContainer final : public Container<WeaponTypeExt, ExtContainer> {
 	public:
 		ExtContainer();
 		~ExtContainer();
@@ -198,13 +212,29 @@ public:
 	static bool LoadGlobals(AresStreamReader& Stm);
 	static bool SaveGlobals(AresStreamWriter& Stm);
 
+	static void DetonateBombOnSell(BombClass* pBomb);
+
 	static AresMap<BombClass*, const ExtData*> BombExt;
 	static AresMap<WaveClass*, const ExtData*> WaveExt;
 	static AresMap<EBolt*, const ExtData*> BoltExt;
 	static AresMap<RadSiteClass*, const ExtData*> RadSiteExt;
 
-	// @return skipNormalHandling?
-	static bool ModifyWaveColor(WORD src, WORD& dest, int intensity, WaveClass* pWave);
+	// the colors the wave currently being drawn is tinted with
+	struct WaveColorData
+	{
+		Vector3D<int> Intensity;
+		Vector3D<int> Color;
+		bool Modified;
+	};
+
+	static WaveColorData WaveColors;
+
+	static WaveColorData GetWaveColorData(WaveClass* pWave);
+	static WORD ModifyWaveColor(WORD source, int intensity, const WaveColorData& colors);
+
+	static WaveClass* CreateWave(const CoordStruct& crdSrc, const CoordStruct& crdTgt,
+		TechnoClass* pOwner, WaveType type, AbstractClass* pTarget, BYTE idxWeapon,
+		const ExtData* pData);
 
 	static EBolt* CreateBolt(WeaponTypeClass* pWeapon);
 	static EBolt* CreateBolt(WeaponTypeExt::ExtData* pWeapon = nullptr);

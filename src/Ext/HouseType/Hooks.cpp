@@ -4,14 +4,18 @@
 #include <Audio.h>
 #include <PCX.h>
 #include <ScenarioClass.h>
+#include <SessionClass.h>
 #include <StringTable.h>
+#include <OwnerDraw.h>   // WWControlMessage
 
-DEFINE_HOOK(553412, LoadProgressMgr_Draw_LSFile, 0)
+#include <string>
+
+DEFINE_HOOK(0x553412, LoadProgressMgr_Draw_LSFile, 0x0)
 {
 	GET(int, n, EBX);
 
 	HouseTypeExt::ExtData* pData = nullptr;
-	if(auto pThis = HouseTypeClass::Array->GetItemOrDefault(n)) {
+	if(auto pThis = HouseTypeClass::Array.GetItemOrDefault(n)) {
 		pData = HouseTypeExt::ExtMap.Find(pThis);
 	}
 
@@ -29,12 +33,12 @@ DEFINE_HOOK(553412, LoadProgressMgr_Draw_LSFile, 0)
 	return 0x55342C;
 }
 
-DEFINE_HOOK(5536DA, LoadProgressMgr_Draw_LSName, 0)
+DEFINE_HOOK(0x5536DA, LoadProgressMgr_Draw_LSName, 0x0)
 {
 	GET(int, n, EBX);
 
 	HouseTypeExt::ExtData* pData = nullptr;
-	if(auto pThis = HouseTypeClass::Array->GetItemOrDefault(n)) {
+	if(auto pThis = HouseTypeClass::Array.GetItemOrDefault(n)) {
 		pData = HouseTypeExt::ExtMap.Find(pThis);
 	}
 
@@ -52,12 +56,12 @@ DEFINE_HOOK(5536DA, LoadProgressMgr_Draw_LSName, 0)
 	return 0x553820;
 }
 
-DEFINE_HOOK(553A05, LoadProgressMgr_Draw_LSSpecialName, 6)
+DEFINE_HOOK(0x553A05, LoadProgressMgr_Draw_LSSpecialName, 0x6)
 {
 	GET_STACK(int, n, 0x38);
 
 	HouseTypeExt::ExtData* pData = nullptr;
-	if(auto pThis = HouseTypeClass::Array->GetItemOrDefault(n)) {
+	if(auto pThis = HouseTypeClass::Array.GetItemOrDefault(n)) {
 		pData = HouseTypeExt::ExtMap.Find(pThis);
 	}
 
@@ -76,12 +80,12 @@ DEFINE_HOOK(553A05, LoadProgressMgr_Draw_LSSpecialName, 6)
 	return 0x553B3B;
 }
 
-DEFINE_HOOK(553D06, LoadProgressMgr_Draw_LSBrief, 6)
+DEFINE_HOOK(0x553D06, LoadProgressMgr_Draw_LSBrief, 0x6)
 {
 	GET_STACK(int, n, 0x38);
 
 	HouseTypeExt::ExtData* pData = nullptr;
-	if(auto pThis = HouseTypeClass::Array->GetItemOrDefault(n)) {
+	if(auto pThis = HouseTypeClass::Array.GetItemOrDefault(n)) {
 		pData = HouseTypeExt::ExtMap.Find(pThis);
 	}
 
@@ -99,36 +103,32 @@ DEFINE_HOOK(553D06, LoadProgressMgr_Draw_LSBrief, 6)
 	return 0x553E54;
 }
 
-DEFINE_HOOK(4E3579, HTExt_DrawFlag, 0)
+DEFINE_HOOK(0x4E3562, Game_GetFlagSurface, 0x5)
 {
-	GET(int, n, ECX);
+	GET(int const, n, ECX);
 
-	HouseTypeExt::ExtData* pData = nullptr;
-	if(auto pThis = HouseTypeClass::Array->GetItemOrDefault(n)) {
-		pData = HouseTypeExt::ExtMap.Find(pThis);
+	if(HouseTypeClass::Array.ValidIndex(n)) {
+		auto const pData = HouseTypeExt::ExtMap.Find(
+			HouseTypeClass::Array.GetItem(n));
+
+		if(auto const pFlag = pData->FlagFile.GetSurface()) {
+			R->EAX(pFlag);
+			return 0x4E3686;
+		}
+
+		// no country flag of its own, use the default one
+		return 0x4E3567;
 	}
 
-	BSurface* pFlag = nullptr;
-
-	if(pData) {
-		pFlag = pData->FlagFile.GetSurface();
-	} else if(n == 0) {
-		pFlag = PCX::Instance->GetSurface("usai.pcx");
-	} else {
-		return 0x4E3590;
-	}
-
-	R->EAX(pFlag);
-
-	return 0x4E3686;
+	return (n == -2) ? 0x4E3567u : 0x4E3579u;
 }
 
-DEFINE_HOOK(72B690, HTExt_LSPAL, 0)
+DEFINE_HOOK(0x72B690, LoadScreenPal_Load, 0x0)
 {
 	GET(int, n, EDI);
 
 	HouseTypeExt::ExtData* pData = nullptr;
-	if(auto pThis = HouseTypeClass::Array->GetItemOrDefault(n)) {
+	if(auto pThis = HouseTypeClass::Array.GetItemOrDefault(n)) {
 		pData = HouseTypeExt::ExtMap.Find(pThis);
 	}
 
@@ -150,12 +150,12 @@ DEFINE_HOOK(72B690, HTExt_LSPAL, 0)
 	return 0x72B804;
 }
 
-DEFINE_HOOK(4E38D8, HTExt_GetSTT, 0)
+DEFINE_HOOK(0x4E38D8, LoadPlayerCountryString, 0x0)
 {
 	GET(int, n, ECX);
 
 	HouseTypeExt::ExtData* pData = nullptr;
-	if(auto pThis = HouseTypeClass::Array->GetItemOrDefault(n)) {
+	if(auto pThis = HouseTypeClass::Array.GetItemOrDefault(n)) {
 		pData = HouseTypeExt::ExtMap.Find(pThis);
 	}
 
@@ -173,52 +173,90 @@ DEFINE_HOOK(4E38D8, HTExt_GetSTT, 0)
 	return 0x4E39F1;
 }
 
-DEFINE_HOOK(752BA1, HTExt_GetTaunt, 6)
+static bool PlayCountryTaunt(int idxCountry, unsigned int idxTaunt)
 {
-	GET(TauntDataStruct, TauntData, ECX);
-//	LEA_STACK(char*, pFileName, 0);
-
-	HouseTypeClass* pThis = HouseTypeClass::Array->Items[TauntData.countryIdx];
-	HouseTypeExt::ExtData *pData = HouseTypeExt::ExtMap.Find(pThis);
-	if(pData) {
-		_snprintf_s(Ares::readBuffer, _TRUNCATE, pData->TauntFile, TauntData.tauntIdx);
-		R->EAX(AudioStream::Instance->PlayWAV(Ares::readBuffer, false));
-		return 0x752C5F;
+	if(!AudioStream::Instance || *reinterpret_cast<int*>(0xB1D480)
+		|| idxTaunt > 9 || idxCountry < 0)
+	{
+		return false;
 	}
 
-	return 0;
+	auto const pThis = HouseTypeClass::Array.Items[idxCountry];
+	auto const pData = HouseTypeExt::ExtMap.Find(pThis);
+
+	std::string filename(pData->TauntFile);
+
+	auto const pos = filename.rfind('~');
+	if(pos != std::string::npos) {
+		filename[pos] = static_cast<char>('0' + idxTaunt);
+		std::replace(filename.begin(), filename.end(), '~', '0');
+	}
+
+	return AudioStream::Instance->PlayWAV(filename.c_str(), false);
 }
 
-DEFINE_HOOK(4E3792, HTExt_Unlimit1, 0)
+DEFINE_HOOK(0x536438, TauntCommandClass_Execute, 0x5)
+{
+	GET(TauntDataStruct, TauntData, ECX);
+
+	auto const idxCountry = SessionClass::Instance.StartSpots[0]->Country;
+
+	// put the unclamped country index into the outgoing packet
+	R->Stack(0x4D, idxCountry);
+	PlayCountryTaunt(idxCountry, TauntData.tauntIdx);
+
+	return 0x53643D;
+}
+
+DEFINE_HOOK(0x48DA3B, sub_48D1E0_PlayTaunt, 0x5)
+{
+	GET(TauntDataStruct, TauntData, ECX);
+
+	auto const idxCountry = *reinterpret_cast<int*>(0xA8D671);
+	PlayCountryTaunt(idxCountry, TauntData.tauntIdx);
+
+	return 0x48DAD3;
+}
+
+DEFINE_HOOK(0x752B70, PlayTaunt, 0x5)
+{
+	GET(TauntDataStruct, TauntData, ECX);
+
+	R->EAX(PlayCountryTaunt(TauntData.countryIdx, TauntData.tauntIdx));
+
+	return 0x752C68;
+}
+
+DEFINE_HOOK(0x4E3792, HTExt_Unlimit1, 0x0)
 { return 0x4E37AD; }
 
-DEFINE_HOOK(4E3A9C, HTExt_Unlimit2, 0)
+DEFINE_HOOK(0x4E3A9C, HTExt_Unlimit2, 0x0)
 { return 0x4E3AA1; }
 
-DEFINE_HOOK(4E3F31, HTExt_Unlimit3, 0)
+DEFINE_HOOK(0x4E3F31, HTExt_Unlimit3, 0x0)
 { return 0x4E3F4C; }
 
-DEFINE_HOOK(4E412C, HTExt_Unlimit4, 0)
+DEFINE_HOOK(0x4E412C, HTExt_Unlimit4, 0x0)
 { return 0x4E4147; }
 
-DEFINE_HOOK(4E41A7, HTExt_Unlimit5, 0)
+DEFINE_HOOK(0x4E41A7, HTExt_Unlimit5, 0x0)
 { return 0x4E41C3; }
 
 //0x69B774
-DEFINE_HOOK(69B774, HTExt_PickRandom_Human, 0)
+DEFINE_HOOK(0x69B774, HTExt_PickRandom_Human, 0x0)
 {
-	R->EAX(HouseTypeExt::PickRandomCountry());
+	R->EAX(HouseTypeExt::PickRandomCountry(true));
 	return 0x69B788;
 }
 
 //0x69B670
-DEFINE_HOOK(69B670, HTExt_PickRandom_AI, 0)
+DEFINE_HOOK(0x69B670, HTExt_PickRandom_AI, 0x0)
 {
-	R->EAX(HouseTypeExt::PickRandomCountry());
+	R->EAX(HouseTypeExt::PickRandomCountry(false));
 	return 0x69B684;
 }
 
-DEFINE_HOOK(4FE782, HouseClass_AI_BaseConstructionUpdate_PickPowerplant, 6)
+DEFINE_HOOK(0x4FE782, HouseClass_AI_BaseConstructionUpdate_PickPowerplant, 0x6)
 {
 	GET(HouseClass* const, pThis, EBP);
 	auto const pExt = HouseTypeExt::ExtMap.Find(pThis->Type);
@@ -229,7 +267,12 @@ DEFINE_HOOK(4FE782, HouseClass_AI_BaseConstructionUpdate_PickPowerplant, 6)
 
 	auto const it = pExt->GetPowerplants();
 	for(auto const& pPower : it) {
-		if(HouseExt::PrereqValidate(pThis, pPower, false, true) == 1) {
+		// PrereqValidate only answers the build-limit and Prerequisite.* side of
+		// the question; the plant's own Prerequisite= list still has to be met,
+		// or the AI picks a plant it cannot place and stalls its base plan.
+		if(HouseExt::PrereqValidate(pThis, pPower, false, true) == 1
+			&& HouseExt::PrerequisitesMet(pThis, pPower))
+		{
 			Eligible.AddItem(pPower);
 		}
 	}
@@ -241,14 +284,14 @@ DEFINE_HOOK(4FE782, HouseClass_AI_BaseConstructionUpdate_PickPowerplant, 6)
 		pResult = Eligible[idx];
 	} else if(!it.empty()) {
 		pResult = it.at(0);
-		Debug::Log(
-			"Country [%s] wanted to build a powerplant but does not meet "
-			"prerequisites for any possible plant. Going to give it the first "
-			"one on the list (%s)\n", pThis->Type->ID, pResult->ID);
+		Debug::Log(Debug::Severity::Warning,
+			"Country [%s] does not meet prerequisites for any possible power "
+			"plant. Fall back to the first one (%s).\n",
+			pThis->Type->ID, pResult->ID);
 	} else {
-		Debug::Log(
-			"Country [%s] did not find any powerplants it could construct! "
-			"The AI's probably going to crash now...\n", pThis->Type->ID);
+		Debug::Log(Debug::Severity::Warning,
+			"Country [%s] did not find any powerplants it could construct.",
+			pThis->Type->ID);
 	}
 
 	R->EDI(pResult);
@@ -256,13 +299,13 @@ DEFINE_HOOK(4FE782, HouseClass_AI_BaseConstructionUpdate_PickPowerplant, 6)
 }
 
 // issue #521: sort order for countries / countries can be hidden
-DEFINE_HOOK(4E3A6A, hWnd_PopulateWithCountryNames, 6) {
+DEFINE_HOOK(0x4E3A6A, hWnd_PopulateWithCountryNames, 0x6) {
 	GET(HWND const, hWnd, ESI);
 	
 	using Ext_t = HouseTypeExt::ExtData*;
 	std::vector<Ext_t> Eligible;
 
-	for(auto const& pCountry : *HouseTypeClass::Array) {
+	for(auto const& pCountry : HouseTypeClass::Array) {
 		if(pCountry->Multiplay && pCountry->UIName && *pCountry->UIName) {
 			auto const pExt = HouseTypeExt::ExtMap.Find(pCountry);
 
@@ -284,14 +327,14 @@ DEFINE_HOOK(4E3A6A, hWnd_PopulateWithCountryNames, 6) {
 
 	for(auto pCountryExt : Eligible) {
 		auto const pCountry = pCountryExt->OwnerObject();
-		auto const idx = SendMessageA(hWnd, WW_CB_ADDITEM, 0, reinterpret_cast<LPARAM>(pCountry->UIName));
+		auto const idx = SendMessageA(hWnd, WW_CB_ADDSTRINGW, 0, reinterpret_cast<LPARAM>(pCountry->UIName));
 		SendMessageA(hWnd, CB_SETITEMDATA, static_cast<WPARAM>(idx), pCountry->ArrayIndex2);
 	}
 	
 	return 0x4E3ACF;
 }
 
-DEFINE_HOOK(6AA0CA, TabCameoListClass_Draw_DrawObserverBackground, 6)
+DEFINE_HOOK(0x6AA0CA, StripClass_Draw_DrawObserverBackground, 0x6)
 {
 	enum { DrawSHP = 0x6AA0ED, DontDraw = 0x6AA159 };
 
@@ -306,7 +349,7 @@ DEFINE_HOOK(6AA0CA, TabCameoListClass_Draw_DrawObserverBackground, 6)
 		GET(int, TLX, EDI);
 		GET(int, TLY, EBX);
 		RectangleStruct bounds = { TLX, TLY, pData->ObserverBackgroundWidth, pData->ObserverBackgroundHeight };
-		PCX::Instance->BlitToSurface(&bounds, DSurface::Sidebar, PCXSurface);
+		PCX::Instance.BlitToSurface(&bounds, DSurface::Sidebar, PCXSurface);
 		return DontDraw;
 	} else {
 		return DontDraw;
@@ -314,7 +357,7 @@ DEFINE_HOOK(6AA0CA, TabCameoListClass_Draw_DrawObserverBackground, 6)
 }
 
 
-DEFINE_HOOK(6AA164, TabCameoListClass_Draw_DrawObserverFlag, 6)
+DEFINE_HOOK(0x6AA164, StripClass_Draw_DrawObserverFlag, 0x6)
 {
 	enum { IDontKnowYou = 0x6AA16D, DrawSHP = 0x6AA1DB, DontDraw = 0x6AA2CE };
 
@@ -336,7 +379,7 @@ DEFINE_HOOK(6AA164, TabCameoListClass_Draw_DrawObserverFlag, 6)
 		RectangleStruct bounds = { TLX + pData->ObserverFlagPCXX , TLY + pData->ObserverFlagPCXY,
 				pData->ObserverFlagPCXWidth, pData->ObserverFlagPCXHeight
 		};
-		PCX::Instance->BlitToSurface(&bounds, DSurface::Sidebar, PCXSurface);
+		PCX::Instance.BlitToSurface(&bounds, DSurface::Sidebar, PCXSurface);
 		return DontDraw;
 	} else {
 		return DontDraw;
@@ -347,16 +390,16 @@ DEFINE_HOOK(6AA164, TabCameoListClass_Draw_DrawObserverFlag, 6)
 // reactivate when testing observer drawing - this will draw observer sidebar instead of your real one in singleplayer
 // cameos will not be shown but tooltips and clicking the right spaces will still work
 // observer stats will be all zeroes
-A_FINE_HOOK(6A964E, TabCameoListClass_Draw_IFilmMyself, 0)
+A_FINE_HOOK(0x6A964E, TabCameoListClass_Draw_IFilmMyself, 0x0)
 {
 	enum { DrawObserver = 0x6AA05B, DrawNormal = 0x6A9654 };
 
 	GET(HouseClass *, HumanHouse, EBX);
 	GET(HouseClass *, ObserverHouse, EBP);
 
-	MouseClass::Instance->DiplomacyNumHouses = 1;
-	MouseClass::Instance->DiplomacyHouses[0] = HumanHouse;
-	MouseClass::Instance->DiplomacyColors[0] = ColorScheme::Array->GetItem(HumanHouse->ColorSchemeIndex);
+	MouseClass::Instance.DiplomacyNumHouses = 1;
+	MouseClass::Instance.DiplomacyHouses[0] = HumanHouse;
+	MouseClass::Instance.DiplomacyColors[0] = ColorScheme::Array.GetItem(HumanHouse->ColorSchemeIndex);
 
 	return DrawObserver;
 }

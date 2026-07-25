@@ -31,6 +31,7 @@ bool Ares::bFPSCounter = false;
 bool const Ares::bStable = IsStable;
 bool Ares::bStableNotification = false;
 bool Ares::bOutputMissingStrings = false;
+DWORD_PTR Ares::ProcessAffinityMask = 0;
 bool Ares::bShuttingDown = false;
 
 char Ares::readBuffer[Ares::readLength];
@@ -83,6 +84,9 @@ void __stdcall Ares::CmdLineParse(char** ppArgs, int nNumArgs)
 			bOutputMissingStrings = true;
 		} else if(_stricmp(pArg, "-EXCEPTION") == 0) {
 			ExceptionMode = ExceptionHandlerMode::NoRemove;
+		} else if(_strnicmp(pArg, "-AFFINITY:", 10) == 0) {
+			auto const mask = atoi(&pArg[10]);
+			ProcessAffinityMask = static_cast<DWORD_PTR>(mask > 0 ? mask : 0);
 		}
 	}
 
@@ -92,23 +96,21 @@ void __stdcall Ares::CmdLineParse(char** ppArgs, int nNumArgs)
 	}
 
 	CheckProcessorFeatures();
+
+	// only touch the process affinity when -AFFINITY:<mask> asked for it
+	if(auto const mask = Ares::ProcessAffinityMask) {
+		Debug::Log("Set Process Affinity: %lu (%x)\n", mask, mask);
+		SetProcessAffinityMask(GetCurrentProcess(), mask);
+	}
+
 	InitNoCDMode();
-}
-
-void __stdcall Ares::PostGameInit()
-{
-
 }
 
 void __stdcall Ares::ExeRun()
 {
-	Unsorted::Savegame_Magic = SAVEGAME_MAGIC;
+	Game::Savegame_Magic = SAVEGAME_MAGIC;
 	Game::bVideoBackBuffer = false;
 	Game::bAllowVRAMSidebar = false;
-
-	auto const process = GetCurrentProcess();
-	DWORD_PTR const processAffinityMask = 1; // limit to first processor
-	SetProcessAffinityMask(process, processAffinityMask);
 
 #if _MSC_VER >= 1700
 	// install a new exception handler, if this version of Windows supports it
@@ -153,21 +155,21 @@ CCINIClass* Ares::OpenConfig(const char* file) {
 }
 
 void Ares::InitNoCDMode() {
-	if(!GetCDClass::Instance->Count) {
+	if(!GetCDClass::Instance.Count) {
 		Debug::Log("No CD drives detected. Switching to NoCD mode.\n");
 		bNoCD = true;
 	}
 	
 	if(bNoCD) {
 		Debug::Log("Optimizing list of CD drives for NoCD mode.\n");
-		memset(GetCDClass::Instance->Drives, -1, 26);
+		memset(GetCDClass::Instance.Drives, -1, 26);
 
 		char drv[] = "a:\\";
 		for(int i=0; i<26; ++i) {
 			drv[0] = 'a' + (i + 2) % 26;
 			if(GetDriveTypeA(drv) == DRIVE_FIXED) {
-				GetCDClass::Instance->Drives[0] = (i + 2) % 26;
-				GetCDClass::Instance->Count = 1;
+				GetCDClass::Instance.Drives[0] = (i + 2) % 26;
+				GetCDClass::Instance.Count = 1;
 				break;
 			}
 		}
@@ -234,7 +236,7 @@ bool __stdcall DllMain(HANDLE hInstance,DWORD dwReason,LPVOID v)
 //Exports
 
 //Hook at 0x52C5E0
-DEFINE_HOOK(52C5E0, Ares_NoLogo, 7)
+DEFINE_HOOK(0x52C5E0, Ares_NoLogo, 0x7)
 {
 	return (Ares::bNoLogo)
 		? 0x52C5F3u
@@ -243,14 +245,20 @@ DEFINE_HOOK(52C5E0, Ares_NoLogo, 7)
 }
 
 //0x6AD0ED
-DEFINE_HOOK(6AD0ED, Ares_AllowSinglePlay, 5)
+DEFINE_HOOK(0x6AD0ED, Ares_AllowSinglePlay, 0x5)
 {
-	return 0x6AD16C;
+	// The stolen bytes are the "at least two players" test
+	// (cmp eax,1 / jg 0x6AD16C) that guards TXT_NEED_AT_LEAST_TWO_PLAYERS.
+	// Skipping to 0x6AD16C only defeats that one; 0x6AD16C..0x6AD2B7 is the
+	// TXT_CANNOT_ALLY pass, which walks the eight slots and refuses to start
+	// when every player sits on the same team - precisely the arrangement a
+	// single-player skirmish has. Jump past both.
+	return 0x6AD2BA;
 }
 
 /*
 	// 55AFB3, 6
-A_FINE_HOOK(55AFB3, Armageddon_Advance, 6)
+A_FINE_HOOK(0x55AFB3, Armageddon_Advance, 0x6)
 {
 	switch(FrameStepCommandClass::ArmageddonState)
 	{
@@ -269,26 +277,20 @@ A_FINE_HOOK(55AFB3, Armageddon_Advance, 6)
 }
 */
 
-DEFINE_HOOK(7CD810, ExeRun, 9)
+DEFINE_HOOK(0x7CD819, ExeRun, 0x5)
 {
 	Ares::ExeRun();
 	return 0;
 }
 
-DEFINE_HOOK(7CD8EF, ExeTerminate, 9)
+DEFINE_HOOK(0x7CD8EF, ExeTerminate, 0x9)
 {
 	Ares::ExeTerminate();
 	GET(UINT, result, EAX);
 	ExitProcess(result); //teehee
 }
 
-DEFINE_HOOK(52CAE9, _YR_PostGameInit, 5)
-{
-	Ares::PostGameInit();
-	return 0;
-}
-
-DEFINE_HOOK(52F639, _YR_CmdLineParse, 5)
+DEFINE_HOOK(0x52F639, YR_CmdLineParse, 0x5)
 {
 	GET(char**, ppArgs, ESI);
 	GET(int, nNumArgs, EDI);
@@ -298,7 +300,7 @@ DEFINE_HOOK(52F639, _YR_CmdLineParse, 5)
 }
 
 /*
-A_FINE_HOOK(7C8E17, operator_new, 6)
+A_FINE_HOOK(0x7C8E17, operator_new, 0x6)
 {
 	GET_STACK(size_t, sz, 0x4);
 
@@ -312,7 +314,7 @@ A_FINE_HOOK(7C8E17, operator_new, 6)
 	return 0x7C8E24;
 }
 
-A_FINE_HOOK(7C8B3D, operator_delete, 9)
+A_FINE_HOOK(0x7C8B3D, operator_delete, 0x9)
 {
 	GET_STACK(void *, p, 0x4);
 	operator delete(p);
@@ -320,7 +322,7 @@ A_FINE_HOOK(7C8B3D, operator_delete, 9)
 }
 */
 
-DEFINE_HOOK(47AE36, CDFileClass_SetFileName, 8)
+DEFINE_HOOK(0x47AE36, CDFileClass_SetFileName, 0x8)
 {
 	GET(void*, CDControl, EAX);
 
@@ -330,7 +332,7 @@ DEFINE_HOOK(47AE36, CDFileClass_SetFileName, 8)
 	return 0x47AE3E;
 }
 
-DEFINE_HOOK(47B026, FileFindOpen, 8)
+DEFINE_HOOK(0x47B026, FileFindOpen, 0x8)
 {
 	GET(void*, CDControl, EBX);
 

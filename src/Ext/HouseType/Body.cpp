@@ -12,7 +12,6 @@
 #include <iterator>
 #include <algorithm>
 
-template<> const DWORD Extension<HouseTypeClass>::Canary = 0xAFFEAFFE;
 HouseTypeExt::ExtContainer HouseTypeExt::ExtMap;
 
 void HouseTypeExt::ExtData::InitializeConstants() {
@@ -194,7 +193,7 @@ void HouseTypeExt::ExtData::InitializeConstants() {
 	this->ObserverFlagYuriPAL = bObserverFlagYuriPAL;
 }
 
-void HouseTypeExt::ExtData::Initialize() {
+void HouseTypeExt::ExtData::Initialize(CCINIClass* pINI) {
 	switch (this->OwnerObject()->SideIndex) {
 	case 0:
 		this->LoadTextColor = ColorScheme::FindIndex("AlliedLoad");
@@ -298,11 +297,18 @@ void HouseTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI) {
 	this->LoadTextColor.Read(exINI, pID, "LoadScreenText.Color");
 
 	this->RandomSelectionWeight.Read(exINI, pID, "RandomSelectionWeight");
+	this->AIRandomSelectionWeight.Read(exINI, pID, "AIRandomSelectionWeight");
 	this->CountryListIndex.Read(exINI, pID, "ListIndex");
 
 	this->VeteranBuildings.Read(exINI, pID, "VeteranBuildings");
 
 	this->Degrades.Read(exINI, pID, "Degrades");
+	this->CanBeDriven.Read(exINI, pID, "CanBeDriven");
+
+	this->StartInMultiplayer_Types.Read(exINI, pID, "StartInMultiplayer.Types");
+	this->StartInMultiplayer_WithConst.Read(exINI, pID, "StartInMultiplayer.WithConst");
+
+	this->GivesBounty.Read(exINI, pID, "GivesBounty");
 }
 
 void HouseTypeExt::ExtData::InheritSettings(HouseTypeClass *pThis) {
@@ -347,7 +353,7 @@ AnimTypeClass* HouseTypeExt::ExtData::GetParachuteAnim() {
 
 	// side-specific with fallback to rules
 	int iSide = this->OwnerObject()->SideIndex;
-	if(auto pSide = SideClass::Array->GetItemOrDefault(iSide)) {
+	if(auto pSide = SideClass::Array.GetItemOrDefault(iSide)) {
 		if(SideExt::ExtData *pData = SideExt::ExtMap.Find(pSide)) {
 			if(AnimTypeClass* pAnimType = pData->GetParachuteAnim()) {
 				return pAnimType;
@@ -368,7 +374,7 @@ AircraftTypeClass* HouseTypeExt::ExtData::GetParadropPlane() {
 
 	int iSide = this->OwnerObject()->SideIndex;
 	if((iPlane < 0) && (iSide >= 0)) {
-		if(SideExt::ExtData *pData = SideExt::ExtMap.Find(SideClass::Array->GetItem(iSide))) {
+		if(SideExt::ExtData *pData = SideExt::ExtMap.Find(SideClass::Array.GetItem(iSide))) {
 			iPlane = pData->ParaDropPlane;
 		}
 	}
@@ -378,8 +384,8 @@ AircraftTypeClass* HouseTypeExt::ExtData::GetParadropPlane() {
 		iPlane = AircraftTypeClass::FindIndex("PDPLANE");
 	}
 
-	if(AircraftTypeClass::Array->ValidIndex(iPlane)) {
-		return AircraftTypeClass::Array->GetItem(iPlane);
+	if(AircraftTypeClass::Array.ValidIndex(iPlane)) {
+		return AircraftTypeClass::Array.GetItem(iPlane);
 	} else {
 		Debug::Log("[GetParadropPlane] House %s and its side have no valid paradrop plane defined. Rules fallback failed.\n", this->OwnerObject()->ID);
 		return nullptr;
@@ -396,7 +402,7 @@ bool HouseTypeExt::ExtData::GetParadropContent(Iterator<TechnoTypeClass*> &Types
 
 	// fall back to side specific para drop
 	if(!Types) {
-		SideClass* pSide = SideClass::Array->GetItem(this->OwnerObject()->SideIndex);
+		SideClass* pSide = SideClass::Array.GetItem(this->OwnerObject()->SideIndex);
 		if(SideExt::ExtData *pData = SideExt::ExtMap.Find(pSide)) {
 			Types = pData->GetParaDropTypes();
 			Num = pData->GetParaDropNum();
@@ -432,14 +438,20 @@ Iterator<BuildingTypeClass*> HouseTypeExt::ExtData::GetDefaultPowerplants() cons
 	return Iterator<BuildingTypeClass*>(ppPower, count);
 }
 
-int HouseTypeExt::PickRandomCountry() {
+int HouseTypeExt::PickRandomCountry(bool const isHuman) {
 	DiscreteDistributionClass<int> items;
 
-	for (int i = 0; i < HouseTypeClass::Array->Count; i++) {
-		HouseTypeClass* pCountry = HouseTypeClass::Array->Items[i];
+	for (int i = 0; i < HouseTypeClass::Array.Count; i++) {
+		HouseTypeClass* pCountry = HouseTypeClass::Array.Items[i];
 		if (pCountry->Multiplay) {
 			if (auto pData = HouseTypeExt::ExtMap.Find(pCountry)) {
-				items.Add(i, static_cast<unsigned int>(pData->RandomSelectionWeight));
+				// AIRandomSelectionWeight only exists for the AI draw, and it
+				// defaults to RandomSelectionWeight by simply being skipped.
+				auto weight = static_cast<unsigned int>(pData->RandomSelectionWeight);
+				if (!isHuman && pData->AIRandomSelectionWeight.isset()) {
+					weight = static_cast<unsigned int>(pData->AIRandomSelectionWeight.Get());
+				}
+				items.Add(i, weight);
 			}
 		}
 	}
@@ -468,6 +480,7 @@ void HouseTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->StatusText)
 		.Process(this->LoadTextColor)
 		.Process(this->RandomSelectionWeight)
+		.Process(this->AIRandomSelectionWeight)
 		.Process(this->CountryListIndex)
 		.Process(this->Powerplants)
 		.Process(this->ParaDropTypes)
@@ -481,16 +494,20 @@ void HouseTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->ObserverFlagSHP)
 		.Process(this->ObserverFlagYuriPAL)
 		.Process(this->SettingsInherited)
-		.Process(this->Degrades);
+		.Process(this->Degrades)
+		.Process(this->CanBeDriven)
+		.Process(this->StartInMultiplayer_Types)
+		.Process(this->StartInMultiplayer_WithConst)
+		.Process(this->GivesBounty);
 }
 
 void HouseTypeExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<HouseTypeClass>::LoadFromStream(Stm);
+	Extension<HouseTypeClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void HouseTypeExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<HouseTypeClass>::SaveToStream(Stm);
+	Extension<HouseTypeClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -505,29 +522,29 @@ HouseTypeExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(511635, HouseTypeClass_CTOR_1, 5) {
+DEFINE_HOOK(0x511635, HouseTypeClass_CTOR_1, 0x5) {
 	GET(HouseTypeClass*, pItem, EAX);
 
 	HouseTypeExt::ExtMap.FindOrAllocate(pItem);
 	return 0;
 }
 
-DEFINE_HOOK(511643, HouseTypeClass_CTOR_2, 5) {
+DEFINE_HOOK(0x511643, HouseTypeClass_CTOR_2, 0x5) {
 	GET(HouseTypeClass*, pItem, EAX);
 
 	HouseTypeExt::ExtMap.FindOrAllocate(pItem);
 	return 0;
 }
 
-DEFINE_HOOK(5127CF, HouseTypeClass_DTOR, 6) {
+DEFINE_HOOK(0x5127CF, HouseTypeClass_DTOR, 0x6) {
 	GET(HouseTypeClass*, pItem, ESI);
 
 	HouseTypeExt::ExtMap.Remove(pItem);
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(512480, HouseTypeClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(512290, HouseTypeClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x512480, HouseTypeClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x512290, HouseTypeClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(HouseTypeClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -537,18 +554,18 @@ DEFINE_HOOK(512290, HouseTypeClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(51246D, HouseTypeClass_Load_Suffix, 5) {
+DEFINE_HOOK(0x51246D, HouseTypeClass_Load_Suffix, 0x5) {
 	HouseTypeExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(51255C, HouseTypeClass_Save_Suffix, 5) {
+DEFINE_HOOK(0x51255C, HouseTypeClass_Save_Suffix, 0x5) {
 	HouseTypeExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(51215A, HouseTypeClass_LoadFromINI, 5)
-DEFINE_HOOK(51214F, HouseTypeClass_LoadFromINI, 5)
+DEFINE_HOOK_AGAIN(0x51215A, HouseTypeClass_LoadFromINI, 0x5)
+DEFINE_HOOK(0x51214F, HouseTypeClass_LoadFromINI, 0x5)
 {
 	GET(HouseTypeClass*, pItem, EBX);
 	GET_BASE(CCINIClass*, pINI, 0x8);
@@ -556,3 +573,22 @@ DEFINE_HOOK(51214F, HouseTypeClass_LoadFromINI, 5)
 	HouseTypeExt::ExtMap.LoadFromINI(pItem, pINI);
 	return 0;
 }
+
+static_assert(sizeof(HouseTypeExt::ExtData) == 0x200, "HouseTypeExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the head, the CSF block, the new nullable weight, the
+// two byte-sized flags before Degrades and the last member.
+// LoadScreenBackground, LoadScreenPalette and TauntFile sit one byte lower than
+// 3.0p1 has them, because AresPCXFile measures 35 bytes here and 36 there; the
+// layout re-syncs at LoadScreenName, which is 4-aligned.
+static_assert(offsetof(HouseTypeExt::ExtData, FlagFile) == 0x008, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, LoadScreenBackground) == 0x02C, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, LoadScreenPalette) == 0x04C, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, TauntFile) == 0x06C, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, LoadScreenName) == 0x08C, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, AIRandomSelectionWeight) == 0x124, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, ObserverFlagYuriPAL) == 0x1B8, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, Degrades) == 0x1BA, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, StartInMultiplayer_Types) == 0x1C0, "HouseTypeExt::ExtData layout slipped");
+static_assert(offsetof(HouseTypeExt::ExtData, GivesBounty) == 0x1D1, "HouseTypeExt::ExtData layout slipped");

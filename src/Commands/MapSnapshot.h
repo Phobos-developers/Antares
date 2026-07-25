@@ -1,5 +1,7 @@
 #pragma once
 
+#include <StringTable.h>
+
 #include "Commands.h"
 
 #include <MessageListClass.h>
@@ -15,20 +17,20 @@ public:
 
 	virtual const wchar_t* GetUIName() const override
 	{
-		return L"Map Snapshot";
+		return StringTable::LoadString("TXT_MAP_SNAPSHOT");
 	}
 
 	virtual const wchar_t* GetUICategory() const override
 	{
-		return L"Development";
+		return StringTable::LoadString("TXT_DEVELOPMENT");
 	}
 
 	virtual const wchar_t* GetUIDescription() const override
 	{
-		return L"Saves the currently played map.";
+		return StringTable::LoadString("TXT_MAP_SNAPSHOT_DESC");
 	}
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
 		if(this->CheckDebugDeactivated()) {
 			return;
@@ -51,6 +53,6 @@ public:
 		wchar_t msg[0xA0] = L"\0";
 		wsprintfW(msg, L"Map Snapshot saved as '%hs'.", fName);
 
-		MessageListClass::Instance->PrintMessage(msg);
+		MessageListClass::Instance.PrintMessage(msg);
 	}
 };

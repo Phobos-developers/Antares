@@ -1,4 +1,5 @@
 #include "Interface.h"
+#include <OwnerDraw.h>   // WWControlMessage
 #include "../Ares.h"
 #include "../Ares.CRT.h"
 #include "../Ext/Campaign/Body.h"
@@ -59,17 +60,17 @@ void Interface::updateMenu(HWND hDlg, YRDialogID iID) {
 			
 				// let the Allied label be the caption
 				if(HWND hAllLabel = GetDlgItem(hDlg, AlliedLabel)) {
-					SendMessageA(hAllLabel, WW_STATIC_SETTEXT, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA("GUI:SelectCampaign")));
+					SendMessageA(hAllLabel, WW_SETTEXTW, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA("GUI:SelectCampaign")));
 				}
 
 				// call the load button "Play"
 				if(HWND hLoad = GetDlgItem(hDlg, LoadButton)) {
-					SendMessageA(hLoad, WW_STATIC_SETTEXT, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA("GUI:PlayMission")));
+					SendMessageA(hLoad, WW_SETTEXTW, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA("GUI:PlayMission")));
 				}
 
 				// remove default text, and align left
 				if(HWND hSovLabel = GetDlgItem(hDlg, SovietLabel)) {
-					SendMessageA(hSovLabel, WW_STATIC_SETTEXT, 0, reinterpret_cast<LPARAM>(L""));
+					SendMessageA(hSovLabel, WW_SETTEXTW, 0, reinterpret_cast<LPARAM>(L""));
 					SetWindowLong(hSovLabel, GWL_STYLE, SS_LEFT | WS_CHILD | WS_VISIBLE);
 				}
 
@@ -145,7 +146,7 @@ void Interface::updateMenu(HWND hDlg, YRDialogID iID) {
 
 			// call the load button "Play"
 			if(HWND hLoad = GetDlgItem(hDlg, LoadButton)) {
-				SendMessageA(hLoad, WW_STATIC_SETTEXT, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA("GUI:PlayMission")));
+				SendMessageA(hLoad, WW_SETTEXTW, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA("GUI:PlayMission")));
 			}
 
 			// position values
@@ -313,14 +314,14 @@ int Interface::getSlotIndex(int iID) {
 }
 
 // cache the template id for later use
-DEFINE_HOOK(62267F, Dialog_Show_GetTemplate, 6) {
+DEFINE_HOOK(0x62267F, Dialog_Show_GetTemplate, 0x6) {
 	GET(YRDialogID, iID, EBP);
 	Interface::lastDialogTemplateID = iID;
 	return 0;
 }
 
 // manipulate the dialog after creation
-DEFINE_HOOK(6226EE, Dialog_Show_UpdateControls, 6) {
+DEFINE_HOOK(0x6226EE, Dialog_Show_UpdateControls, 0x6) {
 	GET(HWND, hDlg, ESI);
 	Interface::updateMenu(hDlg, Interface::lastDialogTemplateID);
 	return 0;
@@ -334,7 +335,7 @@ DEFINE_HOOK(6226EE, Dialog_Show_UpdateControls, 6) {
 // We do not select the first item in the list as the game would do. This
 // allows us to play the campaign selection sound when the user clicks it
 // and not when the dialog is shown or not at all.
-DEFINE_HOOK(52F00B, CampaignMenu_hDlg_PopulateCampaignList, 5) {
+DEFINE_HOOK(0x52F00B, CampaignMenu_hDlg_PopulateCampaignList, 0x5) {
 	GET(HWND, hDlg, ESI);
 	GET(HWND, hList, EBP);
 
@@ -344,10 +345,11 @@ DEFINE_HOOK(52F00B, CampaignMenu_hDlg_PopulateCampaignList, 5) {
 	}
 
 	// fill in the campaigns list
-	for(int i=0; i<CampaignExt::Array.Count; ++i) {
-		CampaignExt::ExtData *pData = CampaignExt::Array.GetItem(i);
+	for(int i=0; i<CampaignExt::Campaigns->Count; ++i) {
+		CampaignClass* pItem = CampaignExt::Campaigns->GetItem(i);
+		CampaignExt::ExtData *pData = CampaignExt::ExtMap.Find(pItem);
 		if(pData && pData->IsVisible()) {
-			auto newIndex = SendMessageA(hList, WW_LB_ADDITEM, 0, reinterpret_cast<LPARAM>(pData->OwnerObject()->Description));
+			auto newIndex = SendMessageA(hList, WW_LB_ADDSTRINGW, 0, reinterpret_cast<LPARAM>(pItem->Description));
 			SendMessageA(hList, LB_SETITEMDATA, static_cast<WPARAM>(newIndex), i);
 		}
 	}
@@ -362,7 +364,7 @@ DEFINE_HOOK(52F00B, CampaignMenu_hDlg_PopulateCampaignList, 5) {
 }
 
 // catch selecting a new campaign from the list
-DEFINE_HOOK(52EC18, CampaignMenu_hDlg_PreHandleGeneral, 5) {
+DEFINE_HOOK(0x52EC18, CampaignMenu_hDlg_PreHandleGeneral, 0x5) {
 	GET(HWND, hDlg, ESI);
 	GET(int, msg, EBX);
 	GET(int, lParam, EBP);
@@ -379,7 +381,8 @@ DEFINE_HOOK(52EC18, CampaignMenu_hDlg_PreHandleGeneral, 5) {
 
 			if(CampaignExt::lastSelectedCampaign != idxCampaign) {
 				// play the hover sound
-				CampaignExt::ExtData* pData = CampaignExt::Array.GetItem(idxCampaign);
+				CampaignExt::ExtData* pData = CampaignExt::ExtMap.Find(
+					CampaignExt::Campaigns->GetItem(idxCampaign));
 				if(pData) {
 					int idxSound = VocClass::FindIndex(pData->HoverSound);
 					if(idxSound > -1) {
@@ -389,7 +392,7 @@ DEFINE_HOOK(52EC18, CampaignMenu_hDlg_PreHandleGeneral, 5) {
 					// set the summary text
 					if(HWND hSovLabel = GetDlgItem(hDlg, SovietLabel)) {
 						const wchar_t* summary = pData->Summary.Get();
-						SendMessageA(hSovLabel, WW_STATIC_SETTEXT, 0, reinterpret_cast<LPARAM>(summary));
+						SendMessageA(hSovLabel, WW_SETTEXTW, 0, reinterpret_cast<LPARAM>(summary));
 					}
 				}
 
@@ -408,7 +411,7 @@ DEFINE_HOOK(52EC18, CampaignMenu_hDlg_PreHandleGeneral, 5) {
 }
 
 // start the mission
-DEFINE_HOOK(52ED21, CampaignMenu_hDlg_ClickedPlay, 9) {
+DEFINE_HOOK(0x52ED21, CampaignMenu_hDlg_ClickedPlay, 0x9) {
 	GET(HWND, hDlg, ESI);
 
 	using namespace CampaignDialog;
@@ -429,7 +432,7 @@ DEFINE_HOOK(52ED21, CampaignMenu_hDlg_ClickedPlay, 9) {
 // can have their own images and color palettes.
 
 // play mouse click sound
-DEFINE_HOOK(52EF39, CampaignMenu_hDlg_ImageMouseDown, 5) {
+DEFINE_HOOK(0x52EF39, CampaignMenu_hDlg_ImageMouseDown, 0x5) {
 	GET(int, iID, EAX);
 
 	// this is an image button. play click sound.
@@ -445,7 +448,7 @@ DEFINE_HOOK(52EF39, CampaignMenu_hDlg_ImageMouseDown, 5) {
 }
 
 // select the hover sound to be played
-DEFINE_HOOK(52EE04, CampaignMenu_hDlg_SelectHoverSound, 6) {
+DEFINE_HOOK(0x52EE04, CampaignMenu_hDlg_SelectHoverSound, 0x6) {
 	GET(HWND, hDlg, ESI);
 	GET(int, iID, EBX);
 	GET(int, lastiID, EAX);
@@ -466,7 +469,8 @@ DEFINE_HOOK(52EE04, CampaignMenu_hDlg_SelectHoverSound, 6) {
 				int sound = -1;
 				int idxBattle = CampaignClass::FindIndex(campaignID);
 				if(idxBattle > -1) {
-					if(CampaignExt::ExtData *pData = CampaignExt::Array.GetItem(idxBattle)) {
+					if(CampaignExt::ExtData *pData = CampaignExt::ExtMap.Find(
+						CampaignExt::Campaigns->GetItem(idxBattle))) {
 						sound = VocClass::FindIndex(pData->HoverSound);
 					}
 				}
@@ -486,7 +490,7 @@ DEFINE_HOOK(52EE04, CampaignMenu_hDlg_SelectHoverSound, 6) {
 }
 
 // override the campaign the game would choose
-DEFINE_HOOK(52F232, CampaignMenu_hDlg_StartCampaign, 6) {
+DEFINE_HOOK(0x52F232, CampaignMenu_hDlg_StartCampaign, 0x6) {
 	GET(int, iID, EBP);
 
 	// get the campaign hovered above
@@ -504,7 +508,7 @@ DEFINE_HOOK(52F232, CampaignMenu_hDlg_StartCampaign, 6) {
 }
 
 // converter
-DEFINE_HOOK(60378B, CampaignMenu_ChooseButtonPalette, 6) {
+DEFINE_HOOK(0x60378B, CampaignMenu_ChooseButtonPalette, 0x6) {
 	GET(int, iID, EDI);
 
 	int idxSlot = Interface::getSlotIndex(iID);
@@ -522,7 +526,7 @@ DEFINE_HOOK(60378B, CampaignMenu_ChooseButtonPalette, 6) {
 }
 
 // buttom image
-DEFINE_HOOK(603A2E, CampaignMenu_ChooseButtonImage, 6) {
+DEFINE_HOOK(0x603A2E, CampaignMenu_ChooseButtonImage, 0x6) {
 	GET(int, iID, EAX);
 
 	int idxSlot = Interface::getSlotIndex(iID);
@@ -539,21 +543,21 @@ DEFINE_HOOK(603A2E, CampaignMenu_ChooseButtonImage, 6) {
 }
 
 // support button background images for every button
-DEFINE_HOOK(60A90A, CampaignMenu_StaticButtonImage, 5) {
+DEFINE_HOOK(0x60A90A, CampaignMenu_StaticButtonImage, 0x5) {
 	GET(int, iID, EAX);
 
 	return (Interface::getSlotIndex(iID) > -1) ? 0x60A982u : 0x60A9EDu;
 }
 
 // animation duration
-DEFINE_HOOK(60357E, CampaignMenu_SetAnimationDuration, 5) {
+DEFINE_HOOK(0x60357E, CampaignMenu_SetAnimationDuration, 0x5) {
 	GET(int, iID, EAX);
 
 	return (Interface::getSlotIndex(iID) > -1) ? 0x6035C5u : 0x6035E6u;
 }
 
 // initialize stuff like the order and images
-DEFINE_HOOK(52F191, CampaignMenu_InitializeMoreButtons, 5) {
+DEFINE_HOOK(0x52F191, CampaignMenu_InitializeMoreButtons, 0x5) {
 	GET(HWND, hDlg, ESI);
 
 	using namespace CampaignDialog;
@@ -598,7 +602,7 @@ DEFINE_HOOK(52F191, CampaignMenu_InitializeMoreButtons, 5) {
 				} else {
 					// update the subline text
 					if(HWND hItem = GetDlgItem(hDlg, AlliedLabel + i)) {
-						SendMessageA(hItem, WW_STATIC_SETTEXT, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA(Ares::UISettings::Campaigns[idxCampaign].Subline)));
+						SendMessageA(hItem, WW_SETTEXTW, 0, reinterpret_cast<LPARAM>(StringTable::LoadStringA(Ares::UISettings::Campaigns[idxCampaign].Subline)));
 					}
 				}
 			}
@@ -609,7 +613,7 @@ DEFINE_HOOK(52F191, CampaignMenu_InitializeMoreButtons, 5) {
 }
 
 // if this is a campaign button, handle the tooltip ourselves
-DEFINE_HOOK(6041ED, DialogFunc_SubText_CampaignIconA, 5) {
+DEFINE_HOOK(0x6041ED, DialogFunc_SubText_CampaignIconA, 0x5) {
 	GET(int, iID, EAX);
 
 	int idxSlot = Interface::getSlotIndex(iID);
@@ -625,29 +629,7 @@ DEFINE_HOOK(6041ED, DialogFunc_SubText_CampaignIconA, 5) {
 }
 
 // already set. skip this.
-DEFINE_HOOK(6041F5, DialogFunc_CampaignMenu_CampaignIconB, 5) {
+DEFINE_HOOK(0x6041F5, DialogFunc_CampaignMenu_CampaignIconB, 0x5) {
 	return 0x6041FA;
 }
 
-// disable the loading button in the single player menu
-DEFINE_HOOK(52D6C2, Singleplayer_hDlg_DisableSaves, A)
-{
-	R->ECX(FALSE);
-	return 0x52D6CC;
-}
-
-// disable load, save and delete buttons on the ingame menu
-DEFINE_HOOK(4F17F6, sub_4F1720_DisableSaves, 6)
-{
-	GET(HWND, hDlg, EBP);
-
-	using namespace GameOptionsDialog;
-
-	for(int item=LoadGameButton; item<=DeleteGameButton; ++item) {
-		if(HWND hItem = GetDlgItem(hDlg, item)) {
-			EnableWindow(hItem, FALSE);
-		}
-	}
-
-	return 0x4F1834;
-}

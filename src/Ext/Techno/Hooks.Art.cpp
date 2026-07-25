@@ -1,4 +1,5 @@
 #include "Body.h"
+#include "../../Utilities/DirMath.h"
 #include "../TechnoType/Body.h"
 #include "../HouseType/Body.h"
 
@@ -8,7 +9,7 @@
 #include <HouseClass.h>
 
 /* #604 - customizable parachutes */
-DEFINE_HOOK(5F5ADD, Parachute_Animation, 6)
+DEFINE_HOOK(0x5F5ADD, ObjectClass_SpawnParachuted_Animation, 0x6)
 {
 	GET(TechnoClass *, T, ESI);
 
@@ -32,13 +33,11 @@ DEFINE_HOOK(5F5ADD, Parachute_Animation, 6)
 	return 0x5F5AE3;
 }
 
-DEFINE_HOOK(73C725, UnitClass_DrawSHP_DrawShadowEarlier, 6)
+DEFINE_HOOK(0x73C725, UnitClass_DrawSHP_DrawShadowEarlier, 0x6)
 {
 	GET(UnitClass *, U, EBP);
 
-	auto pData = TechnoExt::ExtMap.Find(U);
-
-	DWORD retAddr = (U->IsClearlyVisibleTo(HouseClass::Player))
+	DWORD retAddr = (U->IsClearlyVisibleTo(HouseClass::CurrentPlayer))
 		? 0
 		: 0x73CE0D
 	;
@@ -67,34 +66,31 @@ DEFINE_HOOK(73C725, UnitClass_DrawSHP_DrawShadowEarlier, 6)
 			coords.Y -= 14;
 		}
 
-		Point2D XYAdjust = {0, 0};
-		U->Locomotor->Shadow_Point(&XYAdjust);
+		Point2D const XYAdjust = U->Locomotor->Shadow_Point();
 		coords += XYAdjust;
 
 		int ZAdjust = U->GetZAdjustment() - 2;
 
 		FrameToDraw += Image->Frames / 2;
 
-		DSurface::Hidden_2->DrawSHP(FileSystem::THEATER_PAL, Image, FrameToDraw, &coords, BoundingRect, BlitterFlags(0x2E01),
-				0, ZAdjust, 0, 1000, 0, 0, 0, 0, 0);
+		DSurface::Temp->DrawSHP(FileSystem::PALETTE_PAL, Image, FrameToDraw, &coords, BoundingRect, BlitterFlags(0x2E01),
+				0, ZAdjust, ZGradient::Ground, 1000, 0, nullptr, 0, 0, 0);
 
-		pData->ShadowDrawnManually = true;
+		TechnoExt::DrawnShadowManually = true;
 	}
 
 	return retAddr;
 }
 
-DEFINE_HOOK(73C733, UnitClass_DrawSHP_SkipTurretedShadow, 7)
+DEFINE_HOOK(0x73C733, UnitClass_DrawSHP_SkipTurretedShadow, 0x7)
 {
 	return 0x73C7AC;
 }
 
-DEFINE_HOOK(705FF3, TechnoClass_Draw_A_SHP_File_SkipUnitShadow, 6)
+DEFINE_HOOK(0x705FF3, TechnoClass_Draw_A_SHP_File_SkipUnitShadow, 0x6)
 {
-	GET(TechnoClass *, T, ESI);
-	auto pData = TechnoExt::ExtMap.Find(T);
-	if(pData->ShadowDrawnManually) {
-		pData->ShadowDrawnManually = false;
+	if(TechnoExt::DrawnShadowManually) {
+		TechnoExt::DrawnShadowManually = false;
 		return 0x706007;
 	}
 	return 0;
@@ -102,7 +98,7 @@ DEFINE_HOOK(705FF3, TechnoClass_Draw_A_SHP_File_SkipUnitShadow, 6)
 
 /*
  * this was the old implementation of apcw, no longer needed
-A_FINE_HOOK(73B672, UnitClass_DrawVXL, 6)
+A_FINE_HOOK(0x73B672, UnitClass_DrawVXL, 0x6)
 {
 	GET(UnitClass *, U, EBP);
 	TechnoTypeExt::ExtData *pData = TechnoTypeExt::ExtMap.Find(U->Type);
@@ -116,7 +112,7 @@ A_FINE_HOOK(73B672, UnitClass_DrawVXL, 6)
 }
 */
 
-DEFINE_HOOK(73B4A0, UnitClass_DrawVXL_WaterType, 9)
+DEFINE_HOOK(0x73B4A0, UnitClass_DrawVXL_WaterType, 0x9)
 {
 	R->ESI(0);
 	GET(UnitClass *, U, EBP);
@@ -124,7 +120,7 @@ DEFINE_HOOK(73B4A0, UnitClass_DrawVXL_WaterType, 9)
 
 	ObjectTypeClass * Image = U->Type;
 
-	if(!U->IsClearlyVisibleTo(HouseClass::Player)) {
+	if(!U->IsClearlyVisibleTo(HouseClass::CurrentPlayer)) {
 		Image = U->GetDisguise(true);
 	}
 
@@ -143,7 +139,7 @@ DEFINE_HOOK(73B4A0, UnitClass_DrawVXL_WaterType, 9)
 }
 
 
-DEFINE_HOOK(73C5FC, UnitClass_DrawSHP_WaterType, 6)
+DEFINE_HOOK(0x73C5FC, UnitClass_DrawSHP_WaterType, 0x6)
 {
 	GET(UnitClass *, U, EBP);
 	TechnoExt::ExtData *pData = TechnoExt::ExtMap.Find(U);
@@ -161,9 +157,9 @@ DEFINE_HOOK(73C5FC, UnitClass_DrawSHP_WaterType, 6)
 	return 0x73CE00;
 }
 
-DEFINE_HOOK_AGAIN(73C69D, UnitClass_DrawSHP_ChangeType1, 6)
-DEFINE_HOOK_AGAIN(73C702, UnitClass_DrawSHP_ChangeType1, 6)
-DEFINE_HOOK(73C655, UnitClass_DrawSHP_ChangeType1, 6)
+DEFINE_HOOK_AGAIN(0x73C69D, UnitClass_DrawSHP_ChangeType1, 0x6)
+DEFINE_HOOK_AGAIN(0x73C702, UnitClass_DrawSHP_ChangeType1, 0x6)
+DEFINE_HOOK(0x73C655, UnitClass_DrawSHP_ChangeType1, 0x6)
 {
 	GET(UnitClass *, U, EBP);
 	TechnoExt::ExtData *pData = TechnoExt::ExtMap.Find(U);
@@ -176,7 +172,7 @@ DEFINE_HOOK(73C655, UnitClass_DrawSHP_ChangeType1, 6)
 	return 0;
 }
 
-DEFINE_HOOK(415085, AircraftClass_Update_DamageSmoke, 7)
+DEFINE_HOOK(0x415085, AircraftClass_Update_DamageSmoke, 0x7)
 {
 	GET(AircraftClass*, pThis, ESI);
 	auto pExt = TechnoTypeExt::ExtMap.Find(pThis->GetTechnoType());
@@ -197,7 +193,7 @@ DEFINE_HOOK(415085, AircraftClass_Update_DamageSmoke, 7)
 	return 0x41512C;
 }
 
-DEFINE_HOOK(73C613, UnitClass_DrawSHP_FacingsA, 7) {
+DEFINE_HOOK(0x73C613, UnitClass_DrawSHP_FacingsA, 0x7) {
 	GET(UnitClass*, pThis, EBP);
 
 	unsigned int ret = 0;
@@ -207,14 +203,14 @@ DEFINE_HOOK(73C613, UnitClass_DrawSHP_FacingsA, 7) {
 	// 2^highest is the frame count, 3 means 8 frames
 	if(highest >= 3 && !pThis->IsDisguised()) {
 		auto offset = 1u << (highest - 3);
-		ret = TranslateFixedPoint(16, highest, static_cast<WORD>(pThis->Facing.current().value()), offset);
+		ret = TranslateFixedPoint(16, highest, static_cast<WORD>(pThis->PrimaryFacing.Current().Raw), offset);
 	}
 
 	R->EBX(ret);
 	return 0x73C64B;
 }
 
-DEFINE_HOOK(73CD01, UnitClass_DrawSHP_FacingsB, 5)
+DEFINE_HOOK(0x73CD01, UnitClass_DrawSHP_FacingsB, 0x5)
 {
 	GET(UnitClass*, pThis, EBP);
 	GET(UnitTypeClass*, pType, ECX);
@@ -226,7 +222,7 @@ DEFINE_HOOK(73CD01, UnitClass_DrawSHP_FacingsB, 5)
 	return 0x73CD06;
 }
 
-DEFINE_HOOK(6FF2D1, TechnoClass_Fire_Facings, 6)
+DEFINE_HOOK(0x6FF2D1, TechnoClass_Fire_Facings, 0x6)
 {
 	GET(TechnoClass*, pThis, ESI);
 	GET(WeaponTypeClass*, pWeapon, EBX);
@@ -238,7 +234,7 @@ DEFINE_HOOK(6FF2D1, TechnoClass_Fire_Facings, 6)
 	// 2^highest is the frame count, 3 means 8 frames
 	if(highest >= 3) {
 		auto offset = 1u << (highest - 3);
-		auto index = TranslateFixedPoint(16, highest, static_cast<WORD>(pThis->GetRealFacing().value()), offset);
+		auto index = TranslateFixedPoint(16, highest, static_cast<WORD>(pThis->GetRealFacing().Raw), offset);
 		pAnim = pWeapon->Anim.GetItemOrDefault(index);
 	} else {
 		pAnim = pWeapon->Anim.GetItemOrDefault(0);

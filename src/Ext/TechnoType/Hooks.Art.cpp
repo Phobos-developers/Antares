@@ -1,4 +1,5 @@
 #include "Body.h"
+#include <Utilities/Macro.h>   // STACK_OFFS
 #include "../../Misc/Debug.h"
 #include "../../Utilities/Helpers.Alex.h"
 #include "../../Utilities/INIParser.h"
@@ -17,7 +18,7 @@
 
 #include <algorithm>
 
-DEFINE_HOOK(5F9634, ObjectTypeClass_LoadFromINI, 6)
+DEFINE_HOOK(0x5F9634, ObjectTypeClass_LoadFromINI, 0x6)
 {
 	GET(ObjectTypeClass *, pType, EBX);
 	GET_STACK(CCINIClass *, pINI, STACK_OFFS(0x1B0, -4));
@@ -34,7 +35,7 @@ DEFINE_HOOK(5F9634, ObjectTypeClass_LoadFromINI, 6)
 }
 
 // SHP file loading
-DEFINE_HOOK(5F9070, ObjectTypeClass_Load2DArt, 0)
+DEFINE_HOOK(0x5F9070, ObjectTypeClass_Load2DArt, 0x0)
 {
 	GET(ObjectTypeClass* const, pType, ECX);
 
@@ -50,7 +51,7 @@ DEFINE_HOOK(5F9070, ObjectTypeClass_Load2DArt, 0)
 		if(!pType->ArcticArtInUse) { // this flag is not used anywhere outside this function, so I'll just hijack it
 			pType->ArcticArtInUse = true;
 			_snprintf_s(basename, _TRUNCATE, "%s%s", pType->ImageFile, TheaterData.Letter);
-			if(!CCINIClass::INI_Art->GetSection(basename)) {
+			if(!CCINIClass::INI_Art.GetSection(basename)) {
 				pType->ArcticArtInUse = false;
 				_snprintf_s(basename, _TRUNCATE, "%s", pType->ImageFile);
 			}
@@ -110,7 +111,7 @@ DEFINE_HOOK(5F9070, ObjectTypeClass_Load2DArt, 0)
 	return 0x5F92C3;
 }
 
-DEFINE_HOOK(5F96B0, ObjectTypeClass_TheaterSpecificID, 6)
+DEFINE_HOOK(0x5F96B0, ObjectTypeClass_TheaterSpecificID, 0x6)
 {
 	GET(char *, basename, ECX);
 	GET(TheaterType, Theater, EDX);
@@ -125,4 +126,23 @@ DEFINE_HOOK(5F96B0, ObjectTypeClass_TheaterSpecificID, 6)
 		}
 	}
 	return 0x5F9702;
+}
+
+DEFINE_HOOK(0x716D98, TechnoTypeClass_Load_Palette, 0x5)
+{
+	GET(TechnoTypeClass*, pThis, EDI);
+
+	pThis->Palette = nullptr;
+
+	return pThis->PaletteFile[0] ? 0x716D9Du : 0x716DAAu;
+}
+
+DEFINE_HOOK_AGAIN(0x717855, TechnoTypeClass_UpdatePalette_Reset, 0x6)
+DEFINE_HOOK(0x717823, TechnoTypeClass_UpdatePalette_Reset, 0x6)
+{
+	GET(TechnoTypeClass*, pThis, ESI);
+
+	pThis->Palette = nullptr;
+
+	return 0;
 }

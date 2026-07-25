@@ -21,12 +21,13 @@
 #include <AnimClass.h>
 #include "../Bullet/Body.h"
 #include <FootClass.h>
+#include <ScenarioClass.h>
+#include <UnitClass.h>
 #include "../../Utilities/Helpers.Alex.h"
 
 #include <Helpers/Template.h>
 #include <set>
 
-template<> const DWORD Extension<WarheadTypeClass>::Canary = 0x22222222;
 WarheadTypeExt::ExtContainer WarheadTypeExt::ExtMap;
 
 AresMap<IonBlastClass*, const WarheadTypeExt::ExtData*> WarheadTypeExt::IonExt;
@@ -35,7 +36,9 @@ WarheadTypeClass * WarheadTypeExt::Temporal_WH = nullptr;
 
 WarheadTypeClass * WarheadTypeExt::EMP_WH = nullptr;
 
-void WarheadTypeExt::ExtData::Initialize() {
+WarheadTypeClass * WarheadTypeExt::ReceiveDamage_WH = nullptr;
+
+void WarheadTypeExt::ExtData::Initialize(CCINIClass* pINI) {
 	if(!_strcmpi(this->OwnerObject()->ID, "NUKE")) {
 		this->PreImpactAnim = AnimTypeClass::FindIndex("NUKEBALL");
 		this->NukeFlashDuration = 30;
@@ -50,6 +53,8 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	INI_EX exINI(pINI);
 
 	if(!pINI->GetSection(section)) {
+		// no section at all: the armor list still has to be covered
+		ArmorType::GrowForWarhead(pThis);
 		return;
 	}
 
@@ -68,62 +73,99 @@ void WarheadTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	ArmorType::LoadForWarhead(pINI, pThis);
 
-	if(pThis->MindControl) {
-		this->MindControl_Permanent = pINI->ReadBool(section, "MindControl.Permanent", this->MindControl_Permanent);
-	}
+	this->MindControl_Permanent.Read(exINI, section, "MindControl.Permanent");
 
-	this->EMP_Duration = pINI->ReadInteger(section, "EMP.Duration", this->EMP_Duration);
-	this->EMP_Cap = pINI->ReadInteger(section, "EMP.Cap", this->EMP_Cap);
+	this->EMP_Duration.Read(exINI, section, "EMP.Duration");
+	this->EMP_Cap.Read(exINI, section, "EMP.Cap");
 	this->EMP_Sparkles.Read(exINI, section, "EMP.Sparkles");
 
-	this->IC_Duration = pINI->ReadInteger(section, "IronCurtain.Duration", this->IC_Duration);
-	this->IC_Cap = pINI->ReadInteger(section, "IronCurtain.Cap", this->IC_Cap);
+	this->IC_Duration.Read(exINI, section, "IronCurtain.Duration");
+	this->IC_Cap.Read(exINI, section, "IronCurtain.Cap");
+	this->IC_Flash.Read(exINI, section, "IronCurtain.Flash");
 
-	if(pThis->Temporal) {
-		this->Temporal_WarpAway.Read(exINI, section, "Temporal.WarpAway");
-	}
+	this->Temporal_HealthFactor.Read(exINI, section, "Temporal.HealthFactor");
+	this->Temporal_WarpAway.Read(exINI, section, "Temporal.WarpAway");
 
-	this->DeployedDamage = pINI->ReadDouble(section, "Damage.Deployed", this->DeployedDamage);
+	this->DeployedDamage.Read(exINI, section, "Damage.Deployed");
 
-	this->Ripple_Radius = pINI->ReadInteger(section, "Ripple.Radius", this->Ripple_Radius);
-
-	this->AffectsEnemies = pINI->ReadBool(section, "AffectsEnemies", this->AffectsEnemies);
+	this->AffectsEnemies.Read(exINI, section, "AffectsEnemies");
+	this->AffectsOwner.Read(exINI, section, "AffectsOwner");
 
 	this->InfDeathAnim.Read(exINI, section, "InfDeathAnim");
-	
+
+	this->NukeFlashDuration.Read(exINI, section, "NukeFlash.Duration");
 	this->PreImpactAnim.Read(exINI, section, "PreImpactAnim");
-	//this->NukeFlashDuration.Read(exINI, section, "NukeFlash.Duration");
+	this->PreImpactAnim_Moves.Read(exINI, section, "PreImpactAnim.Moves");
 
-	this->KillDriver = pINI->ReadBool(section, "KillDriver", this->KillDriver);
-
+	this->KillDriver.Read(exINI, section, "KillDriver");
 	this->KillDriver_KillBelowPercent.Read(exINI, section, "KillDriver.KillBelowPercent");
-
+	this->KillDriver_Chance.Read(exINI, section, "KillDriver.Chance");
 	this->KillDriver_Owner.Read(exINI, section, "KillDriver.Owner");
+	this->KillDriver_RemoveVeterancy.Read(exINI, section, "KillDriver.RemoveVeterancy");
 
 	this->Malicious.Read(exINI, section, "Malicious");
 
 	this->PreventScatter.Read(exINI, section, "PreventScatter");
 
+	this->BridgeAbsoluteDestroyer.Read(exINI, section, "BridgeAbsoluteDestroyer");
+
 	this->CellSpread_MaxAffect.Read(exINI, section, "CellSpread.MaxAffect");
 
 	this->AttachedEffect.Read(exINI);
 
-	//this->DamageAirThreshold.Read(exINI, section, "DamageAirThreshold");
+	this->DamageAirThreshold.Read(exINI, section, "DamageAirThreshold");
+
+	this->UnitLost_Suppress.Read(exINI, section, "UnitLost.Suppress");
 
 	this->SuppressDeathWeapon_Vehicles.Read(exINI, section, "DeathWeapon.SuppressVehicles");
 	this->SuppressDeathWeapon_Infantry.Read(exINI, section, "DeathWeapon.SuppressInfantry");
 	this->SuppressDeathWeapon.Read(exINI, section, "DeathWeapon.Suppress");
+
+	this->RelativeDamage.Read(exINI, section, "RelativeDamage");
+	this->RelativeDamage_Buildings.Read(exINI, section, "RelativeDamage.Buildings");
+	this->RelativeDamage_Aircraft.Read(exINI, section, "RelativeDamage.Aircraft");
+	this->RelativeDamage_Infantry.Read(exINI, section, "RelativeDamage.Infantry");
+	this->RelativeDamage_Vehicles.Read(exINI, section, "RelativeDamage.Vehicles");
+	this->RelativeDamage_Terrain.Read(exINI, section, "RelativeDamage.Terrain");
+
+	this->Sonar_Duration.Read(exINI, section, "Sonar.Duration");
+
+	this->DisableWeapons_Duration.Read(exINI, section, "DisableWeapons.Duration");
+
+	this->Flash_Duration.Read(exINI, section, "Flash.Duration");
+
+	this->IonCannon.Read(exINI, section, "IonCannon");
+	this->IonCannon_Rock.Read(exINI, section, "IonCannon.Rock");
+	this->Ripple_Radius.Read(exINI, section, "Ripple.Radius");
+	// the IonCannon spelling is read second, so it wins where both are given
+	this->Ripple_Radius.Read(exINI, section, "IonCannon.Ripple");
+	this->IonCannon_Blast.Read(exINI, section, "IonCannon.Blast");
+	this->IonCannon_Beam.Read(exINI, section, "IonCannon.Beam");
+	this->IonCannon_Warhead.Read(exINI, section, "IonCannon.Warhead");
+	this->IonCannon_Damage.Read(exINI, section, "IonCannon.Damage");
+
+	this->EffectsRequireDamage.Read(exINI, section, "EffectsRequireDamage");
+	this->EffectsRequireVerses.Read(exINI, section, "EffectsRequireVerses");
+	this->AllowZeroDamage.Read(exINI, section, "AllowZeroDamage");
+
+	this->DieSound_Override.Read(exINI, section, "DieSound.Override");
+	this->VoiceDie_Override.Read(exINI, section, "VoiceDie.Override");
+
+	this->Culling_BelowHealth.Read(exINI, section, "Culling.%sBelowHealth");
+	this->Culling_Chance.Read(exINI, section, "Culling.%sChance");
 };
 
 /*!
-	This function checks if the passed warhead has Ripple.Radius set, and, if so, applies the effect.
+	This function checks if the passed warhead has IonCannon or Ripple.Radius set,
+	and, if so, applies the effect. Without IonCannon only the impact is created,
+	without the beam that precedes it.
 	\note Moved here from hook BulletClass_Fire.
-	\param coords The coordinates of the warhead impact, the center of the Ripple area.
+	\param coords The coordinates of the warhead impact, the center of the affected area.
 */
-void WarheadTypeExt::ExtData::applyRipples(const CoordStruct &coords) {
-	if(this->Ripple_Radius) {
+void WarheadTypeExt::ExtData::applyIonCannon(const CoordStruct &coords) {
+	if(this->IonCannon || this->Ripple_Radius.Get(0) > 0) {
 		auto const pBlast = GameCreate<IonBlastClass>(coords);
-		pBlast->DisableIonBeam = TRUE;
+		pBlast->DisableIonBeam = !this->IonCannon;
 		WarheadTypeExt::IonExt[pBlast] = this;
 	}
 }
@@ -146,7 +188,7 @@ void WarheadTypeExt::ExtData::applyRipples(const CoordStruct &coords) {
 	\date 2010-06-28
 */
 void WarheadTypeExt::ExtData::applyIronCurtain(const CoordStruct &coords, HouseClass* Owner, int damage) {
-	CellStruct cellCoords = MapClass::Instance->GetCellAt(coords)->MapCoords;
+	CellStruct cellCoords = MapClass::Instance.GetCellAt(coords)->MapCoords;
 
 	if(this->IC_Duration != 0) {
 		// set of affected objects. every object can be here only once.
@@ -159,8 +201,11 @@ void WarheadTypeExt::ExtData::applyIronCurtain(const CoordStruct &coords, HouseC
 				continue;
 			}
 
-			// affects enemies or allies respectively?
-			if(!WarheadTypeExt::CanAffectTarget(curTechno, Owner, this->OwnerObject())) {
+			// affects enemies or allies respectively? shipped skips the whole
+			// ladder when there is no invoking house (`if(!pOwner.pointer)` at
+			// 0x100535C4 jumps straight past it), rather than consulting it
+			// with a null house
+			if(Owner && !WarheadTypeExt::CanAffectTarget(curTechno, Owner, this->OwnerObject())) {
 				continue;
 			}
 
@@ -300,7 +345,7 @@ void WarheadTypeExt::applyOccupantDamage(BulletClass* const Bullet) {
 			// the occupants have been damaged, do not damage the building (the original target)
 			Bullet->Health = 0;
 			Bullet->DamageMultiplier = 0;
-			Bullet->Remove();
+			Bullet->Limbo();
 		}
 	}
 }
@@ -321,17 +366,118 @@ void WarheadTypeExt::applyOccupantDamage(BulletClass* const Bullet) {
 */
 bool WarheadTypeExt::CanAffectTarget(TechnoClass* const pTarget, HouseClass* const pSourceHouse, WarheadTypeClass* const pWarhead) {
 	if(pSourceHouse && pTarget && pWarhead) {
+		const auto pExt = WarheadTypeExt::ExtMap.Find(pWarhead);
+
+		// the firer's own objects can be singled out, and fall back to AffectsAllies
+		if(pSourceHouse == pTarget->Owner) {
+			return pExt->AffectsOwner.Get(pWarhead->AffectsAllies);
+		}
+
 		// apply AffectsAllies if owner and target house are allied
-		if(pSourceHouse->IsAlliedWith(pTarget->Owner)) {
-			return pWarhead->AffectsAllies;
+		if(auto const pTargetHouse = pTarget->Owner) {
+			if(pSourceHouse->IsAlliedWith(pTargetHouse)) {
+				return pWarhead->AffectsAllies;
+			}
 		}
 
 		// this warhead is designed to ignore enemy units
-		const auto pExt = WarheadTypeExt::ExtMap.Find(pWarhead);
 		return pExt->AffectsEnemies;
 	}
 
 	return true;
+}
+
+//! Gets the damage this warhead deals relative to the victim's health or maximum health.
+/*!
+	Positive values are a percentage of the victim type's Strength, negative ones a
+	percentage of its current Health. Objects that are neither buildings, aircraft,
+	infantry, vehicles nor terrain are never affected.
+
+	\param pVictim The object the warhead is about to damage.
+
+	\returns The absolute amount of damage to deal, or 0 if there is none.
+*/
+int WarheadTypeExt::ExtData::CalculateRelativeDamage(ObjectClass* const pVictim) const {
+	int relative = 0;
+
+	switch(pVictim->WhatAmI()) {
+	case AbstractType::Unit:
+	{
+		auto const pType = static_cast<UnitClass*>(pVictim)->Type;
+		relative = pType->ConsideredAircraft
+			? this->RelativeDamage_Aircraft
+			: (pType->Organic ? this->RelativeDamage_Infantry : this->RelativeDamage_Vehicles);
+		break;
+	}
+	case AbstractType::Building:
+		relative = this->RelativeDamage_Buildings;
+		break;
+	case AbstractType::Aircraft:
+		relative = this->RelativeDamage_Aircraft;
+		break;
+	case AbstractType::Infantry:
+		relative = this->RelativeDamage_Infantry;
+		break;
+	case AbstractType::Terrain:
+		relative = this->RelativeDamage_Terrain;
+		break;
+	default:
+		return 0;
+	}
+
+	if(!relative) {
+		return 0;
+	}
+
+	if(relative < 0) {
+		return relative * pVictim->Health / -100;
+	}
+
+	if(auto const pType = pVictim->GetType()) {
+		return relative * pType->Strength / 100;
+	}
+
+	return 0;
+}
+
+//! Gets whether this warhead culls the victim outright.
+/*!
+	Culling is limited to the health band Culling.BelowHealth allows for the attacker's
+	rank. A positive value is a health percentage, a non-positive one the negated damage
+	state the victim may be in at most. Culling.Chance then rolls for the kill.
+
+	\param pAttacker The unit firing this warhead.
+	\param pVictim The object the warhead is about to damage.
+
+	\returns True if the victim is to be killed, false otherwise.
+*/
+bool WarheadTypeExt::ExtData::ApplyCulling(TechnoClass* const pAttacker, ObjectClass* const pVictim) const {
+	if(!this->OwnerObject()->Culling) {
+		return false;
+	}
+
+	auto const rank = pAttacker->Veterancy.Veterancy;
+	auto const elite = (rank >= 2.0f);
+	auto const veteran = !elite && (rank >= 1.0f);
+
+	auto const below = elite
+		? this->Culling_BelowHealth.Elite
+		: (veteran ? this->Culling_BelowHealth.Veteran : this->Culling_BelowHealth.Rookie);
+
+	if(below > 0) {
+		auto const health = static_cast<int>(pVictim->GetHealthPercentage() * 100.0);
+		if(health > below) {
+			return false;
+		}
+	} else if(static_cast<int>(pVictim->GetHealthStatus()) > -below) {
+		return false;
+	}
+
+	auto const chance = elite
+		? this->Culling_Chance.Elite
+		: (veteran ? this->Culling_Chance.Veteran : this->Culling_Chance.Rookie);
+
+	return chance < 0 || ScenarioClass::Instance->Random.RandomRanged(0, 99) < chance;
 }
 
 // Request #733: KillDriver/"Jarmen Kell"
@@ -350,152 +496,43 @@ bool WarheadTypeExt::ExtData::applyKillDriver(
 		return false;
 	}
 
-	if(auto const pTarget = abstract_cast<FootClass*>(pVictim)) {
-		// don't penetrate the Iron Curtain // typedef IronCurtain ChastityBelt
-		if(pTarget->BeingWarpedOut || pTarget->IsIronCurtained()) {
-			return false;
-		}
+	auto const pTarget = abstract_cast<FootClass*>(pVictim);
 
-		// target must be Vehicle or Aircraft
-		if(!Helpers::Alex::is_any_of(
-			pTarget->WhatAmI(), AbstractType::Unit, AbstractType::Aircraft))
-		{
-			return false;
-		}
-
-		auto const pTargetType = pTarget->GetTechnoType();
-		auto const pTargetTypeExt = TechnoTypeExt::ExtMap.Find(pTargetType);
-
-		// because these tags kinda have negative meaning, less means better.
-		// if the driver is protected, he can by default only be killed if
-		// health is below 0.0, while 1.0 means always killable.
-		auto const maxKillHealth = Math::min(
-			pTargetTypeExt->ProtectedDriver_MinHealth.Get(
-				pTargetTypeExt->ProtectedDriver ? 0.0 : 1.0),
-			this->KillDriver_KillBelowPercent);
-
-		// conditions: not protected and not a living being
-		if(!pTargetType->Natural && !pTargetType->Organic
-			&& pTarget->GetHealthPercentage() <= maxKillHealth)
-		{
-			// if this aircraft is expected to dock to anything, don't allow killing its pilot
-			// (reason being: the game thinks you lost the aircraft that just turned, and assumes you have free aircraft space,
-			// allowing you to build more aircraft, for the docking spot that is still occupied by the previous plane.)
-			if(auto const pAircraftType = abstract_cast<AircraftTypeClass*>(pTargetType)) {
-				if(pAircraftType->AirportBound || pAircraftType->Dock.Count) {
-					return false;
-				}
-			}
-
-			// get the new owner
-			auto const pInvoker = pSource->Owner;
-			auto pOwner = HouseExt::GetHouseKind(this->KillDriver_Owner, false,
-				nullptr, pInvoker, pInvoker, pTarget->Owner);
-			if(!pOwner) {
-				pOwner = HouseClass::FindSpecial();
-			}
-
-			auto const passive = pOwner->Type->MultiplayPassive;
-
-			auto const TargetExt = TechnoExt::ExtMap.Find(pTarget);
-			TargetExt->DriverKilled = passive;
-
-			// exit if owner would not change
-			if(pTarget->Owner == pOwner) {
-				return false;
-			}
-
-			// If this vehicle uses Operator=, we have to take care of actual "physical" drivers, rather than theoretical ones
-			if(pTargetTypeExt->IsAPromiscuousWhoreAndLetsAnyoneRideIt && pTarget->Passengers.GetFirstPassenger()) {
-				// kill first passenger
-				auto const pPassenger = pTarget->RemoveFirstPassenger();
-				pPassenger->RegisterDestruction(pSource);
-				pPassenger->UnInit();
-
-			} else if(auto const pOperatorType = pTargetTypeExt->Operator) {
-				// find the driver cowardly hiding among the passengers, then kill him
-				for(NextObject passenger(pTarget->Passengers.GetFirstPassenger()); passenger; ++passenger) {
-					auto const pPassenger = static_cast<FootClass*>(*passenger);
-					if(pPassenger->GetTechnoType() == pOperatorType) {
-						pTarget->RemovePassenger(pPassenger);
-						pPassenger->RegisterDestruction(pSource);
-						pPassenger->UnInit();
-						break;
-					}
-				}
-			}
-
-			// if passengers remain in the vehicle, operator-using or not, they should leave
-			if(pTarget->Passengers.GetFirstPassenger()) {
-				TechnoExt::EjectPassengers(pTarget, -1);
-			}
-
-			// remove the hijacker
-			pTarget->HijackerInfantryType = -1;
-
-			// If this unit is driving under influence, we have to free it first
-			if(auto const pController = pTarget->MindControlledBy) {
-				if(auto const pCaptureManager = pController->CaptureManager) {
-					pCaptureManager->FreeUnit(pTarget);
-				}
-			}
-			pTarget->MindControlledByAUnit = false;
-			pTarget->MindControlledByHouse = nullptr;
-
-			// remove the mind-control ring anim
-			if(pTarget->MindControlRingAnim) {
-				pTarget->MindControlRingAnim->UnInit();
-				pTarget->MindControlRingAnim = nullptr;
-			}
-
-			// If this unit mind controls stuff, we should free the controllees, since they still belong to the previous owner
-			if(pTarget->CaptureManager) {
-				pTarget->CaptureManager->FreeAll();
-			}
-
-			// This unit will be freed of its duties
-			if(auto const pFoot = abstract_cast<FootClass*>(pTarget)) {
-				if(pFoot->BelongsToATeam()) {
-					pFoot->Team->LiberateMember(pFoot);
-				}
-			}
-
-			// If this unit spawns stuff, we should kill the spawns, since they still belong to the previous owner
-			if(auto const pSpawnManager = pTarget->SpawnManager) {
-				pSpawnManager->KillNodes();
-				pSpawnManager->ResetTarget();
-			}
-
-			// If this unit enslaves stuff, we should free the slaves, since they still belong to the previous owner
-			// <DCoder> SlaveManagerClass::Killed() sets the manager's Owner to NULL
-			// <Renegade> okay, does Killed() also destroy the slave manager, or just unlink it from the unit?
-			// <DCoder> unlink
-			// <Renegade> so on principle, I could just re-link it?
-			// <DCoder> yes you can
-			if(auto const pSlaveManager = pTarget->SlaveManager) {
-				pSlaveManager->Killed(pSource);
-				pSlaveManager->ZeroOutSlaves();
-				pSlaveManager->Owner = pTarget;
-				if(passive) {
-					pSlaveManager->SuspendWork();
-				} else {
-					pSlaveManager->ResumeWork();
-				}
-			}
-
-			// Hand over to a different house
-			pTarget->SetOwningHouse(pOwner);
-
-			if(passive) {
-				pTarget->QueueMission(Mission::Harmless, true);
-			}
-
-			pTarget->SetTarget(nullptr);
-			pTarget->SetDestination(nullptr, false);
-			return true;
-		}
+	if(!pTarget) {
+		return false;
 	}
-	return false;
+
+	if(!WarheadTypeExt::CanAffectTarget(pTarget, pSource->Owner, this->OwnerObject())) {
+		return false;
+	}
+
+	auto const pTargetExt = TechnoExt::ExtMap.Find(pTarget);
+
+	if(!pTargetExt->IsDriverKillable(this->KillDriver_KillBelowPercent)) {
+		return false;
+	}
+
+	// the driver may survive this one
+	if(ScenarioClass::Instance->Random.RandomRanged(1, 0x7FFFFFFF)
+		* 4.656612873077393e-10 > this->KillDriver_Chance)
+	{
+		return false;
+	}
+
+	// get the new owner
+	auto const pInvoker = pSource->Owner;
+	auto pOwner = HouseExt::GetHouseKind(this->KillDriver_Owner, false,
+		nullptr, pInvoker, pInvoker, pTarget->Owner);
+	if(!pOwner) {
+		pOwner = HouseClass::FindSpecial();
+	}
+
+	if(!pOwner) {
+		return false;
+	}
+
+	return pTargetExt->ApplyKillDriver(
+		pOwner, pSource, this->KillDriver_RemoveVeterancy);
 }
 
 //AttachedEffects, request #1573, #255
@@ -503,7 +540,7 @@ bool WarheadTypeExt::ExtData::applyKillDriver(
 //since CellSpread effect is needed due to MO's proposed cloak SW (which is the reason why I was bugged with this), it has it.
 //Graion Dilach, ~2011-10-14... I forgot the exact date :S
 
-void WarheadTypeExt::ExtData::applyAttachedEffect(const CoordStruct &coords, TechnoClass* const Owner) {
+void WarheadTypeExt::ExtData::applyAttachedEffect(const CoordStruct &coords, HouseClass* const pInvoker) {
 	if(this->AttachedEffect.Duration != 0) {
 		// set of affected objects. every object can be here only once.
 		const auto items = Helpers::Alex::getCellSpreadItems(coords, this->OwnerObject()->CellSpread, true);
@@ -515,7 +552,7 @@ void WarheadTypeExt::ExtData::applyAttachedEffect(const CoordStruct &coords, Tec
 				continue;
 			}
 
-			if(Owner && !WarheadTypeExt::CanAffectTarget(curTechno, Owner->Owner, this->OwnerObject())) {
+			if(pInvoker && !WarheadTypeExt::CanAffectTarget(curTechno, pInvoker, this->OwnerObject())) {
 				continue;
 			}
 
@@ -523,7 +560,7 @@ void WarheadTypeExt::ExtData::applyAttachedEffect(const CoordStruct &coords, Tec
 				continue;
 			}
 
-			this->AttachedEffect.Attach(curTechno, this->AttachedEffect.Duration, Owner);
+			this->AttachedEffect.Attach(curTechno, this->AttachedEffect.Duration, pInvoker);
 		}
 	}
 }
@@ -535,39 +572,67 @@ template <typename T>
 void WarheadTypeExt::ExtData::Serialize(T& Stm) {
 	Stm
 		.Process(this->MindControl_Permanent)
-		.Process(this->Ripple_Radius)
 		.Process(this->EMP_Duration)
 		.Process(this->EMP_Cap)
 		.Process(this->EMP_Sparkles)
 		.Process(this->IC_Duration)
 		.Process(this->IC_Cap)
+		.Process(this->IC_Flash)
 		.Process(this->Verses)
 		.Process(this->DeployedDamage)
+		.Process(this->Temporal_HealthFactor)
 		.Process(this->Temporal_WarpAway)
 		.Process(this->AffectsEnemies)
+		.Process(this->AffectsOwner)
 		.Process(this->InfDeathAnim)
-		.Process(this->PreImpactAnim)
 		.Process(this->NukeFlashDuration)
+		.Process(this->PreImpactAnim)
+		.Process(this->PreImpactAnim_Moves)
 		.Process(this->KillDriver)
 		.Process(this->KillDriver_KillBelowPercent)
+		.Process(this->KillDriver_Chance)
 		.Process(this->KillDriver_Owner)
+		.Process(this->KillDriver_RemoveVeterancy)
 		.Process(this->Malicious)
 		.Process(this->PreventScatter)
+		.Process(this->BridgeAbsoluteDestroyer)
 		.Process(this->CellSpread_MaxAffect)
-		.Process(this->AttachedEffect)
 		.Process(this->DamageAirThreshold)
+		.Process(this->AttachedEffect)
+		.Process(this->UnitLost_Suppress)
 		.Process(this->SuppressDeathWeapon_Vehicles)
 		.Process(this->SuppressDeathWeapon_Infantry)
-		.Process(this->SuppressDeathWeapon);
+		.Process(this->SuppressDeathWeapon)
+		.Process(this->RelativeDamage)
+		.Process(this->RelativeDamage_Buildings)
+		.Process(this->RelativeDamage_Aircraft)
+		.Process(this->RelativeDamage_Infantry)
+		.Process(this->RelativeDamage_Vehicles)
+		.Process(this->RelativeDamage_Terrain)
+		.Process(this->Sonar_Duration)
+		.Process(this->DisableWeapons_Duration)
+		.Process(this->Flash_Duration)
+		.Process(this->IonCannon)
+		.Process(this->IonCannon_Rock)
+		.Process(this->Ripple_Radius)
+		.Process(this->IonCannon_Blast)
+		.Process(this->IonCannon_Beam)
+		.Process(this->IonCannon_Warhead)
+		.Process(this->IonCannon_Damage)
+		.Process(this->EffectsRequireDamage)
+		.Process(this->EffectsRequireVerses)
+		.Process(this->AllowZeroDamage)
+		.Process(this->DieSound_Override)
+		.Process(this->VoiceDie_Override);
 }
 
 void WarheadTypeExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<WarheadTypeClass>::LoadFromStream(Stm);
+	Extension<WarheadTypeClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void WarheadTypeExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<WarheadTypeClass>::SaveToStream(Stm);
+	Extension<WarheadTypeClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -602,7 +667,7 @@ void WarheadTypeExt::ExtContainer::InvalidatePointer(void* ptr, bool bRemoved) {
 // =============================
 // container hooks
 
-DEFINE_HOOK(75D1A9, WarheadTypeClass_CTOR, 7)
+DEFINE_HOOK(0x75D1A9, WarheadTypeClass_CTOR, 0x7)
 {
 	GET(WarheadTypeClass*, pItem, EBP);
 
@@ -610,7 +675,7 @@ DEFINE_HOOK(75D1A9, WarheadTypeClass_CTOR, 7)
 	return 0;
 }
 
-DEFINE_HOOK(75E5C8, WarheadTypeClass_SDDTOR, 6)
+DEFINE_HOOK(0x75E5C8, WarheadTypeClass_SDDTOR, 0x6)
 {
 	GET(WarheadTypeClass*, pItem, ESI);
 
@@ -618,8 +683,8 @@ DEFINE_HOOK(75E5C8, WarheadTypeClass_SDDTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(75E2C0, WarheadTypeClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(75E0C0, WarheadTypeClass_SaveLoad_Prefix, 8)
+DEFINE_HOOK_AGAIN(0x75E2C0, WarheadTypeClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x75E0C0, WarheadTypeClass_SaveLoad_Prefix, 0x8)
 {
 	GET_STACK(WarheadTypeClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -629,20 +694,20 @@ DEFINE_HOOK(75E0C0, WarheadTypeClass_SaveLoad_Prefix, 8)
 	return 0;
 }
 
-DEFINE_HOOK(75E2AE, WarheadTypeClass_Load_Suffix, 7)
+DEFINE_HOOK(0x75E2AE, WarheadTypeClass_Load_Suffix, 0x7)
 {
 	WarheadTypeExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(75E39C, WarheadTypeClass_Save_Suffix, 5)
+DEFINE_HOOK(0x75E39C, WarheadTypeClass_Save_Suffix, 0x5)
 {
 	WarheadTypeExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(75DEAF, WarheadTypeClass_LoadFromINI, 5)
-DEFINE_HOOK(75DEA0, WarheadTypeClass_LoadFromINI, 5)
+DEFINE_HOOK_AGAIN(0x75DEAF, WarheadTypeClass_LoadFromINI, 0x5)
+DEFINE_HOOK(0x75DEA0, WarheadTypeClass_LoadFromINI, 0x5)
 {
 	GET(WarheadTypeClass*, pItem, ESI);
 	GET_STACK(CCINIClass*, pINI, 0x150);
@@ -650,3 +715,16 @@ DEFINE_HOOK(75DEA0, WarheadTypeClass_LoadFromINI, 5)
 	WarheadTypeExt::ExtMap.LoadFromINI(pItem, pINI);
 	return 0;
 }
+
+static_assert(sizeof(WarheadTypeExt::ExtData) == 0x180, "WarheadTypeExt::ExtData must match the 3.0p1 layout");
+static_assert(sizeof(WarheadTypeExt::VersesData) == 0x10, "WarheadTypeExt::VersesData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the start, the middle and the end of the block.
+static_assert(offsetof(WarheadTypeExt::ExtData, MindControl_Permanent) == 0x008, "WarheadTypeExt::ExtData layout slipped");
+static_assert(offsetof(WarheadTypeExt::ExtData, Verses) == 0x024, "WarheadTypeExt::ExtData layout slipped");
+static_assert(offsetof(WarheadTypeExt::ExtData, DamageAirThreshold) == 0x080, "WarheadTypeExt::ExtData layout slipped");
+static_assert(offsetof(WarheadTypeExt::ExtData, AttachedEffect) == 0x088, "WarheadTypeExt::ExtData layout slipped");
+static_assert(offsetof(WarheadTypeExt::ExtData, RelativeDamage) == 0x0E0, "WarheadTypeExt::ExtData layout slipped");
+static_assert(offsetof(WarheadTypeExt::ExtData, Ripple_Radius) == 0x108, "WarheadTypeExt::ExtData layout slipped");
+static_assert(offsetof(WarheadTypeExt::ExtData, Culling_Chance) == 0x150, "WarheadTypeExt::ExtData layout slipped");

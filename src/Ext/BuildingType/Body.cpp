@@ -2,13 +2,13 @@
 #include "../TechnoType/Body.h"
 #include "../House/Body.h"
 #include "../SWType/Body.h"
+#include "../../Enum/TunnelTypes.h"
 #include "../../Utilities/TemplateDef.h"
 
 #include <InfantryClass.h>
 #include <SuperClass.h>
 #include <VocClass.h>
 
-template<> const DWORD Extension<BuildingTypeClass>::Canary = 0x11111111;
 BuildingTypeExt::ExtContainer BuildingTypeExt::ExtMap;
 
 std::vector<std::string> BuildingTypeExt::ExtData::trenchKinds;
@@ -17,7 +17,7 @@ const CellStruct BuildingTypeExt::FoundationEndMarker = {0x7FFF, 0x7FFF};
 // =============================
 // member funcs
 
-void BuildingTypeExt::ExtData::Initialize()
+void BuildingTypeExt::ExtData::Initialize(CCINIClass* pINI)
 {
 	this->PrismForwarding.Initialize(this->OwnerObject());
 
@@ -42,12 +42,22 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	this->Firewall_Is.Read(exINI, pID, "Firestorm.Wall");
 
-	CCINIClass* pArtINI = CCINIClass::INI_Art;
+	CCINIClass* pArtINI = &CCINIClass::INI_Art;
+
+	INI_EX exArt(pArtINI);
+	this->DockUnloadCell.Read(exArt, pArtID, "DockUnloadCell");
+	if(exArt.ReadString(pArtID, "DockUnloadFacing")) {
+		int facing = 0;
+		if(Parser<int>::Parse(exArt.value(), &facing) && facing < 32) {
+			this->DockUnloadFacing = facing;
+		} else {
+			Debug::INIParseFailed(pArtID, "DockUnloadFacing", exArt.value(), "Expected a facing below 32");
+		}
+	}
 
 	// kept for backwards-compatibility with Ares <= 0.9
-	INI_EX exArt(pArtINI);
 	this->Solid_Height.Read(exArt, pArtID, "SolidHeight");
-	
+
 	// relocated the solid tag from artmd to rulesmd
 	this->Solid_Height.Read(exINI, pID, "SolidHeight");
 	this->Solid_Level.Read(exINI, pID, "SolidLevel");
@@ -69,16 +79,16 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 			//Load Width and Height
 			this->CustomWidth = pArtINI->ReadInteger(pArtID, "Foundation.X", 0);
 			this->CustomHeight = pArtINI->ReadInteger(pArtID, "Foundation.Y", 0);
-			this->OutlineLength = pArtINI->ReadInteger(pArtID, "FoundationOutline.Length", 0);
+			int outlineLength = pArtINI->ReadInteger(pArtID, "FoundationOutline.Length", 0);
 
 			// at len < 10, things will end very badly for weapons factories
-			if(this->OutlineLength < 10) {
-				this->OutlineLength = 10;
+			if(outlineLength < 10) {
+				outlineLength = 10;
 			}
 
 			//Allocate CellStruct array
 			this->CustomData.assign(this->CustomWidth * this->CustomHeight + 1, CellStruct::Empty);
-			this->OutlineData.assign(this->OutlineLength + 1, CellStruct::Empty);
+			this->OutlineData.assign(outlineLength + 1, CellStruct::Empty);
 
 			pThis->FoundationData = this->CustomData.data();
 			pThis->FoundationOutside = this->OutlineData.data();
@@ -123,8 +133,16 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 			*itData = FoundationEndMarker;
 			this->CustomData.erase(itData + 1, this->CustomData.end());
 
+			// the AI places its base relative to the cell the building is anchored
+			// on, so a foundation that does not cover it cannot be built by the AI
+			if(std::find(this->CustomData.cbegin(), this->CustomData.cend(), CellStruct::Empty) == this->CustomData.cend()) {
+				Debug::Log(Debug::Severity::Warning,
+					"BuildingType %s has a custom foundation which does not include cell 0,0. "
+					"This breaks AI base building.\n", pID);
+			}
+
 			auto itOutline = this->OutlineData.begin();
-			for(int i = 0; i < this->OutlineLength; ++i) {
+			for(int i = 0; i < outlineLength; ++i) {
 				_snprintf_s(key, _TRUNCATE, "FoundationOutline.%d", i);
 				if(pArtINI->ReadString(pArtID, key, "", str)) {
 					ParsePoint(itOutline, str);
@@ -195,16 +213,33 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->RevealRadar.Read(exINI, pID, "SpyEffect.RevealRadar");
 	this->RevealRadarPersist.Read(exINI, pID, "SpyEffect.KeepRadar");
 	this->GainVeterancy.Read(exINI, pID, "SpyEffect.UnitVeterancy");
-	this->StolenTechIndex.Read(exINI, pID, "SpyEffect.StolenTechIndex");
+	this->InfantryVeterancy.Read(exINI, pID, "SpyEffect.InfantryVeterancy");
+	this->VehicleVeterancy.Read(exINI, pID, "SpyEffect.VehicleVeterancy");
+	this->NavalVeterancy.Read(exINI, pID, "SpyEffect.NavalVeterancy");
+	this->AircraftVeterancy.Read(exINI, pID, "SpyEffect.AircraftVeterancy");
+	this->BuildingVeterancy.Read(exINI, pID, "SpyEffect.BuildingVeterancy");
 	this->PowerOutageDuration.Read(exINI, pID, "SpyEffect.PowerOutageDuration");
+	this->SabotageDelay.Read(exINI, pID, "SpyEffect.SabotageDelay");
 	this->StolenMoneyAmount.Read(exINI, pID, "SpyEffect.StolenMoneyAmount");
 	this->StolenMoneyPercentage.Read(exINI, pID, "SpyEffect.StolenMoneyPercentage");
 	this->UnReverseEngineer.Read(exINI, pID, "SpyEffect.UndoReverseEngineer");
+	this->SpySuperWeapon.Read(exINI, pID, "SpyEffect.SuperWeapon");
+	this->SuperWeaponPermanent.Read(exINI, pID, "SpyEffect.SuperWeaponPermanent");
 
-	if(this->StolenTechIndex >= 32) {
-		Debug::Log(Debug::Severity::Error, "BuildingType %s has a SpyEffect.StolenTechIndex of %d. The value has to be less than 32.\n", pID, this->StolenTechIndex.Get());
-		Debug::RegisterParserError();
-		this->StolenTechIndex = -1;
+	// a list of indices now, all of them stolen in one go
+	if(pINI->ReadString(pID, "SpyEffect.StolenTechIndex", "", Ares::readBuffer)) {
+		this->StolenTechIndex = 0;
+
+		char* context = nullptr;
+		for(char* cur = strtok_s(Ares::readBuffer, ",", &context); cur; cur = strtok_s(nullptr, ",", &context)) {
+			int idx = atoi(cur);
+			if(static_cast<unsigned int>(idx) < 32u) {
+				this->StolenTechIndex |= 1u << idx;
+			} else if(idx >= 0) {
+				Debug::Log(Debug::Severity::Error, "BuildingType %s has a SpyEffect.StolenTechIndex of %d. The value has to be less than 32.\n", pID, idx);
+				Debug::RegisterParserError();
+			}
+		}
 	}
 
 	// #218 Specific Occupiers
@@ -232,7 +267,10 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 	this->AcademyAircraft.Read(exINI, pID, "Academy.AircraftVeterancy");
 	this->AcademyVehicle.Read(exINI, pID, "Academy.VehicleVeterancy");
 	this->AcademyBuilding.Read(exINI, pID, "Academy.BuildingVeterancy");
-	this->Academy.clear();
+	this->Academy = this->AcademyInfantry > 0.0
+		|| this->AcademyAircraft > 0.0
+		|| this->AcademyVehicle > 0.0
+		|| this->AcademyBuilding > 0.0;
 
 	this->SuperWeapons.Read(exINI, pID, "SuperWeapons");
 
@@ -245,10 +283,28 @@ void BuildingTypeExt::ExtData::LoadFromINIFile(CCINIClass* pINI)
 
 	this->ImmuneToSaboteurs.Read(exINI, pID, "ImmuneToSaboteurs");
 
-	//this->AIBuildCounts.Read(exINI, pID, "AIBuildCounts");
-	//this->AIExtraCounts.Read(exINI, pID, "AIExtraCounts");
+	this->AIBuildCounts.Read(exINI, pID, "AIBuildCounts");
+	this->AIExtraCounts.Read(exINI, pID, "AIExtraCounts");
 
-	//this->BuildupTime.Read(exINI, pID, "BuildupTime");
+	this->BuildupTime.Read(exINI, pID, "BuildupTime");
+	this->SellTime.Read(exINI, pID, "SellTime");
+
+	this->Fake.Read(exINI, pID, "Fake");
+
+	this->MassSelectable.Read(exINI, pID, "MassSelectable");
+	this->ProduceCashDisplay.Read(exINI, pID, "ProduceCashDisplay");
+	this->UnitSell.Read(exINI, pID, "UnitSell");
+	this->EngineerRepairable.Read(exINI, pID, "EngineerRepairable");
+	this->AIInnerBase.Read(exINI, pID, "AIInnerBase");
+	this->AIBaseNormal.Read(exINI, pID, "AIBaseNormal");
+
+	this->SlamSound.Read(exINI, pID, "SlamSound");
+
+	this->Cursor_Spy.Read(exINI, pID, "Cursor.Spy");
+
+	if(pINI->ReadString(pID, "Tunnel", Ares::readDefval, Ares::readBuffer)) {
+		this->Tunnel = TunnelTypeClass::FindIndex(Ares::readBuffer);
+	}
 }
 
 void BuildingTypeExt::ExtData::CompleteInitialization() {
@@ -325,7 +381,7 @@ void BuildingTypeExt::ExtData::UpdateFoundationRadarShape() {
 
 	if(this->IsCustom) {
 		auto pType = this->OwnerObject();
-		auto pRadar = RadarClass::Global();
+		auto pRadar = &RadarClass::Instance;
 
 		int width = pType->GetFoundationWidth();
 		int height = pType->GetFoundationHeight(false);
@@ -346,7 +402,7 @@ void BuildingTypeExt::ExtData::UpdateFoundationRadarShape() {
 		int pixelsX = Transform(width, pRadar->RadarSizeFactor);
 		int pixelsY = Transform(height, pRadar->RadarSizeFactor);
 
-		// heigth of the foundation tilted by 45°
+		// heigth of the foundation tilted by 45ï¿½
 		int rows = pixelsX + pixelsY - 1;
 
 		// this draws a rectangle standing on an edge, getting
@@ -382,12 +438,21 @@ void BuildingTypeExt::ExtData::UpdateBuildupFrames()
 		auto const frames = pThis->Gate ?
 			pThis->GateStages + 1 : pShp->Frames / 2;
 
-		auto const duration = (frames < 1) ?
-			1 : static_cast<int>(this->BuildupTime.Get(
-				RulesClass::Instance->BuildupTime) * 900.0 / frames);
+		auto const buildupTime = this->BuildupTime.Get(
+			RulesClass::Instance->BuildupTime);
+		auto const sellTime = this->SellTime.Get(buildupTime);
 
-		pThis->BuildingAnimFrame[0].dwUnknown = 0;
+		int duration;
+		if(frames > 0) {
+			this->SellFrames = static_cast<int>(sellTime / frames * 900.0);
+			duration = static_cast<int>(buildupTime / frames * 900.0);
+		} else {
+			this->SellFrames = 1;
+			duration = 1;
+		}
+
 		pThis->BuildingAnimFrame[0].FrameCount = frames;
+		pThis->BuildingAnimFrame[0].dwUnknown = 0;
 		pThis->BuildingAnimFrame[0].FrameDuration = duration;
 	}
 }
@@ -403,13 +468,6 @@ bool BuildingTypeExt::ExtData::CanBeOccupiedBy(InfantryClass *whom) {
 }
 
 bool BuildingTypeExt::ExtData::IsAcademy() const {
-	if(this->Academy.empty()) {
-		this->Academy = this->AcademyInfantry > 0.0
-			|| this->AcademyAircraft > 0.0
-			|| this->AcademyVehicle > 0.0
-			|| this->AcademyBuilding > 0.0;
-	}
-
 	return this->Academy;
 }
 
@@ -453,7 +511,6 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->IsCustom)
 		.Process(this->CustomWidth)
 		.Process(this->CustomHeight)
-		.Process(this->OutlineLength)
 		.Process(this->CustomData)
 		.Process(this->OutlineData)
 		.Process(this->FoundationRadarShape)
@@ -461,6 +518,7 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->Secret_RecalcOnCapture)
 		.Process(this->Firewall_Is)
 		.Process(this->IsPassable)
+		.Process(this->Fake)
 		.Process(this->LightningRod_Modifier)
 		.Process(this->UCPassThrough)
 		.Process(this->UCFatalRate)
@@ -484,11 +542,19 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->RevealRadar)
 		.Process(this->RevealRadarPersist)
 		.Process(this->GainVeterancy)
+		.Process(this->InfantryVeterancy)
+		.Process(this->VehicleVeterancy)
+		.Process(this->NavalVeterancy)
+		.Process(this->AircraftVeterancy)
+		.Process(this->BuildingVeterancy)
 		.Process(this->UnReverseEngineer)
+		.Process(this->SuperWeaponPermanent)
+		.Process(this->SpySuperWeapon)
 		.Process(this->StolenTechIndex)
 		.Process(this->StolenMoneyAmount)
 		.Process(this->StolenMoneyPercentage)
 		.Process(this->PowerOutageDuration)
+		.Process(this->SabotageDelay)
 		.Process(this->AllowedOccupiers)
 		.Process(this->Returnable)
 		.Process(this->PrismForwarding)
@@ -513,16 +579,31 @@ void BuildingTypeExt::ExtData::Serialize(T& Stm) {
 		.Process(this->ImmuneToSaboteurs)
 		.Process(this->AIBuildCounts)
 		.Process(this->AIExtraCounts)
-		.Process(this->BuildupTime);
+		.Process(this->BuildupTime)
+		.Process(this->SellTime)
+		.Process(this->SellFrames)
+		// the stream deliberately runs ahead of the declaration order here: the
+		// engine writes UnitSell before MassSelectable and ProduceCashDisplay
+		.Process(this->UnitSell)
+		.Process(this->MassSelectable)
+		.Process(this->ProduceCashDisplay)
+		.Process(this->EngineerRepairable)
+		.Process(this->AIInnerBase)
+		.Process(this->AIBaseNormal)
+		.Process(this->SlamSound)
+		.Process(this->Cursor_Spy)
+		.Process(this->Tunnel)
+		.Process(this->DockUnloadCell)
+		.Process(this->DockUnloadFacing);
 }
 
 void BuildingTypeExt::ExtData::LoadFromStream(AresStreamReader &Stm) {
-	Extension<BuildingTypeClass>::LoadFromStream(Stm);
+	Extension<BuildingTypeClass, ExtData>::LoadFromStream(Stm);
 	this->Serialize(Stm);
 }
 
 void BuildingTypeExt::ExtData::SaveToStream(AresStreamWriter &Stm) {
-	Extension<BuildingTypeClass>::SaveToStream(Stm);
+	Extension<BuildingTypeClass, ExtData>::SaveToStream(Stm);
 	this->Serialize(Stm);
 }
 
@@ -568,7 +649,7 @@ BuildingTypeExt::ExtContainer::~ExtContainer() = default;
 // =============================
 // container hooks
 
-DEFINE_HOOK(45E50C, BuildingTypeClass_CTOR, 6)
+DEFINE_HOOK(0x45E50C, BuildingTypeClass_CTOR, 0x6)
 {
 	GET(BuildingTypeClass*, pItem, EAX);
 
@@ -576,7 +657,7 @@ DEFINE_HOOK(45E50C, BuildingTypeClass_CTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK(45E707, BuildingTypeClass_DTOR, 6)
+DEFINE_HOOK(0x45E707, BuildingTypeClass_DTOR, 0x6)
 {
 	GET(BuildingTypeClass*, pItem, ESI);
 
@@ -584,8 +665,8 @@ DEFINE_HOOK(45E707, BuildingTypeClass_DTOR, 6)
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(465300, BuildingTypeClass_SaveLoad_Prefix, 5)
-DEFINE_HOOK(465010, BuildingTypeClass_SaveLoad_Prefix, 5)
+DEFINE_HOOK_AGAIN(0x465300, BuildingTypeClass_SaveLoad_Prefix, 0x5)
+DEFINE_HOOK(0x465010, BuildingTypeClass_SaveLoad_Prefix, 0x5)
 {
 	GET_STACK(BuildingTypeClass*, pItem, 0x4);
 	GET_STACK(IStream*, pStm, 0x8);
@@ -595,20 +676,20 @@ DEFINE_HOOK(465010, BuildingTypeClass_SaveLoad_Prefix, 5)
 	return 0;
 }
 
-DEFINE_HOOK(4652ED, BuildingTypeClass_Load_Suffix, 7)
+DEFINE_HOOK(0x4652ED, BuildingTypeClass_Load_Suffix, 0x7)
 {
 	BuildingTypeExt::ExtMap.LoadStatic();
 	return 0;
 }
 
-DEFINE_HOOK(46536A, BuildingTypeClass_Save_Suffix, 7)
+DEFINE_HOOK(0x46536A, BuildingTypeClass_Save_Suffix, 0x7)
 {
 	BuildingTypeExt::ExtMap.SaveStatic();
 	return 0;
 }
 
-DEFINE_HOOK_AGAIN(464A56, BuildingTypeClass_LoadFromINI, A)
-DEFINE_HOOK(464A49, BuildingTypeClass_LoadFromINI, A)
+DEFINE_HOOK_AGAIN(0x464A56, BuildingTypeClass_LoadFromINI, 0xA)
+DEFINE_HOOK(0x464A49, BuildingTypeClass_LoadFromINI, 0xA)
 {
 	GET(BuildingTypeClass*, pItem, EBP);
 	GET_STACK(CCINIClass*, pINI, 0x364);
@@ -616,3 +697,16 @@ DEFINE_HOOK(464A49, BuildingTypeClass_LoadFromINI, A)
 	BuildingTypeExt::ExtMap.LoadFromINI(pItem, pINI);
 	return 0;
 }
+
+static_assert(sizeof(BuildingTypeExt::cPrismForwarding) == 0x44, "cPrismForwarding must match the 3.0p1 layout");
+static_assert(sizeof(BuildingTypeExt::ExtData) == 0x280, "BuildingTypeExt::ExtData must match the 3.0p1 layout");
+
+// anchors: sizeof alone cannot catch a layout slip, because the 64 byte alignment
+// rounds it up. these pin the start, the middle and the end of the block.
+static_assert(offsetof(BuildingTypeExt::ExtData, Solid_Height) == 0x008, "BuildingTypeExt::ExtData layout slipped");
+static_assert(offsetof(BuildingTypeExt::ExtData, Secret_Boons) == 0x04C, "BuildingTypeExt::ExtData layout slipped");
+static_assert(offsetof(BuildingTypeExt::ExtData, StolenTechIndex) == 0x0BC, "BuildingTypeExt::ExtData layout slipped");
+static_assert(offsetof(BuildingTypeExt::ExtData, PrismForwarding) == 0x0E0, "BuildingTypeExt::ExtData layout slipped");
+static_assert(offsetof(BuildingTypeExt::ExtData, MessageCapture) == 0x188, "BuildingTypeExt::ExtData layout slipped");
+static_assert(offsetof(BuildingTypeExt::ExtData, UnitSell) == 0x22F, "BuildingTypeExt::ExtData layout slipped");
+static_assert(offsetof(BuildingTypeExt::ExtData, DockUnloadFacing) == 0x250, "BuildingTypeExt::ExtData layout slipped");

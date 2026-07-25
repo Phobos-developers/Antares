@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../Ares.h"
+#include "../Ext/Rules/Body.h"
 
 #include <YRPP.h>
 #include <CommandClass.h>
@@ -17,11 +18,11 @@ protected:
 		\date 2012-06-21
 	*/
 	bool CheckDebugDeactivated() const {
-		if(!Ares::GlobalControls::DebugKeysEnabled) {
+		if(!RulesExt::Global()->DebugKeysEnabled) {
 			if(const wchar_t* text = StringTable::LoadStringA("TXT_COMMAND_DISABLED")) {
 				wchar_t msg[0x100] = L"\0";
 				wsprintfW(msg, text, this->GetUIName());
-				MessageListClass::Instance->PrintMessage(msg);
+				MessageListClass::Instance.PrintMessage(msg);
 			}
 			return true;
 		}
@@ -45,9 +46,9 @@ public:
 	virtual const wchar_t* GetUIDescription() const override
 		{ return L"Executes a test function."; }
 
-	virtual void Execute(DWORD dwUnk) const override
+	virtual void Execute(WWKey eInput) const override
 	{
-		MessageListClass::Instance->PrintMessage(L"Test Function executed!");
+		MessageListClass::Instance.PrintMessage(L"Test Function executed!");
 	}
 };
 
@@ -55,5 +56,5 @@ public:
 template <typename T>
 void MakeCommand() {
 	T* command = GameCreate<T>();
-	CommandClass::Array->AddItem(command);
+	CommandClass::Array.AddItem(command);
 };

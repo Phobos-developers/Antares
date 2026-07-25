@@ -12,7 +12,7 @@
 #include <BulletTypeClass.h>
 #include <HouseClass.h>
 
-void SW_EMPulse::Initialize(SWTypeExt::ExtData* pData, SuperWeaponTypeClass* pSW)
+void SW_EMPulse::Initialize(SWTypeExt::ExtData *pData)
 {
 	pData->SW_RangeMaximum = -1.0;
 	pData->SW_RangeMinimum = 0.0;
@@ -22,12 +22,14 @@ void SW_EMPulse::Initialize(SWTypeExt::ExtData* pData, SuperWeaponTypeClass* pSW
 	pData->EMPulse_TargetSelf = false;
 
 	pData->SW_AITargetingType = SuperWeaponAITargetingMode::None;
-	pData->SW_Cursor = MouseCursor::GetCursor(MouseCursorType::Attack);
-	pData->SW_NoCursor = MouseCursor::GetCursor(MouseCursorType::AttackOutOfRange);
+	pData->SW_Cursor = MouseCursorType::Attack;
+	pData->SW_NoCursor = MouseCursorType::AttackOutOfRange;
 }
 
-void SW_EMPulse::LoadFromINI(SWTypeExt::ExtData* pData, SuperWeaponTypeClass* pSW, CCINIClass* pINI)
+void SW_EMPulse::LoadFromINI(SWTypeExt::ExtData *pData, CCINIClass *pINI)
 {
+	auto pSW = pData->OwnerObject();
+
 	const char* section = pSW->get_ID();
 
 	if(!pINI->GetSection(section)) {
@@ -45,7 +47,7 @@ void SW_EMPulse::LoadFromINI(SWTypeExt::ExtData* pData, SuperWeaponTypeClass* pS
 	pSW->Action = pData->EMPulse_TargetSelf ? Action::None : Actions::SuperWeaponAllowed;
 }
 
-bool SW_EMPulse::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPlayer)
+bool SW_EMPulse::Activate(SuperClass* pThis, CellStruct Coords, bool IsPlayer)
 {
 	auto pType = pThis->Type;
 	auto pData = SWTypeExt::ExtMap.Find(pType);
@@ -77,7 +79,7 @@ bool SW_EMPulse::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPl
 			// set extended properties
 			auto pExt = TechnoExt::ExtMap.Find(pBld);
 			pExt->SuperWeapon = pThis;
-			pExt->SuperTarget = MapClass::Instance->TryGetCellAt(Coords);
+			pExt->SuperTarget = MapClass::Instance.TryGetCellAt(Coords);
 
 			// setup the cannon and start the fire mission
 			pBld->FiringSWType = pType->ArrayIndex;
@@ -90,7 +92,7 @@ bool SW_EMPulse::Activate(SuperClass* pThis, const CellStruct &Coords, bool IsPl
 
 				if(auto pBullet = pExt->CreateBullet(pBld, pBld, pWeapon)) {
 					pBullet->SetWeaponType(pWeapon);
-					pBullet->Remove();
+					pBullet->Limbo();
 					pBullet->Detonate(BuildingExt::GetCenterCoords(pBld));
 					pBullet->Release();
 				}
