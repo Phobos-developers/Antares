@@ -1,0 +1,38 @@
+name: 'Build Antares'
+description: 'Builds one configuration of Antares and uploads the DLL and PDB'
+inputs:
+  sln-path:
+    description: 'Path to the solution file relative to the root of the project'
+    required: false
+    default: '.'
+  build-config:
+    description: 'Configuration to build (Debug or Release)'
+    required: true
+runs:
+  using: "composite"
+  steps:
+  - name: Add MSBuild to PATH
+    uses: microsoft/setup-msbuild@v1.1
+    with:
+      vs-version: '[16.0, )'
+
+  - uses: ammaraskar/msvc-problem-matcher@master
+
+  - name: Build
+    working-directory: ${{github.workspace}}
+    # x86, not Win32: this builds the solution, whose platform is named x86 even
+    # though the project underneath it is Win32. Passing Win32 here fails with
+    # MSB4126, "the specified solution configuration is invalid".
+    run: msbuild /m /p:Configuration=${{inputs.build-config}} /p:Platform=x86 ${{inputs.sln-path}}
+    shell: cmd
+
+  - name: Upload artifact
+    if: ${{success()}}
+    uses: actions/upload-artifact@v4
+    with:
+      # Both configurations are built by the same workflow, so the name has to
+      # be unique per job: upload-artifact v4 rejects two uploads sharing a name.
+      name: Antares-${{inputs.build-config}}-${{github.sha}}
+      path: |
+        ${{inputs.sln-path}}/${{inputs.build-config}}/Antares.dll
+        ${{inputs.sln-path}}/${{inputs.build-config}}/IntDir/Antares.pdb
