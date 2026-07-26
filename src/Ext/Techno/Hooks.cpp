@@ -954,12 +954,20 @@ DEFINE_HOOK(0x53C450, TechnoClass_CanBePermaMC, 0x5)
 		&& !pThis->IsIronCurtained() && !pThis->IsInAir()) {
 
 		TechnoTypeClass* pType = pThis->GetTechnoType();
-		if(!pType->ImmuneToPsionics && !pType->BalloonHover) {
-			
-			// KillDriver check
-			TechnoExt::ExtData* pExt = TechnoExt::ExtMap.Find(pThis);
-			if(!pExt->DriverKilled) {
-				ret = 1;
+		if(!pType->ImmuneToPsionics) {
+			auto const pTypeExt = TechnoTypeExt::ExtMap.Find(pType);
+
+			// the immunity a promotion grants counts here just as much as the
+			// one the type is born with
+			auto const immune = pTypeExt->HasAbility(
+				AresAbility::PsionicsImmune, pThis->Veterancy);
+
+			if(!immune && !pType->BalloonHover) {
+				// KillDriver check
+				TechnoExt::ExtData* pExt = TechnoExt::ExtMap.Find(pThis);
+				if(!pExt->DriverKilled) {
+					ret = 1;
+				}
 			}
 		}
 	}
