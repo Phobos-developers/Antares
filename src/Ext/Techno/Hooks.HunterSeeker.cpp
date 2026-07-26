@@ -16,6 +16,17 @@ DEFINE_HOOK(0x4CCB84, FlyLocomotionClass_ILocomotion_Process_HunterSeeker, 0x6)
 	auto const pType = pObject->GetTechnoType();
 
 	if(pType->HunterSeeker) {
+		// a target that has left the playfield, gone iron curtained or is being
+		// warped out is not worth chasing any more: drop it here so the search
+		// below picks another one this same frame
+		if(auto const pTarget = abstract_cast<TechnoClass*>(pObject->Target)) {
+			if(!pTarget->IsInPlayfield || pTarget->IsIronCurtained()
+				|| pTarget->IsBeingWarpedOut())
+			{
+				pObject->SetTarget(nullptr);
+			}
+		}
+
 		if(!pObject->Target) {
 			pLoco->Acquire_Hunter_Seeker_Target();
 
