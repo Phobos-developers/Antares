@@ -1,5 +1,6 @@
 #include "Body.h"
 #include <Utilities/Macro.h>   // STACK_OFFS
+#include "../../Utilities/AresEnums.h"
 #include "../Rules/Body.h"
 #include "../TechnoType/Body.h"
 #include "../Building/Body.h"
@@ -1015,6 +1016,25 @@ DEFINE_HOOK(0x6F3283, TechnoClass_CanScatter_KillDriver, 0x8)
 	return (pExt->DriverKilled ? 0x6F32C5u : 0u);
 }
 
+namespace {
+	// The grinder's own tag is what carries these, and the first event can detach
+	// it, so the second read is not redundant.
+	void SpringReverseEngineerEvents(BuildingClass* const pGrinder, TechnoClass* const pVictim)
+	{
+		if(auto const pTag = pGrinder->AttachedTag) {
+			pTag->RaiseEvent(
+				AresTriggerEvent::ReverseEngineerType, pGrinder, CellStruct::Empty,
+				false, pVictim);
+
+			if(auto const pStillThere = pGrinder->AttachedTag) {
+				pStillThere->RaiseEvent(
+					AresTriggerEvent::ReverseEngineerAnything, pGrinder,
+					CellStruct::Empty);
+			}
+		}
+	}
+}
+
 DEFINE_HOOK(0x5198AD, InfantryClass_UpdatePosition_EnteredGrinder, 0x6)
 {
 	GET(InfantryClass *, Infantry, ESI);
@@ -1022,11 +1042,13 @@ DEFINE_HOOK(0x5198AD, InfantryClass_UpdatePosition_EnteredGrinder, 0x6)
 
 	BuildingExt::ExtData *pData = BuildingExt::ExtMap.Find(Grinder);
 
-	if(pData->ReverseEngineer(Infantry)) {
+	if(pData->ReverseEngineer(Infantry->GetTechnoType())) {
 		if(Infantry->Owner->IsControlledByCurrentPlayer()) {
 			VoxClass::Play("EVA_ReverseEngineeredInfantry");
 			VoxClass::Play("EVA_NewTechnologyAcquired");
 		}
+
+		SpringReverseEngineerEvents(Grinder, Infantry);
 	}
 
 	return 0;
@@ -1039,11 +1061,13 @@ DEFINE_HOOK(0x73A1BC, UnitClass_UpdatePosition_EnteredGrinder, 0x7)
 
 	BuildingExt::ExtData *pData = BuildingExt::ExtMap.Find(Grinder);
 
-	if(pData->ReverseEngineer(Vehicle)) {
+	if(pData->ReverseEngineer(Vehicle->GetTechnoType())) {
 		if(Vehicle->Owner->IsControlledByCurrentPlayer()) {
 			VoxClass::Play("EVA_ReverseEngineeredVehicle");
 			VoxClass::Play("EVA_NewTechnologyAcquired");
 		}
+
+		SpringReverseEngineerEvents(Grinder, Vehicle);
 	}
 
 	// #368: refund hijackers

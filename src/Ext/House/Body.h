@@ -185,6 +185,14 @@ public:
 
 		bool KeepThisAlive(TechnoClass const* pTechno, AbstractType abs, bool added);
 
+		//! Unlocks a type for this house by reverse engineering it.
+		//! Applies Rubble-style substitution through ReversedAs, and rechecks the
+		//! tech tree if the type only became buildable now.
+		//! \returns true if the type was newly recorded. Callers use this to decide
+		//! whether to announce and to spring the reverse-engineer triggers, so it is
+		//! deliberately not "did the tech tree change".
+		bool ReverseEngineer(TechnoTypeClass const* pVictimType);
+
 	private:
 		template <typename T>
 		void Serialize(T& Stm);

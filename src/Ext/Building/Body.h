@@ -140,7 +140,8 @@ public:
 		void ImmolateVictims();
 		bool ImmolateVictim(ObjectClass* Victim, bool destroy = true);
 
-		bool ReverseEngineer(TechnoClass * Victim); //!< Returns true if Victim wasn't buildable and now should be
+		//! Gates on ReverseEngineersVictims, then defers to the owning house.
+		bool ReverseEngineer(TechnoTypeClass const* pVictimType);
 
 		void KickOutClones(TechnoClass * Production);
 

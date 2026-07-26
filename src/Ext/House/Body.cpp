@@ -935,6 +935,42 @@ bool HouseExt::ExtData::KeepThisAlive(
 // =============================
 // load / save
 
+bool HouseExt::ExtData::ReverseEngineer(TechnoTypeClass const* pVictimType)
+{
+	auto const pVictimData = TechnoTypeExt::ExtMap.Find(pVictimType);
+
+	if(!pVictimData->CanBeReversed) {
+		return false;
+	}
+
+	// ReversedAs substitutes the type that is unlocked. Only CanBeReversed is read
+	// off the victim itself; everything below works on the substitute. There is no
+	// category guard here - the docs explicitly allow reversing into a BuildingType.
+	if(auto const pReversedAs = pVictimData->ReversedAs.Get()) {
+		pVictimType = pReversedAs;
+	}
+
+	if(this->ReverseEngineered.contains(pVictimType)) {
+		return false;
+	}
+
+	auto const pOwner = this->OwnerObject();
+	auto const wasBuildable = HouseExt::PrereqValidate(pOwner, pVictimType, false, true) == 1;
+
+	this->ReverseEngineered.insert(pVictimType, true);
+
+	if(!wasBuildable
+		&& HouseExt::RequirementsMet(pOwner, pVictimType) != RequirementStatus::Forbidden)
+	{
+		pOwner->RecheckTechTree = true;
+	}
+
+	// true means "newly recorded", not "the tech tree changed". Announcements and
+	// the reverse-engineer triggers hang off this, and they fire for a type the
+	// house happened to be able to build already.
+	return true;
+}
+
 template <typename T>
 void HouseExt::ExtData::Serialize(T& Stm) {
 	Stm

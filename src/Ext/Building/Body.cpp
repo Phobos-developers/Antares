@@ -1121,41 +1121,16 @@ void BuildingExt::Clear() {
 	BuildingExt::TempFoundationData2.clear();
 }
 
-bool BuildingExt::ExtData::ReverseEngineer(TechnoClass *Victim) {
-	BuildingTypeExt::ExtData *pReverseData = BuildingTypeExt::ExtMap.Find(this->OwnerObject()->Type);
+// The building only gates this; the unlocking itself belongs to the house, which
+// is where the record lives and what the interop API hands out.
+bool BuildingExt::ExtData::ReverseEngineer(TechnoTypeClass const* const pVictimType) {
+	auto const pReverseData = BuildingTypeExt::ExtMap.Find(this->OwnerObject()->Type);
+
 	if(!pReverseData->ReverseEngineersVictims) {
 		return false;
 	}
 
-	TechnoTypeClass *VictimType = Victim->GetTechnoType();
-	TechnoTypeExt::ExtData *pVictimData = TechnoTypeExt::ExtMap.Find(VictimType);
-
-	if(!pVictimData->CanBeReversed) {
-		return false;
-	}
-
-	// ReversedAs substitutes the type that is unlocked. Only CanBeReversed is read
-	// off the victim itself; everything below works on the substitute. There is no
-	// category guard here - the docs explicitly allow reversing into a BuildingType.
-	if(auto const pReversedAs = pVictimData->ReversedAs.Get()) {
-		VictimType = pReversedAs;
-	}
-
-	HouseClass *Owner = this->OwnerObject()->Owner;
-	HouseExt::ExtData *pOwnerData = HouseExt::ExtMap.Find(Owner);
-
-	if(!pOwnerData->ReverseEngineered.contains(VictimType)) {
-		bool WasBuildable = HouseExt::PrereqValidate(Owner, VictimType, false, true) == 1;
-		pOwnerData->ReverseEngineered.insert(VictimType, true);
-		if(!WasBuildable) {
-			bool IsBuildable = HouseExt::RequirementsMet(Owner, VictimType) != HouseExt::RequirementStatus::Forbidden;
-			if(IsBuildable) {
-				Owner->RecheckTechTree = true;
-				return true;
-			}
-		}
-	}
-	return false;
+	return HouseExt::ExtMap.Find(this->OwnerObject()->Owner)->ReverseEngineer(pVictimType);
 }
 
 void BuildingExt::ExtData::KickOutClones(TechnoClass* const Production) {
