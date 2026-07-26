@@ -1513,10 +1513,18 @@ DEFINE_HOOK(0x738749, UnitClass_Destroy_TiberiumExplosive, 0x6)
 				}
 
 				// go boom
-				WarheadTypeClass* pWH = RulesExt::Global()->Tiberium_ExplosiveWarhead;
-				if(morePower > 0 && pWH) {
+				if(morePower > 0) {
 					CoordStruct crd = pThis->GetCoords();
-					MapClass::DamageArea(crd, morePower, pThis, pWH, false, nullptr);
+
+					if(auto const pWH = RulesExt::Global()->Tiberium_ExplosiveWarhead) {
+						MapClass::DamageArea(crd, morePower, pThis, pWH, false, nullptr);
+					}
+
+					// the animation is not tied to the warhead; either key can be
+					// set on its own
+					if(auto const pAnim = RulesExt::Global()->Tiberium_ExplosiveAnim) {
+						GameCreate<AnimClass>(pAnim, crd, 0, 1, 0x2600u, -15, false);
+					}
 				}
 			}
 		}
