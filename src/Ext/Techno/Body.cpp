@@ -704,13 +704,15 @@ bool TechnoExt::UpdateType(TechnoClass* const pThis, TechnoTypeClass* const pToT
 }
 
 void TechnoExt::TransferIvanBomb(TechnoClass *From, TechnoClass *To) {
+	// a bomb already on the target is not overwritten: both sides keep the one
+	// they have rather than one of them being silently dropped
 	if(auto Bomb = From->AttachedBomb) {
-		From->AttachedBomb = nullptr;
-		Bomb->Target = To;
-		To->AttachedBomb = Bomb;
-		To->BombVisible = From->BombVisible;
-		// if there already was a bomb attached to target unit, it's gone now...
-		// it shouldn't happen though, this is used for (un)deploying objects only
+		if(!To->AttachedBomb) {
+			From->AttachedBomb = nullptr;
+			Bomb->Target = To;
+			To->AttachedBomb = Bomb;
+			To->BombVisible = From->BombVisible;
+		}
 	}
 }
 
