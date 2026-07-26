@@ -230,6 +230,22 @@ namespace {
 	}
 }
 
+// Named differently from the helpers above so these do not resolve to themselves.
+// Declared in House/Body.h purely so the interop API can reach them; the hooks in
+// this file keep calling the file-local versions directly.
+HouseExt::TunnelData* HouseExt::FindTunnelFor(BuildingClass* const pBuilding)
+{
+	return pBuilding ? GetTunnel(pBuilding) : nullptr;
+}
+
+void HouseExt::AddTunnelPassenger(TunnelData* const pTunnel,
+	BuildingClass* const pBuilding, FootClass* const pPassenger)
+{
+	if(pTunnel && pBuilding && pPassenger) {
+		EnterTunnel(pTunnel, pBuilding, pPassenger);
+	}
+}
+
 DEFINE_HOOK(0x43C326, BuildingClass_ReceivedRadioCommand_QueryCanEnter_Tunnel, 0xA)
 {
 	GET(TechnoClass* const, pSender, EDI);

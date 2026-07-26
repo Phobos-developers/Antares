@@ -42,6 +42,12 @@ public:
 		bool Save(AresStreamWriter &Stm) const;
 	};
 
+	// Tunnel entry points, surfaced for the interop API. The logic lives in
+	// Building/Hooks.Tunnels.cpp next to the hooks that drive it.
+	static TunnelData* FindTunnelFor(BuildingClass* pBuilding);
+	static void AddTunnelPassenger(TunnelData* pTunnel, BuildingClass* pBuilding,
+		FootClass* pPassenger);
+
 	// how often a super weapon has been fired, for SW.Shots
 	struct ShotStuff {
 		int ShootAmount{ 0 };

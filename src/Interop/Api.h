@@ -23,12 +23,16 @@
 // not self-contained either; this is the header that pulls it in the right order.
 #include <GeneralStructures.h>
 
+#include "../Utilities/Iterator.h"  // passed by value, so it must be complete
+
 #include <cstdint>
 
 class AbstractClass;
+class AircraftTypeClass;
 class AlphaShapeClass;
 class BuildingClass;
 class BuildingTypeClass;
+class CellClass;
 class EBolt;
 class FootClass;
 class HouseClass;
@@ -52,21 +56,17 @@ enum class AntaresFactory : uint32_t
 	ConstructionYard = 4,
 };
 
-//! Subsystems a consumer can take over. See Interop/Features.cpp for what each
-//! one actually stands down, and note that a feature only stops behaviour --
-//! it never changes an ExtData layout, so savegames are unaffected either way.
+//! Subsystems a consumer can take over. A feature only stops behaviour -- it
+//! never changes an ExtData layout, so savegames are unaffected either way.
+//!
+//! This list is deliberately short. A subsystem only appears once its hooks have
+//! been reviewed one at a time and standing down is known to leave the game in a
+//! consistent state; several obvious candidates did not survive that check. In
+//! particular the alpha-image handover needs write access to the shape map rather
+//! than a flag, so it is not here. Values are append-only.
 enum class AntaresFeature : uint32_t
 {
-	EBolt = 0,             //!< coloured electric bolts
-	RadarJammer = 1,
-	AlphaImage = 2,        //!< the per-frame AlphaShape respawn
-	CameoIsElite = 3,      //!< veteran cameo selection
-	SWAvailability = 4,    //!< SWTypeExt::IsAvailable
-	KillDriver = 5,
-	EjectSurvivor = 6,
-	DeployDirParse = 7,    //!< stop warning about DeployDir=-1
-	LaserWeaponPick = 8,
-	PromoteAnim = 9,
+	EBolt = 0,   //!< the coloured electric bolt draw, leaving the game's own colours
 
 	Count
 };
@@ -90,6 +90,13 @@ struct AntaresAPI_v1
 	EBolt* (__stdcall* CreateElectricBolt)(WeaponTypeClass* pWeapon);
 	int   (__stdcall* FindEVAIndex)(const char* pID);
 	bool  (__stdcall* CameoIsElite)(TechnoTypeClass* pType, HouseClass* pHouse);
+	void  (__stdcall* SendParadropPlane)(HouseClass* pOwner, CellClass* pTarget,
+		AircraftTypeClass* pPlaneType, Iterator<TechnoTypeClass*> types, Iterator<int> nums);
+
+	//! The tunnel network this building belongs to, or null if it is not a tunnel.
+	//! The returned pointer is opaque; pass it straight back to AddTunnelPassenger.
+	void* (__stdcall* FindTunnel)(BuildingClass* pBuilding);
+	void  (__stdcall* AddTunnelPassenger)(void* pTunnel, BuildingClass* pBuilding, FootClass* pPassenger);
 
 	// --- extension data ------------------------------------------------------
 	// Pointers into live ExtData. Valid until the owning object dies; never

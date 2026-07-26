@@ -1,6 +1,7 @@
 #include "Body.h"
 #include <Utilities/Macro.h>   // STACK_OFFS
 #include "../Techno/Body.h"
+#include "../../Interop/Features.h"
 
 #include <ConvertClass.h>
 #include <Drawing.h>
@@ -62,20 +63,35 @@ DEFINE_HOOK(0x4C1F33, EBolt_Draw_Colors, 0x7)
 	return 0x4C1F66;
 }
 
+// Returning 0 from these three resumes on the game's own colour code, which is
+// what a consumer that has taken the bolt draw over wants -- it hooks the same
+// addresses and would otherwise be fighting us for the registers.
 DEFINE_HOOK(0x4C24BE, EBolt_Draw_Color1, 0x5)
 {
+	if(Interop::IsDisabled(AntaresFeature::EBolt)) {
+		return 0;
+	}
+
 	R->EAX(BoltColor1);
 	return 0x4C24E4;
 }
 
 DEFINE_HOOK(0x4C25CB, EBolt_Draw_Color2, 0x5)
 {
+	if(Interop::IsDisabled(AntaresFeature::EBolt)) {
+		return 0;
+	}
+
 	R->Stack(0x18, BoltColor2);
 	return 0x4C25FD;
 }
 
 DEFINE_HOOK(0x4C26CF, EBolt_Draw_Color3, 0x5)
 {
+	if(Interop::IsDisabled(AntaresFeature::EBolt)) {
+		return 0;
+	}
+
 	R->EAX(BoltColor3);
 	return 0x4C26EE;
 }

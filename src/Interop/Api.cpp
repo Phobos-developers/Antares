@@ -11,6 +11,7 @@
 #include "../Ext/WarheadType/Body.h"
 #include "../Ext/WeaponType/Body.h"
 #include "../Misc/EVAVoices.h"
+#include "../Misc/SWTypes/ParaDrop.h"
 
 #include <HouseClass.h>
 #include <TechnoClass.h>
@@ -76,6 +77,25 @@ namespace
 	bool __stdcall CameoIsElite(TechnoTypeClass* const pType, HouseClass* const pHouse)
 	{
 		return pType && pHouse && TechnoTypeExt::ExtMap.Find(pType)->CameoIsElite(pHouse);
+	}
+
+	void __stdcall SendParadropPlane(HouseClass* const pOwner, CellClass* const pTarget,
+		AircraftTypeClass* const pPlaneType, Iterator<TechnoTypeClass*> const types,
+		Iterator<int> const nums)
+	{
+		SW_ParaDrop::SendPDPlane(pOwner, pTarget, pPlaneType, types, nums);
+	}
+
+	void* __stdcall FindTunnel(BuildingClass* const pBuilding)
+	{
+		return HouseExt::FindTunnelFor(pBuilding);
+	}
+
+	void __stdcall AddTunnelPassenger(void* const pTunnel, BuildingClass* const pBuilding,
+		FootClass* const pPassenger)
+	{
+		HouseExt::AddTunnelPassenger(
+			static_cast<HouseExt::TunnelData*>(pTunnel), pBuilding, pPassenger);
 	}
 
 	CDTimerClass* __stdcall GetDisableWeaponTimer(TechnoClass* const pThis)
@@ -166,7 +186,7 @@ namespace
 	}
 
 	AntaresAPI_v1 const TheAPI = {
-		sizeof(AntaresAPI_v1), 1, 0, 0,
+		sizeof(AntaresAPI_v1), 1, 1, 0,
 
 		&ConvertTypeTo,
 		&SpawnSurvivors,
@@ -178,6 +198,9 @@ namespace
 		&CreateElectricBolt,
 		&FindEVAIndex,
 		&CameoIsElite,
+		&SendParadropPlane,
+		&FindTunnel,
+		&AddTunnelPassenger,
 
 		&GetDisableWeaponTimer,
 		&GetDriverKilled,

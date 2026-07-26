@@ -87,6 +87,21 @@ Unreleased
   caught the parasite mid-transition.
   (NetsuNegi, [Phobos #2140](https://github.com/Phobos-developers/Phobos/pull/2140))
 
+### Interop
+
++ **Antares now declares itself as Antares** in its version resource rather than
+  claiming to be `Ares.dll`. Extensions that sniff for Ares were finding Antares,
+  failing their version check, and disabling integration in ways that broke the
+  superweapon chain.
+
++ **A versioned interop API** is exported as `GetAntaresAPI`, handing back a table
+  of function pointers plus accessors that return live extension data as real
+  objects. Other Syringe extensions no longer have to resolve Antares internals by
+  hardcoded address or mirror its field offsets.
+
++ **Feature handover** lets a consumer stand a subsystem down at runtime so it can
+  own that behaviour itself, instead of patching over our code.
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
