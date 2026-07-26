@@ -192,12 +192,6 @@ namespace
 	};
 }
 
-// A __stdcall export carries its decoration into the export table as
-// _GetAntaresAPI@8, and GetProcAddress will not find that under the plain name.
-// Alias it so a consumer can simply ask for "GetAntaresAPI"; both names resolve to
-// the same function, and the decorated one stays for anything already using it.
-#pragma comment(linker, "/EXPORT:GetAntaresAPI=_GetAntaresAPI@8")
-
 DEFINE_EXPORT(HRESULT, GetAntaresAPI, uint32_t wantMajor, AntaresAPI_v1** ppApi)
 {
 	if(!ppApi) {
