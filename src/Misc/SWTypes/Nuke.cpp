@@ -166,7 +166,9 @@ bool SW_NuclearMissile::Activate(SuperClass* const pThis, CellStruct const Coord
 				}
 			}
 
-			VocClass::PlayAt(pData->SW_ActivationSound.Get(RulesClass::Instance->DigSound), target, nullptr);
+			// the checked entry point; see SWTypeExt::Launch
+			VocClass::PlayIndexAtPos(
+				pData->SW_ActivationSound.Get(RulesClass::Instance->DigSound), target);
 			pThis->Owner->RecheckTechTree = true;
 			return true;
 		}

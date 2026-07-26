@@ -135,7 +135,8 @@ void PsychicDominatorStateMachine::Update()
 		
 			auto sound = pData->SW_ActivationSound.Get(RulesClass::Instance->PsychicDominatorActivateSound);
 			if(sound != -1) {
-				VocClass::PlayAt(sound, coords, nullptr);
+				// the checked entry point; see SWTypeExt::Launch
+				VocClass::PlayIndexAtPos(sound, coords);
 			}
 
 			pData->PrintMessage(pData->Message_Activate, this->Super->Owner);

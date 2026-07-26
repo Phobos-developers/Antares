@@ -686,7 +686,9 @@ bool SWTypeExt::Launch(SuperClass* pThis, NewSWType* pSW, const CellStruct &Coor
 
 			int sound = pData->GetSound();
 			if(sound && !(flags & SuperWeaponFlags::NoSound)) {
-				VocClass::PlayAt(sound, coords, nullptr);
+				// the checked entry point, not PlayAt: 0x750E20 sanity-checks the
+				// index and then calls 0x7509E0 itself
+				VocClass::PlayIndexAtPos(sound, coords);
 			}
 
 			if(pData->SW_RadarEvent && !(flags & SuperWeaponFlags::NoEvent)) {

@@ -56,7 +56,8 @@ void UnitDeliveryStateMachine::Update()
 		pData->PrintMessage(pData->Message_Activate, this->Super->Owner);
 
 		if(pData->SW_ActivationSound != -1) {
-			VocClass::PlayAt(pData->SW_ActivationSound, coords, nullptr);
+			// the checked entry point; see SWTypeExt::Launch
+			VocClass::PlayIndexAtPos(pData->SW_ActivationSound, coords);
 		}
 
 		this->PlaceUnits();
