@@ -149,21 +149,34 @@ DEFINE_HOOK(0x6D4B25, TacticalClass_Draw_TheDarkSideOfTheMoon, 0x5)
 
 	int offset = AdvCommBarHeight;
 
-	auto DrawText = [](const wchar_t* string, int& offset, int color) {
-		auto wanted = Drawing::GetTextDimensions(string, Point2D{0, 0}, 0);
+	// Surface::DrawText is the windows.h-mangled DrawTextA and reaches
+	// Fancy_Text_Print_Wide; the overlay uses the simple printer with the
+	// six-point gradient font, and colours built from the surface format rather
+	// than the RGB565 constants
+	auto DrawText = [](const wchar_t* string, int& offset, unsigned int color) {
+		auto const pSurface = DSurface::Composite;
+		auto const wanted = Drawing::GetTextDimensions(string, Point2D{0, 0}, 0);
 
-		auto h = DSurface::Composite->GetHeight();
-		RectangleStruct rect = {0, h - wanted.Height - offset, wanted.Width, wanted.Height};
+		RectangleStruct rect = {0, pSurface->GetHeight() - wanted.Height - offset,
+			wanted.Width, wanted.Height};
 
-		DSurface::Composite->FillRect(&rect, COLOR_BLACK);
-		DSurface::Composite->DrawTextA(string, 0, rect.Y, color);
+		pSurface->FillRect(&rect, COLOR_BLACK);
+
+		RectangleStruct bounds = {0, 0, pSurface->Width, pSurface->Height};
+		Point2D location = {0, rect.Y};
+		Point2D ret = {0, 0};
+
+		Simple_Text_Print_Wide(&ret, string, pSurface, &bounds, &location, color, 0,
+			TextPrintType::Point6Grad | TextPrintType::NoShadow, 1);
 
 		offset += wanted.Height;
 	};
 
+	auto const red = static_cast<unsigned int>(Drawing::RGB_To_Int(255, 0, 0));
+
 	if(auto const pWarning = Ares::GetStabilityWarning()) {
 		Ares::bStableNotification = true;
-		DrawText(pWarning, offset, COLOR_RED);
+		DrawText(pWarning, offset, red);
 	}
 
 	if(!AresSurfaces::ModNote.Label) {
@@ -171,14 +184,15 @@ DEFINE_HOOK(0x6D4B25, TacticalClass_Draw_TheDarkSideOfTheMoon, 0x5)
 	}
 
 	if(!AresSurfaces::ModNote.empty()) {
-		DrawText(AresSurfaces::ModNote, offset, COLOR_RED);
+		DrawText(AresSurfaces::ModNote, offset, red);
 	}
 
 	if(Ares::bFPSCounter) {
 		wchar_t buffer[0x100];
 		swprintf_s(buffer, L"FPS: %-4u Avg: %.2f", FPSCounter::CurrentFrameRate, FPSCounter::GetAverageFrameRate());
 
-		DrawText(buffer, offset, COLOR_WHITE);
+		DrawText(buffer, offset,
+			static_cast<unsigned int>(Drawing::RGB_To_Int(255, 255, 255)));
 	}
 
 	return 0;
