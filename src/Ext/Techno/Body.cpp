@@ -1220,7 +1220,23 @@ bool TechnoExt::ExtData::PerformActionHijack(TechnoClass* const pTarget) {
 			ret = false;
 		}
 
-		pTarget->QueueMission(Mission::Guard, true);
+		// a vehicle taken by the AI goes hunting; only a human's stays put
+		pTarget->QueueMission(
+			pThis->Owner->IsControlledByHuman() ? Mission::Guard : Mission::Hunt, true);
+
+		// by-house first with the hijacker as payback, then the plain one only if
+		// the vehicle survived it. The tag is reread because springing can detach it.
+		if(auto const pTag = pTarget->AttachedTag) {
+			pTag->RaiseEvent(AresTriggerEvent::VehicleTaken_ByHouse, pTarget,
+				CellStruct::Empty, false, pThis);
+		}
+
+		if(pTarget->IsAlive) {
+			if(auto const pTag = pTarget->AttachedTag) {
+				pTag->RaiseEvent(
+					AresTriggerEvent::VehicleTaken, pTarget, CellStruct::Empty);
+			}
+		}
 	}
 
 	return ret;

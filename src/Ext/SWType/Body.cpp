@@ -12,6 +12,10 @@
 #include "../../Ares.h"
 #include "../../Ares.CRT.h"
 #include "../../Utilities/Enums.h"
+#include "../../Utilities/AresEnums.h"
+#include "../TEvent/Body.h"
+
+#include <TagClass.h>
 #include "../../Utilities/TemplateDef.h"
 
 #include <RadarEventClass.h>
@@ -580,13 +584,40 @@ bool SWTypeExt::ExtData::CanFireAt(HouseClass* pOwner, CellStruct coords, bool m
 	return true;
 }
 
+namespace {
+	//! Springs an event on every tag the house has related to it.
+	//! Indexed rather than ranged, and the count is reread each step, because
+	//! springing can remove a tag from the very list being walked.
+	void SpringHouseTags(HouseClass* const pOwner, TriggerEvent const event,
+		void* const pPayback)
+	{
+		for(auto i = 0; i < pOwner->RelatedTags.Count; ++i) {
+			if(auto const pTag = pOwner->RelatedTags.Items[i]) {
+				pTag->RaiseEvent(event, nullptr, CellStruct::Empty, false,
+					static_cast<TechnoClass*>(pPayback));
+			}
+		}
+	}
+}
+
 bool SWTypeExt::Activate(
 	SuperClass* const pSuper, CellStruct const cell, bool const isPlayer)
 {
 	auto const pExt = SWTypeExt::ExtMap.Find(pSuper->Type);
 
 	if(auto const pNewType = pExt->GetNewSWType()) {
-		return SWTypeExt::Launch(pSuper, pNewType, cell, isPlayer);
+		if(!SWTypeExt::Launch(pSuper, pNewType, cell, isPlayer)) {
+			return false;
+		}
+
+		// SuperNearWaypoint needs both the super and where it went, so its payback
+		// is a small struct rather than an object. The owner is reread between the
+		// two sweeps, matching the shipped order.
+		TEventExt::SuperTarget target{ pSuper, cell };
+		SpringHouseTags(pSuper->Owner, AresTriggerEvent::SuperNearWaypoint, &target);
+		SpringHouseTags(pSuper->Owner, AresTriggerEvent::SuperActivated, pSuper);
+
+		return true;
 	}
 
 	return false;
@@ -599,6 +630,9 @@ bool SWTypeExt::Deactivate(
 
 	if(auto const pNewType = pExt->GetNewSWType()) {
 		pNewType->Deactivate(pSuper, cell, isPlayer);
+
+		SpringHouseTags(pSuper->Owner, AresTriggerEvent::SuperDeactivated, pSuper);
+
 		return true;
 	}
 

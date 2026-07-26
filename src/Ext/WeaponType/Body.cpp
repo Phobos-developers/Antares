@@ -12,6 +12,9 @@
 #include "../Techno/Body.h"
 #include "../TechnoType/Body.h"
 #include "../../Utilities/TemplateDef.h"
+#include "../../Utilities/AresEnums.h"
+
+#include <TagClass.h>
 
 WeaponTypeExt::ExtContainer WeaponTypeExt::ExtMap;
 
@@ -255,6 +258,10 @@ bool WeaponTypeExt::ExtData::Abduct(
 	Target->ClearPlanningTokens(nullptr);
 	Target->Flashing.DurationRemaining = 0;
 
+	// the abduct-something events report who the victim belonged to, so this has
+	// to be read before Abductor.ChangeOwner gets a chance to move it
+	auto const pVictimOwner = Target->Owner;
+
 	//if it's owner meant to be changed, do it here
 	if(this->Abductor_ChangeOwner && !TargetType->ImmuneToPsionics) {
 		Target->SetOwningHouse(Attacker->Owner);
@@ -294,6 +301,33 @@ bool WeaponTypeExt::ExtData::Abduct(
 	}
 	Attacker->AddPassenger(Target);
 	Attacker->Undiscover();
+
+	// Two pairs, one on each side of the abduction. Within a pair the by-house
+	// event goes first and the plain one only if its subject is still alive, and
+	// each rereads the tag because springing can detach it.
+	if(auto const pTag = Target->AttachedTag) {
+		pTag->RaiseEvent(AresTriggerEvent::Abducted_ByHouse, Target,
+			CellStruct::Empty, false, Attacker);
+	}
+
+	if(Target->IsAlive) {
+		if(auto const pTag = Target->AttachedTag) {
+			pTag->RaiseEvent(AresTriggerEvent::Abducted, Target, CellStruct::Empty);
+		}
+	}
+
+	if(auto const pTag = Attacker->AttachedTag) {
+		// the payback is a house, like the other _OfHouse events
+		pTag->RaiseEvent(AresTriggerEvent::AbductSomething_OfHouse, Attacker,
+			CellStruct::Empty, false, reinterpret_cast<TechnoClass*>(pVictimOwner));
+	}
+
+	if(Attacker->IsAlive) {
+		if(auto const pTag = Attacker->AttachedTag) {
+			pTag->RaiseEvent(
+				AresTriggerEvent::AbductSomething, Attacker, CellStruct::Empty);
+		}
+	}
 
 	return true;
 }

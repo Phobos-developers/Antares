@@ -5,6 +5,9 @@
 #include "../Ext/BuildingType/Body.h"
 #include "../Ext/Rules/Body.h"
 #include "../Utilities/Helpers.Alex.h"
+#include "../Utilities/AresEnums.h"
+
+#include <TagClass.h>
 #include <set>
 
 //! Enables verbose debug output for some WarheadTypeExt functions.
@@ -115,10 +118,44 @@ void EMPulse::deliverEMPDamage(
 			// newly de-paralyzed
 			EMP_Log("[deliverEMPDamage] Step 5a\n");
 			DisableEMPEffect(pTechno);
+
+			// the by-house event fires whether or not the techno survived it; the
+			// plain one only if it is still there. Each reads the tag afresh,
+			// because springing the first can detach it.
+			if(auto const pTag = pTechno->AttachedTag) {
+				pTag->RaiseEvent(AresTriggerEvent::RemoveEMP_ByHouse, pTechno,
+					CellStruct::Empty, false, pFirer);
+			}
+
+			if(pTechno->IsAlive) {
+				if(auto const pTag = pTechno->AttachedTag) {
+					pTag->RaiseEvent(
+						AresTriggerEvent::RemoveEMP, pTechno, CellStruct::Empty);
+				}
+			}
 		} else if(newlyUnderEMP) {
 			// newly paralyzed unit
 			EMP_Log("[deliverEMPDamage] Step 5b\n");
 			diedFromPulse = enableEMPEffect(pTechno, pFirer);
+
+			// mind the shape: with no tag at all the plain event is still raised,
+			// which is not the same as "the by-house event was skipped"
+			if(pTechno->IsAlive) {
+				auto stillThere = true;
+
+				if(auto const pTag = pTechno->AttachedTag) {
+					pTag->RaiseEvent(AresTriggerEvent::UnderEMP_ByHouse, pTechno,
+						CellStruct::Empty, false, pFirer);
+					stillThere = pTechno->IsAlive;
+				}
+
+				if(stillThere) {
+					if(auto const pTag = pTechno->AttachedTag) {
+						pTag->RaiseEvent(
+							AresTriggerEvent::UnderEMP, pTechno, CellStruct::Empty);
+					}
+				}
+			}
 		} else if(oldValue == newValue) {
 			// no relevant change
 			EMP_Log("[deliverEMPDamage] Step 5c\n");
