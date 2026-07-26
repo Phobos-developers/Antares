@@ -35,10 +35,10 @@ namespace
 		}
 	}
 
-	bool __stdcall ReverseEngineer(BuildingClass* const pThis, TechnoClass* const pVictim)
+	bool __stdcall ReverseEngineer(HouseClass* const pHouse, TechnoTypeClass* const pVictimType)
 	{
-		return pThis && pVictim
-			&& BuildingExt::ExtMap.Find(pThis)->ReverseEngineer(pVictim);
+		return pHouse && pVictimType
+			&& HouseExt::ExtMap.Find(pHouse)->ReverseEngineer(pVictimType);
 	}
 
 	bool __stdcall MeetsAITargetingConstraints(SuperWeaponTypeClass* const pType,
