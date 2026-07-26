@@ -300,7 +300,9 @@ bool WeaponTypeExt::ExtData::Abduct(
 		Target->Absorbed = true;
 	}
 	Attacker->AddPassenger(Target);
-	Attacker->Undiscover();
+	// the abducted unit is the one that leaves the map, so it is the one that stops
+	// being discovered -- not the abductor
+	Target->Undiscover();
 
 	// Two pairs, one on each side of the abduction. Within a pair the by-house
 	// event goes first and the plain one only if its subject is still alive, and
