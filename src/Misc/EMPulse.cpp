@@ -138,6 +138,12 @@ void EMPulse::deliverEMPDamage(
 			EMP_Log("[deliverEMPDamage] Step 5b\n");
 			diedFromPulse = enableEMPEffect(pTechno, pFirer);
 
+			// a non-Malicious warhead paralyses without counting as an attack, so
+			// it does not get the "we are under attack" announcement
+			if(!diedFromPulse && pWarhead->Malicious) {
+				announceAttack(pTechno);
+			}
+
 			// mind the shape: with no tag at all the plain event is still raised,
 			// which is not the same as "the by-house event was skipped"
 			if(pTechno->IsAlive) {
@@ -717,10 +723,8 @@ bool EMPulse::enableEMPEffect(
 		pSlaveManager->SuspendWork();
 	}
 
-	// warn the player
-	announceAttack(pVictim);
-
-	// the unit still lives.
+	// the unit still lives. The caller announces the attack, if the warhead is
+	// one that provokes.
 	return false;
 }
 
