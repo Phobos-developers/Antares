@@ -60,7 +60,9 @@ namespace {
 	void EnterTunnel(HouseExt::TunnelData* const pTunnel,
 		BuildingClass* const pBuilding, FootClass* const pPassenger)
 	{
-		pPassenger->SetTarget(nullptr);
+		// the archive target, not the current one: this is what the unit would
+		// go back to after a detour, and it must not survive the tunnel
+		pPassenger->SetArchiveTarget(nullptr);
 		pPassenger->OnBridge = false;
 		pPassenger->MissionAccumulateTime = 0;
 		pPassenger->GattlingValue = 0;
