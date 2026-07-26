@@ -6,6 +6,52 @@
 #include <FactoryClass.h>
 #include <HouseClass.h>
 #include <PCX.h>
+#include <Blitters/Blitter.h>
+
+namespace {
+	// PCX::BlitToSurface clips against the whole back buffer, which is the wrong
+	// window when the caller hands us the tactical rectangle, so the cameo below
+	// is clipped and blitted by hand. This is the blitter that does it: a plain
+	// 16-bit copy that leaves the key colour alone.
+	class PCXBlitter final : public Blitter
+	{
+	public:
+		explicit PCXBlitter(WORD key) noexcept : Key(key)
+		{}
+
+		virtual ~PCXBlitter() override final = default;
+
+		virtual void Blit_Copy(void* dst, byte* src, int len, int, WORD*, WORD*, int, int) override final
+		{
+			auto const pSrc = reinterpret_cast<WORD const*>(src);
+			auto const pDst = reinterpret_cast<WORD*>(dst);
+
+			for(auto i = 0; i < len; ++i) {
+				if(pSrc[i] != this->Key) {
+					pDst[i] = pSrc[i];
+				}
+			}
+		}
+
+		virtual void Blit_Copy_Tinted(void* dst, byte* src, int len, int zval, WORD* zbuf, WORD* abuf, int alvl, int warp, WORD) override final
+		{
+			this->Blit_Copy(dst, src, len, zval, zbuf, abuf, alvl, warp);
+		}
+
+		virtual void Blit_Move(void* dst, byte* src, int len, int zval, WORD* zbuf, WORD* abuf, int alvl, int warp) override final
+		{
+			this->Blit_Copy(dst, src, len, zval, zbuf, abuf, alvl, warp);
+		}
+
+		virtual void Blit_Move_Tinted(void* dst, byte* src, int len, int zval, WORD* zbuf, WORD* abuf, int alvl, int warp, WORD) override final
+		{
+			this->Blit_Copy(dst, src, len, zval, zbuf, abuf, alvl, warp);
+		}
+
+	private:
+		WORD Key;
+	};
+}
 
 /* #633 - spy building infiltration */
 // wrapper around the entire function
@@ -73,11 +119,20 @@ DEFINE_HOOK(0x43E7B0, BuildingClass_DrawVisible, 0x5)
 					const int cameoWidth = 60;
 					const int cameoHeight = 48;
 
-					RectangleStruct cameoBounds = {0, 0, cameoWidth, cameoHeight};
+					RectangleStruct srcRect = {0, 0, cameoWidth, cameoHeight};
+					RectangleStruct srcBounds = {0, 0, pPCX->Width, pPCX->Height};
 					RectangleStruct destRect = {pLocation->X - cameoWidth / 2, pLocation->Y - cameoHeight / 2, cameoWidth, cameoHeight};
-					RectangleStruct destClip = Drawing::Intersect(destRect, *pBounds, nullptr, nullptr);
 
-					DSurface::Temp->CopyFrom(pBounds, &destClip, pPCX, &cameoBounds, &cameoBounds, true, true);
+					// clip source and destination together, so a cameo running off
+					// the edge of the tactical view shows the part that still fits
+					// rather than the wrong part of the image
+					if(Drawing::BlitClip(destRect, *pBounds, srcRect, srcBounds)) {
+						PCXBlitter blitter(static_cast<WORD>(
+							Drawing::RGB_To_Int(255, 0, 255)));
+
+						Drawing::BitBlit(DSurface::Temp, &destRect, pPCX, &srcRect,
+							&blitter, 0, ZGradient::Deg135, 1000, 0);
+					}
 				} else {
 					// old shp cameos, fixed palette
 					auto pCameo = pProdType->GetCameo();
