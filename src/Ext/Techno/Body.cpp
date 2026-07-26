@@ -1706,6 +1706,14 @@ bool TechnoExt::ExtData::CanSelfCloakNow() const
 	return true;
 }
 
+TechnoExt::ExtData::~ExtData() {
+	this->SetSpotlight(nullptr);
+
+	// while a gunner is aboard this holds the unit's own temporal, and there is
+	// no unit left to hand it back to
+	GameDelete(this->MyOriginalTemporal);
+}
+
 void TechnoExt::ExtData::SetSpotlight(BuildingLightClass* pSpotlight) {
 	if(this->Spotlight != pSpotlight) {
 		if(this->Spotlight) {

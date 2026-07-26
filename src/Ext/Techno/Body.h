@@ -142,9 +142,7 @@ public:
 			TakeVehicleMode(false)
 		{ }
 
-		~ExtData() {
-			this->SetSpotlight(nullptr);
-		}
+		~ExtData();
 
 		// when any pointer in the game expires, this is called - be sure to tell everyone we own to invalidate it
 		void InvalidatePointer(void *ptr, bool bRemoved) {
