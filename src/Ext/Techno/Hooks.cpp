@@ -654,7 +654,9 @@ DEFINE_HOOK(0x52138C, InfantryClass_UpdateDeployment_Deso2, 0x6)
 DEFINE_HOOK(0x7101CF, FootClass_ImbueLocomotor, 0x7)
 {
 	GET(FootClass *, F, ESI);
-	F->MoveSoundAudioController.Stop();
+	// EndLooping, not Stop: the loop is allowed to finish and fade rather than
+	// being cut off mid-sample
+	F->MoveSoundAudioController.EndLooping();
 	return 0;
 }
 
@@ -665,7 +667,7 @@ DEFINE_HOOK(0x4DAA68, FootClass_Update_MoveSound, 0x6)
 		return 0x4DAAEE;
 	}
 	if(F->LocomotorSource) {
-		F->MoveSoundAudioController.Stop();
+		F->MoveSoundAudioController.EndLooping();
 		return 0x4DAAEE;
 	}
 	return 0x4DAA70;
