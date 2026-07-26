@@ -11,7 +11,7 @@ namespace
 	std::bitset<FeatureCount> DisabledFeatures;
 
 	// parallel to AntaresFeature, for the log line only
-	const char* const FeatureNames[] = { "EBolt" };
+	const char* const FeatureNames[] = { "EBolt", "AlphaImage" };
 
 	static_assert(std::size(FeatureNames) == FeatureCount,
 		"FeatureNames must list every AntaresFeature");

@@ -61,12 +61,17 @@ enum class AntaresFactory : uint32_t
 //!
 //! This list is deliberately short. A subsystem only appears once its hooks have
 //! been reviewed one at a time and standing down is known to leave the game in a
-//! consistent state; several obvious candidates did not survive that check. In
-//! particular the alpha-image handover needs write access to the shape map rather
-//! than a flag, so it is not here. Values are append-only.
+//! consistent state; several obvious candidates did not survive that check.
+//! Values are append-only.
 enum class AntaresFeature : uint32_t
 {
 	EBolt = 0,   //!< the coloured electric bolt draw, leaving the game's own colours
+
+	//! ObjectClass's per-frame alpha shape update. The shape map itself keeps being
+	//! maintained from the AlphaShapeClass constructor and destructor, so a consumer
+	//! that drives the update itself can still create and destroy shapes normally and
+	//! read them back through FindAlphaShape. Does not cover the anim path.
+	AlphaImage = 1,
 
 	Count
 };

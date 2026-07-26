@@ -186,7 +186,7 @@ namespace
 	}
 
 	AntaresAPI_v1 const TheAPI = {
-		sizeof(AntaresAPI_v1), 1, 1, 0,
+		sizeof(AntaresAPI_v1), 1, 2, 0,
 
 		&ConvertTypeTo,
 		&SpawnSurvivors,

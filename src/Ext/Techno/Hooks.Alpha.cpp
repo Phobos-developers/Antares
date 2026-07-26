@@ -2,6 +2,7 @@
 #include <Utilities/Macro.h>   // STACK_OFFS
 #include "../TechnoType/Body.h"
 #include "../../Misc/SavegameDef.h"
+#include "../../Interop/Features.h"
 
 #include <AlphaShapeClass.h>
 #include <AnimClass.h>
@@ -159,6 +160,13 @@ void UpdateAlphaShape(ObjectClass* pSource) {
 
 DEFINE_HOOK(0x5F3E70, ObjectClass_Update_AlphaLight, 0x5)
 {
+	// A consumer driving the update itself still gets a maintained shape map: the
+	// AlphaShapeClass constructor and destructor hooks above keep running, so its
+	// GameCreate and GameDelete land in the same place ours would have.
+	if(Interop::IsDisabled(AntaresFeature::AlphaImage)) {
+		return 0;
+	}
+
 	GET(ObjectClass*, pThis, ECX);
 	UpdateAlphaShape(pThis);
 	return 0;
