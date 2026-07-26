@@ -9,21 +9,41 @@
 #define RELEASE 0
 #endif
 
+namespace {
+	// Surface::DrawText would route this through Fancy_Text_Print_Wide
+	// (0x4A60E0); the splash uses the simple printer, the six-point gradient
+	// font, and colours derived from the surface format rather than the
+	// RGB565 constants.
+	void PrintStatus(wchar_t const* const pText, int const x, int const y,
+		int const red, int const green)
+	{
+		auto const pSurface = DSurface::Hidden;
+
+		RectangleStruct rect = {0, 0, pSurface->Width, pSurface->Height};
+		Point2D location = {x, y};
+		Point2D ret = {0, 0};
+
+		Simple_Text_Print_Wide(&ret, pText, pSurface, &rect, &location,
+			static_cast<unsigned int>(Drawing::RGB_To_Int(red, green, 0)), 0,
+			TextPrintType::Point6Grad | TextPrintType::NoShadow, 1);
+	}
+}
+
 DEFINE_HOOK(0x531413, Game_Start, 0x5)
 {
 	int topActive = RELEASE ? 500 : 460;
 
-	DSurface::Hidden->DrawText(L"Ares is active.", 10, topActive, COLOR_GREEN);
+	PrintStatus(L"Ares is active.", 10, topActive, 0, 255);
 #if !RELEASE
-	DSurface::Hidden->DrawText(L"This is a testing version, NOT a final product.", 20, 480, COLOR_RED);
-	DSurface::Hidden->DrawText(L"Bugs are to be expected.", 20, 500, COLOR_RED);
+	PrintStatus(L"This is a testing version, NOT a final product.", 20, 480, 255, 0);
+	PrintStatus(L"Bugs are to be expected.", 20, 500, 255, 0);
 #endif
-	DSurface::Hidden->DrawText(L"Ares is © The Ares Contributors 2007 - 2021.", 10, 520, COLOR_GREEN);
+	PrintStatus(L"Ares is © The Ares Contributors 2007 - 2021.", 10, 520, 0, 255);
 
 	wchar_t wVersion[256];
 	wsprintfW(wVersion, L"%hs", DISPLAY_STRVER);
 
-	DSurface::Hidden->DrawText(wVersion, 10, 540, COLOR_RED | COLOR_GREEN);
+	PrintStatus(wVersion, 10, 540, 255, 255);
 	return 0;
 }
 
