@@ -43,22 +43,34 @@ DEFINE_HOOK(0x438A00, BombClass_GetCurrentFrame, 0x6)
 
 	if(pSHP->Frames >= 2) {
 		if(pThis->DeathBomb == FALSE) {
-			// -1 so that last iteration has room to flicker. order is important
-			int delay = pData->Ivan_Delay.Get(RulesClass::Instance->IvanTimedDelay);
-			int lifetime = (Unsorted::CurrentFrame - pThis->PlantingFrame);
-			frame = lifetime / (delay / (pSHP->Frames - 1));
+			int const delay = pData->Ivan_Delay.Get(RulesClass::Instance->IvanTimedDelay);
+			int const rate = pData->Ivan_FlickerRate.Get(RulesClass::Instance->IvanIconFlickerRate);
 
-			// flicker over a time period
-			int rate = pData->Ivan_FlickerRate.Get(RulesClass::Instance->IvanIconFlickerRate);
-			int period = 2 * rate;
-			if(Unsorted::CurrentFrame % period >= rate) {
-				++frame;
-			}
+			int const lifetime = Unsorted::CurrentFrame - pThis->PlantingFrame;
 
-			if(frame >= pSHP->Frames) {
-				frame = pSHP->Frames - 1;
-			} else if(frame == pSHP->Frames - 1) {
-				--frame;
+			// the shape holds a dark and a lit frame for every stage, so there
+			// are half as many stages as there are frames
+			int const stages = pSHP->Frames / 2;
+			int const last = stages - 1;
+
+			if(rate > 0) {
+				int stage = lifetime / (delay / stages);
+				if(stage > last) {
+					stage = last;
+				}
+
+				// the lit frame is the odd one of the pair
+				frame = 2 * stage;
+				if(Unsorted::CurrentFrame % (2 * rate) >= rate) {
+					++frame;
+				}
+			} else {
+				// with the flicker off the pairs are stepped through twice as
+				// fast, and only the dark frames are ever shown
+				frame = lifetime / (delay / (2 * stages));
+				if(frame > last) {
+					frame = last;
+				}
 			}
 		} else {
 			// DeathBombs (that don't exist) use the last frame
