@@ -23,9 +23,21 @@ DEFINE_HOOK(0x6EB432, TeamClass_AttackedBy_Retaliate, 0x9)
 	auto pFocus = abstract_cast<TechnoClass*>(pThis->Focus);
 	auto pSpawn = pThis->SpawnCell;
 
-	if(!pFocus || !pFocus->GetWeapon(0)->WeaponType || !pSpawn || pFocus->IsCloseEnoughToAttackCoords(pSpawn->GetCoords())) {
+	// a team with a focus it can still shoot only switches when that focus has
+	// been left behind; with no spawn cell to measure against, it keeps the one
+	// it has
+	if(!pFocus || !pFocus->GetWeapon(0)->WeaponType
+		|| (pSpawn && pFocus->IsCloseEnoughToAttackCoords(pSpawn->GetCoords())))
+	{
 		// disallow aircraft, or units considered as aircraft, or stuff not on map like parasites
 		if(pAttacker->WhatAmI() != AircraftClass::AbsID) {
+			// friendly fire is not a reason to change targets
+			if(auto const pObject = abstract_cast<ObjectClass*>(pAttacker)) {
+				if(pThis->Owner->IsAlliedWith(pObject)) {
+					return 0x6EB47A;
+				}
+			}
+
 			if(auto pAttackerFoot = abstract_cast<FootClass*>(pAttacker)) {
 				if(pAttackerFoot->InLimbo || pAttackerFoot->GetTechnoType()->ConsideredAircraft) {
 					return 0x6EB47A;
