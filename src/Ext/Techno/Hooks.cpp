@@ -374,10 +374,8 @@ DEFINE_HOOK(0x4D718C, FootClass_Put_InitialPayload, 0x6)
 {
 	GET(FootClass* const, pThis, ESI);
 
-	if(pThis->WhatAmI() != AbstractType::Infantry) {
-		auto const pExt = TechnoExt::ExtMap.Find(pThis);
-		pExt->CreateInitialPayload();
-	}
+	auto const pExt = TechnoExt::ExtMap.Find(pThis);
+	pExt->CreateInitialPayload();
 
 	return 0;
 }

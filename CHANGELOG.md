@@ -87,6 +87,10 @@ Unreleased
   caught the parasite mid-transition.
   (NetsuNegi, [Phobos #2140](https://github.com/Phobos-developers/Phobos/pull/2140))
 
++ **InitialPayload** logic did not support being used for transport units
+  that belong to the infantry class; this restriction has been lifted.
+  (Noble_Fish, [Phobos #2316](https://github.com/Phobos-developers/Phobos/pull/2316))
+
 Ares 3.0p1 (21.352.1218)
 ------------------------
 
