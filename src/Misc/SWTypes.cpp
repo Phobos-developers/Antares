@@ -312,12 +312,12 @@ void SWStateMachine::UpdateAll()
 	//update and delete in one pass
 	Array.erase(std::remove_if(Array.begin(), Array.end(), [](const std::unique_ptr<SWStateMachine> &ptr) {
 		if(!ptr) {
-			Debug::Log("SWStateMachine pointer became nullptr!");
+			Debug::Log("SWStateMachine pointer became nullptr!\n");
 			return true;
 		}
 		
 		ptr->Update(); //update the state
-		if (!pMachine) {
+		if (!ptr) { //this should not happen , but idk need to verify
 			 Debug::FatalError("State machine destroyed itself during Update().");
 			 return true;
 		 }
