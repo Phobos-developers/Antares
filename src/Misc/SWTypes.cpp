@@ -309,19 +309,29 @@ bool NewSWType::SaveGlobals(AresStreamWriter& Stm)
 
 void SWStateMachine::UpdateAll()
 {
-	for(auto& Machine : SWStateMachine::Array) {
-		Machine->Update();
-	}
-
+	//update and delete in one pass
 	Array.erase(std::remove_if(Array.begin(), Array.end(), [](const std::unique_ptr<SWStateMachine> &ptr) {
-		return ptr->Finished();
+		if(!ptr) {
+			Debug::Log("SWStateMachine pointer became nullptr!");
+			return true;
+		}
+		
+		ptr->Update(); //update the state
+		if (!pMachine) {
+			 Debug::FatalError("State machine destroyed itself during Update().");
+			 return true;
+		 }
+		
+		return ptr->Finished(); // check if state was finished before deleting
 	}), Array.end());
 }
 
 void SWStateMachine::PointerGotInvalid(void *ptr, bool remove)
 {
 	for(auto& Machine : SWStateMachine::Array) {
-		Machine->InvalidatePointer(ptr, remove);
+		if(Machine) {
+			Machine->InvalidatePointer(ptr, remove);
+		}
 	}
 }
 
