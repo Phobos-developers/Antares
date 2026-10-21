@@ -31,7 +31,7 @@ bool Ares::bFPSCounter = false;
 bool const Ares::bStable = IsStable;
 bool Ares::bStableNotification = false;
 bool Ares::bOutputMissingStrings = false;
-DWORD_PTR Ares::ProcessAffinityMask = 0;
+DWORD_PTR Ares::ProcessAffinityMask = 1;
 bool Ares::bShuttingDown = false;
 
 char Ares::readBuffer[Ares::readLength];
